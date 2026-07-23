@@ -8,9 +8,11 @@
     "scheme": "alienapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.owenecurran.alienapp"
     },
     "android": {
+      "package": "com.owenecurran.alienapp",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -37,6 +39,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "f7dbd671-57fa-4983-8f39-af499caa8eb1"
+      }
+    },
+    "owner": "owenecurran"
   }
 }
