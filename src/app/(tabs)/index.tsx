@@ -1,61 +1,116 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
+import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+import { useAuth } from '@/lib/auth-context';
+import { getFeedVisits, likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
+import { getPhotoViewUrls } from '@/lib/photo-view';
 
 export default function HomeScreen() {
+  const { session } = useAuth();
+  const [visits, setVisits] = useState<FeedVisit[]>([]);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Refetch on every focus, not just on mount — tab navigators keep sibling
+  // screens mounted, so a plain useEffect(...,[session]) would never notice
+  // a follow made on the People tab without this.
+  useFocusEffect(
+    useCallback(() => {
+      if (!session) return;
+      setIsLoading(true);
+      setError(null);
+      getFeedVisits(session.user.id)
+        .then(async (feedVisits) => {
+          setVisits(feedVisits);
+          const photoIds = feedVisits.map((v) => v.photoId).filter((id) => id !== null);
+          if (photoIds.length > 0) {
+            setPhotoUrls(await getPhotoViewUrls(photoIds));
+          }
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your feed.'))
+        .finally(() => setIsLoading(false));
+    }, [session])
+  );
+
+  async function handleToggleLike(visit: FeedVisit) {
+    if (!session) return;
+    setError(null);
+    try {
+      if (visit.isLikedByMe) {
+        await unlikeVisit(session.user.id, visit.id);
+      } else {
+        await likeVisit(session.user.id, visit.id);
+      }
+      setVisits((prev) =>
+        prev.map((v) =>
+          v.id === visit.id
+            ? {
+                ...v,
+                isLikedByMe: !v.isLikedByMe,
+                likeCount: v.likeCount + (v.isLikedByMe ? -1 : 1),
+              }
+            : v
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update that like.');
+    }
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
+        <ThemedText type="subtitle">Feed</ThemedText>
+
+        {error && (
+          <ThemedText type="small" themeColor="textSecondary">
+            {error}
           </ThemedText>
-        </ThemedView>
+        )}
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        {!isLoading && visits.length === 0 && (
+          <ThemedText type="small" themeColor="textSecondary">
+            No visits yet from people you follow. Follow someone from the People tab, or check back
+            once they log a visit.
+          </ThemedText>
+        )}
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+        <FlatList
+          data={visits}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <ThemedView type="backgroundElement" style={styles.card}>
+              <ThemedText type="smallBold">{item.authorName}</ThemedText>
+              <ThemedText type="default">{item.placeName}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {'★'.repeat(item.rating)}
+                {item.note ? ` · ${item.note}` : ''}
+              </ThemedText>
+              {item.photoId && photoUrls[item.photoId] && (
+                <Image source={{ uri: photoUrls[item.photoId] }} style={styles.photo} />
+              )}
 
-        {Platform.OS === 'web' && <WebBadge />}
+              <View style={styles.actionsRow}>
+                <Pressable onPress={() => handleToggleLike(item)}>
+                  <ThemedText type="small" themeColor={item.isLikedByMe ? 'text' : 'textSecondary'}>
+                    {item.isLikedByMe ? '♥' : '♡'} {item.likeCount}
+                  </ThemedText>
+                </Pressable>
+              </View>
+
+              <SaveToBoard visitId={item.id} />
+            </ThemedView>
+          )}
+        />
       </SafeAreaView>
     </ThemedView>
   );
@@ -64,35 +119,33 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
   },
   safeArea: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
+    alignSelf: 'center',
+    width: '100%',
     maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
     paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
+    paddingTop: Spacing.four,
+    paddingBottom: BottomTabInset,
     gap: Spacing.three,
-    alignSelf: 'stretch',
+  },
+  list: {
+    gap: Spacing.three,
+  },
+  card: {
+    paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+    borderRadius: Spacing.three,
+    gap: Spacing.two,
+  },
+  photo: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: Spacing.two,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
   },
 });

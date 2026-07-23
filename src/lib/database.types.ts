@@ -742,6 +742,13 @@ export type Database = {
         Returns: boolean
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
+      get_place_aggregate_rating: {
+        Args: { target_place_id: string }
+        Returns: {
+          avg_rating: number
+          review_count: number
+        }[]
+      }
       gettransactionid: { Args: never; Returns: unknown }
       longtransactionsenabled: { Args: never; Returns: boolean }
       populate_geometry_columns:
