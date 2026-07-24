@@ -129,7 +129,7 @@ export default function ProfileScreen() {
             <ThemedView type="backgroundElement" style={styles.visitRow}>
               <ThemedText type="default">{item.places?.name ?? 'Unknown place'}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {'★'.repeat(item.rating)}
+                {item.rating.toFixed(1)} ★
                 {item.note ? ` · ${item.note}` : ''}
               </ThemedText>
             </ThemedView>

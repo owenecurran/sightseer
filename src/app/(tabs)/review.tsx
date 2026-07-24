@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from 'react';
 import { FlatList, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
 import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { StarRating } from '@/components/ui/star-rating';
+import { RatingSlider } from '@/components/ui/rating-slider';
 import { TextField } from '@/components/ui/text-field';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
@@ -40,7 +41,7 @@ export default function SearchScreen() {
 
   const [selectedPlace, setSelectedPlace] = useState<PlaceRow | null>(null);
   const [breadcrumb, setBreadcrumb] = useState('');
-  const [rating, setRating] = useState(0);
+  const [rating, setRating] = useState(5);
   const [note, setNote] = useState('');
   const [visitedOn, setVisitedOn] = useState(todayIsoDate());
   const [isSavingVisit, setIsSavingVisit] = useState(false);
@@ -87,7 +88,7 @@ export default function SearchScreen() {
       const crumb = await getPlaceBreadcrumb(cached);
       setSelectedPlace(cached);
       setBreadcrumb(crumb);
-      setRating(0);
+      setRating(5);
       setNote('');
       setVisitedOn(todayIsoDate());
       setSavedVisitId(null);
@@ -104,7 +105,7 @@ export default function SearchScreen() {
   }
 
   async function handleSaveVisit() {
-    if (!session || !selectedPlace || rating === 0) return;
+    if (!session || !selectedPlace) return;
     setError(null);
     setIsSavingVisit(true);
     try {
@@ -129,7 +130,7 @@ export default function SearchScreen() {
   }
 
   async function handleAddPhoto() {
-    if (!savedVisitId) return;
+    if (!savedVisitId || photoUris.length >= MAX_VISIT_PHOTOS) return;
     setError(null);
 
     if (Platform.OS !== 'web') {
@@ -191,7 +192,7 @@ export default function SearchScreen() {
 
             {!savedVisitId ? (
               <ThemedView style={styles.form}>
-                <StarRating value={rating} onChange={setRating} />
+                <RatingSlider value={rating} onChange={setRating} />
                 <TextField
                   placeholder="Note (optional)"
                   value={note}
@@ -207,7 +208,6 @@ export default function SearchScreen() {
                   label="Save visit"
                   onPress={handleSaveVisit}
                   loading={isSavingVisit}
-                  disabled={rating === 0}
                 />
               </ThemedView>
             ) : (
@@ -222,12 +222,14 @@ export default function SearchScreen() {
                   </View>
                 )}
 
-                <Button
-                  label="Add photo"
-                  variant="secondary"
-                  onPress={handleAddPhoto}
-                  loading={isUploadingPhoto}
-                />
+                {photoUris.length < MAX_VISIT_PHOTOS && (
+                  <Button
+                    label={`Add photo (${photoUris.length}/${MAX_VISIT_PHOTOS})`}
+                    variant="secondary"
+                    onPress={handleAddPhoto}
+                    loading={isUploadingPhoto}
+                  />
+                )}
 
                 <SaveToBoard visitId={savedVisitId} />
               </ThemedView>

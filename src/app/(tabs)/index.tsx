@@ -1,9 +1,9 @@
-import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PhotoGrid } from '@/components/photo-grid';
 import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -30,7 +30,7 @@ export default function HomeScreen() {
       getFeedVisits(session.user.id)
         .then(async (feedVisits) => {
           setVisits(feedVisits);
-          const photoIds = feedVisits.map((v) => v.photoId).filter((id) => id !== null);
+          const photoIds = feedVisits.flatMap((v) => v.photoIds);
           if (photoIds.length > 0) {
             setPhotoUrls(await getPhotoViewUrls(photoIds));
           }
@@ -92,12 +92,10 @@ export default function HomeScreen() {
               <ThemedText type="smallBold">{item.authorName}</ThemedText>
               <ThemedText type="default">{item.placeName}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {'★'.repeat(item.rating)}
+                {item.rating.toFixed(1)} ★
                 {item.note ? ` · ${item.note}` : ''}
               </ThemedText>
-              {item.photoId && photoUrls[item.photoId] && (
-                <Image source={{ uri: photoUrls[item.photoId] }} style={styles.photo} />
-              )}
+              <PhotoGrid urls={item.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
 
               <View style={styles.actionsRow}>
                 <Pressable onPress={() => handleToggleLike(item)}>
@@ -138,11 +136,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
     gap: Spacing.two,
-  },
-  photo: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: Spacing.two,
   },
   actionsRow: {
     flexDirection: 'row',

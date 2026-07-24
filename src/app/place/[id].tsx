@@ -1,9 +1,9 @@
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -19,7 +19,7 @@ type PlaceVisit = {
   rating: number;
   note: string | null;
   users: { handle: string | null; name: string | null } | null;
-  photos: { id: string }[];
+  photos: { id: string; position: number }[];
 };
 
 export default function PlaceDetailScreen() {
@@ -43,7 +43,7 @@ export default function PlaceDetailScreen() {
             supabase.rpc('get_place_aggregate_rating', { target_place_id: id }).single(),
             supabase
               .from('visits')
-              .select('id, rating, note, users!user_id(handle, name), photos(id)')
+              .select('id, rating, note, users!user_id(handle, name), photos(id, position)')
               .eq('place_id', id)
               .order('created_at', { ascending: false }),
           ]);
@@ -58,7 +58,7 @@ export default function PlaceDetailScreen() {
 
         const typedVisits = visitsData as unknown as PlaceVisit[];
         setVisits(typedVisits);
-        const photoIds = typedVisits.flatMap((v) => v.photos[0]?.id ?? []);
+        const photoIds = typedVisits.flatMap((v) => v.photos.map((p) => p.id));
         if (photoIds.length > 0) {
           setPhotoUrls(await getPhotoViewUrls(photoIds));
         }
@@ -96,17 +96,19 @@ export default function PlaceDetailScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => {
-            const photoId = item.photos[0]?.id;
-            const photoUrl = photoId ? photoUrls[photoId] : undefined;
+            const visitPhotoUrls = [...item.photos]
+              .sort((a, b) => a.position - b.position)
+              .map((p) => photoUrls[p.id])
+              .filter((url) => url != null);
             return (
               <ThemedView type="backgroundElement" style={styles.visitCard}>
-                {photoUrl && <Image source={{ uri: photoUrl }} style={styles.photo} />}
+                <PhotoGrid urls={visitPhotoUrls} />
                 <View style={styles.visitInfo}>
                   <ThemedText type="smallBold">
                     {item.users?.name ?? item.users?.handle ?? 'Someone'}
                   </ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
-                    {'★'.repeat(item.rating)}
+                    {item.rating.toFixed(1)} ★
                     {item.note ? ` · ${item.note}` : ''}
                   </ThemedText>
                 </View>
@@ -138,10 +140,6 @@ const styles = StyleSheet.create({
   visitCard: {
     borderRadius: Spacing.three,
     overflow: 'hidden',
-  },
-  photo: {
-    width: '100%',
-    aspectRatio: 1,
   },
   visitInfo: {
     gap: Spacing.half,

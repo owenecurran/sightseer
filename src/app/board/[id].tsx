@@ -110,7 +110,7 @@ export default function BoardDetailScreen() {
                   <View style={styles.itemInfo}>
                     <ThemedText type="default">{item.visits?.places?.name ?? 'Unknown place'}</ThemedText>
                     <ThemedText type="small" themeColor="textSecondary">
-                      {'★'.repeat(item.visits?.rating ?? 0)}
+                      {item.visits ? `${item.visits.rating.toFixed(1)} ★` : ''}
                       {item.visits?.note ? ` · ${item.visits.note}` : ''}
                     </ThemedText>
                   </View>

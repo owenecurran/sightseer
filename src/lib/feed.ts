@@ -9,7 +9,7 @@ export type FeedVisit = {
   user_id: string;
   authorName: string;
   placeName: string;
-  photoId: string | null;
+  photoIds: string[];
   likeCount: number;
   isLikedByMe: boolean;
 };
@@ -23,7 +23,7 @@ type RawFeedVisit = {
   user_id: string;
   users: { handle: string | null; name: string | null } | null;
   places: { name: string } | null;
-  photos: { id: string }[];
+  photos: { id: string; position: number }[];
   likes: { user_id: string }[];
 };
 
@@ -41,7 +41,7 @@ export async function getFeedVisits(myUserId: string): Promise<FeedVisit[]> {
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, created_at, user_id, users!user_id(handle, name), places!place_id(name), photos(id), likes(user_id)'
+      'id, rating, note, visited_on, created_at, user_id, users!user_id(handle, name), places!place_id(name), photos(id, position), likes(user_id)'
     )
     .in('user_id', followedIds)
     .order('created_at', { ascending: false });
@@ -56,7 +56,7 @@ export async function getFeedVisits(myUserId: string): Promise<FeedVisit[]> {
     user_id: visit.user_id,
     authorName: visit.users?.name ?? visit.users?.handle ?? 'Someone',
     placeName: visit.places?.name ?? 'Unknown place',
-    photoId: visit.photos[0]?.id ?? null,
+    photoIds: [...visit.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
     likeCount: visit.likes.length,
     isLikedByMe: visit.likes.some((like) => like.user_id === myUserId),
   }));
