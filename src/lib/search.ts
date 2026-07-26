@@ -46,3 +46,20 @@ export async function searchPlacesAndUsers(
     users: usersResult.data.map((u) => ({ ...u, followStatus: statusByUserId.get(u.id) ?? null })),
   };
 }
+
+// Plain user search for tagging people on a visit — no follow-status join
+// needed there, unlike the unified Search tab above.
+export async function searchUsers(query: string, myUserId: string): Promise<UserRow[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  const pattern = `%${trimmed}%`;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .neq('id', myUserId)
+    .or(`handle.ilike.${pattern},name.ilike.${pattern}`)
+    .limit(RESULT_LIMIT);
+  if (error) throw error;
+  return data;
+}

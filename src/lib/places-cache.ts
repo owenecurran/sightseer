@@ -4,12 +4,44 @@ import type { Database } from '@/lib/database.types';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 type PlaceLevel = PlaceRow['level'];
+type PlaceCategory = PlaceRow['category'];
 
 function levelFromTypes(types: string[]): PlaceLevel {
   if (types.includes('country')) return 'country';
   if (types.includes('administrative_area_level_1')) return 'admin_area_1';
   if (types.includes('locality')) return 'locality';
   return 'poi';
+}
+
+const WATER_TYPES = ['beach', 'lake', 'river', 'island'];
+const TRAIL_TYPES = ['hiking_area', 'nature_preserve', 'scenic_spot'];
+const FOOD_DRINK_TYPES = [
+  'restaurant',
+  'bar',
+  'pub',
+  'cocktail_bar',
+  'wine_bar',
+  'sports_bar',
+  'lounge_bar',
+  'cafe',
+  'coffee_shop',
+  'tea_house',
+  'bakery',
+  'ice_cream_shop',
+  'brewery',
+  'food',
+];
+
+// Drives tag-chip coloring. Based on Google's actual published place types
+// (verified against live API responses, not guessed) — cuisine-specific
+// restaurant types (e.g. "italian_restaurant") all end in "_restaurant"
+// rather than being individually enumerated, since Google adds more over
+// time and hardcoding each one would silently miss new ones.
+function categorizeFromTypes(types: string[]): PlaceCategory {
+  if (types.some((t) => WATER_TYPES.includes(t))) return 'water';
+  if (types.some((t) => TRAIL_TYPES.includes(t))) return 'trail';
+  if (types.some((t) => t.endsWith('_restaurant') || FOOD_DRINK_TYPES.includes(t))) return 'food_drink';
+  return null;
 }
 
 function findComponent(components: PlaceDetails['addressComponents'], type: string) {
@@ -23,8 +55,9 @@ async function getOrCreatePlace(params: {
   googlePlaceId?: string;
   lat?: number;
   lng?: number;
+  category?: PlaceCategory;
 }): Promise<PlaceRow> {
-  const { level, name, parentId, googlePlaceId, lat, lng } = params;
+  const { level, name, parentId, googlePlaceId, lat, lng, category = null } = params;
 
   if (googlePlaceId) {
     const { data: byGoogleId } = await supabase
@@ -40,12 +73,17 @@ async function getOrCreatePlace(params: {
   const { data: existing } = await matchQuery.maybeSingle();
 
   if (existing) {
-    // Upgrade a chain-inferred row (no google_place_id yet) once we have the
-    // authoritative one from looking the place up directly.
-    if (googlePlaceId && !existing.google_place_id) {
+    // Upgrade a chain-inferred row (no google_place_id/category yet) once we
+    // have the authoritative details from looking the place up directly.
+    if ((googlePlaceId && !existing.google_place_id) || (category && !existing.category)) {
       const { data: updated, error } = await supabase
         .from('places')
-        .update({ google_place_id: googlePlaceId, lat, lng })
+        .update({
+          google_place_id: googlePlaceId ?? existing.google_place_id,
+          category: category ?? existing.category,
+          lat,
+          lng,
+        })
         .eq('id', existing.id)
         .select()
         .single();
@@ -62,6 +100,7 @@ async function getOrCreatePlace(params: {
       name,
       parent_id: parentId,
       google_place_id: googlePlaceId ?? null,
+      category,
       source: 'google',
       lat,
       lng,
@@ -119,6 +158,7 @@ export async function cachePlaceHierarchy(details: PlaceDetails): Promise<PlaceR
     googlePlaceId: details.id,
     lat: details.lat,
     lng: details.lng,
+    category: categorizeFromTypes(details.types),
   });
 }
 

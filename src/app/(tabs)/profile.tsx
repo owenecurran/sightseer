@@ -1,13 +1,16 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { VisitMenu } from '@/components/visit-menu';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
 import type { Database } from '@/lib/database.types';
 import {
   acceptFollowRequest,
@@ -15,6 +18,7 @@ import {
   rejectFollowRequest,
   type IncomingFollowRequest,
 } from '@/lib/follows';
+import { pickImageFromLibrary } from '@/lib/image-picker';
 import { supabase } from '@/lib/supabase';
 
 type OwnVisit = {
@@ -26,11 +30,23 @@ type OwnVisit = {
 };
 
 export default function ProfileScreen() {
-  const { session, profile } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
   const [requests, setRequests] = useState<IncomingFollowRequest[]>([]);
   const [visits, setVisits] = useState<OwnVisit[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  useEffect(() => {
+    if (!session || !profile?.avatar_r2_key) {
+      setAvatarUrl(null);
+      return;
+    }
+    getAvatarViewUrls([session.user.id])
+      .then((urls) => setAvatarUrl(urls[session.user.id] ?? null))
+      .catch(() => setAvatarUrl(null));
+  }, [session, profile?.avatar_r2_key]);
 
   useFocusEffect(
     useCallback(() => {
@@ -75,15 +91,47 @@ export default function ProfileScreen() {
     }
   }
 
+  function handleVisitDeleted(visitId: string) {
+    setVisits((prev) => prev.filter((v) => v.id !== visitId));
+  }
+
   async function handleSignOut() {
     setIsSigningOut(true);
     await supabase.auth.signOut();
     setIsSigningOut(false);
   }
 
+  async function handlePickAvatar() {
+    if (!session) return;
+    setError(null);
+    const result = await pickImageFromLibrary();
+    if (result === 'denied') {
+      setError('Photo library permission is required to set a profile picture.');
+      return;
+    }
+    if (!result) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      await uploadAvatar({ userId: session.user.id, uri: result.uri, mimeType: result.mimeType });
+      await refreshProfile();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload that photo.');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  }
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <Pressable onPress={handlePickAvatar} disabled={isUploadingAvatar} style={styles.avatarRow}>
+          <Avatar uri={avatarUrl} name={profile?.name ?? profile?.handle} size={72} />
+          <ThemedText type="small" themeColor="textSecondary">
+            {isUploadingAvatar ? 'Uploading...' : avatarUrl ? 'Change photo' : 'Add profile picture'}
+          </ThemedText>
+        </Pressable>
+
         <ThemedText type="subtitle">{profile?.name ?? profile?.handle ?? 'Profile'}</ThemedText>
         {profile?.handle && (
           <ThemedText type="small" themeColor="textSecondary">
@@ -127,14 +175,23 @@ export default function ProfileScreen() {
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
             <ThemedView type="backgroundElement" style={styles.visitRow}>
-              <ThemedText type="default">{item.places?.name ?? 'Unknown place'}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {item.rating.toFixed(1)} ★
-                {item.note ? ` · ${item.note}` : ''}
-              </ThemedText>
+              <View style={styles.visitInfo}>
+                <ThemedText type="default">{item.places?.name ?? 'Unknown place'}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {item.rating.toFixed(1)} ★
+                  {item.note ? ` · ${item.note}` : ''}
+                </ThemedText>
+              </View>
+              <VisitMenu visitId={item.id} isOwner onDeleted={() => handleVisitDeleted(item.id)} />
             </ThemedView>
           )}
         />
+
+        {profile?.is_admin && (
+          <Pressable onPress={() => router.push('/moderation')}>
+            <ThemedText type="link">Reports</ThemedText>
+          </Pressable>
+        )}
 
         <Button label="Sign out" variant="secondary" onPress={handleSignOut} loading={isSigningOut} />
       </SafeAreaView>
@@ -156,6 +213,10 @@ const styles = StyleSheet.create({
     paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
+  avatarRow: {
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
   section: {
     gap: Spacing.two,
   },
@@ -175,9 +236,16 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   visitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
+    gap: Spacing.two,
+  },
+  visitInfo: {
+    flex: 1,
     gap: Spacing.half,
   },
 });

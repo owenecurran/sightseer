@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Platform, Share, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -7,6 +7,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import { shareText } from '@/lib/share';
 import { supabase } from '@/lib/supabase';
 
 export default function InviteGateScreen() {
@@ -17,39 +18,16 @@ export default function InviteGateScreen() {
   async function handleShare() {
     setError(null);
     const message = `${profile?.name ?? 'A friend'} wants you to join them on the app.`;
+    const result = await shareText(message);
 
-    if (Platform.OS === 'web') {
-      // Most desktop browsers don't implement navigator.share at all (it
-      // silently throws), so falling back to a clipboard copy is the only
-      // way this ever completes there — without it the button just does
-      // nothing, with no explanation, which is the bug this fixes.
-      const nav = typeof navigator === 'undefined' ? undefined : navigator;
-      if (nav?.share) {
-        try {
-          await nav.share({ text: message });
-        } catch {
-          return;
-        }
-      } else if (nav?.clipboard?.writeText) {
-        try {
-          await nav.clipboard.writeText(message);
-        } catch {
-          setError('Could not copy the invite message — please copy it manually and send it to a friend.');
-          return;
-        }
-      } else {
-        setError('Sharing is not supported in this browser.');
-        return;
-      }
-    } else {
-      try {
-        const result = await Share.share({ message });
-        // dismissedAction (iOS cancel) means the share sheet never completed.
-        if (result.action === Share.dismissedAction) return;
-      } catch {
-        // Share sheet failing to open shouldn't block the user from retrying.
-        return;
-      }
+    if (result === 'cancelled') return;
+    if (result === 'unsupported') {
+      setError('Sharing is not supported in this browser.');
+      return;
+    }
+    if (result === 'error') {
+      setError('Could not copy the invite message — please copy it manually and send it to a friend.');
+      return;
     }
 
     if (!session) return;

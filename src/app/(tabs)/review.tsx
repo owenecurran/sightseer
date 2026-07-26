@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
@@ -9,6 +9,7 @@ import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { DateCarousel } from '@/components/ui/date-carousel';
 import { RatingSlider } from '@/components/ui/rating-slider';
 import { TextField } from '@/components/ui/text-field';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
@@ -20,13 +21,16 @@ import {
   fetchPlaceDetails,
   type PlaceAutocompleteSuggestion,
 } from '@/lib/google-places';
+import { pickImageFromLibrary } from '@/lib/image-picker';
 import { cachePlaceHierarchy, getPlaceBreadcrumb } from '@/lib/places-cache';
 import { uploadPhotoForVisit } from '@/lib/photo-upload';
+import { searchUsers } from '@/lib/search';
 import { supabase } from '@/lib/supabase';
 
 const DEBOUNCE_MS = 300;
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
+type UserRow = Database['public']['Tables']['users']['Row'];
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -47,11 +51,25 @@ export default function SearchScreen() {
   const [isSavingVisit, setIsSavingVisit] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
 
-  const [photoUris, setPhotoUris] = useState<string[]>([]);
+  const [pendingPhotos, setPendingPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [uploadedPhotoUris, setUploadedPhotoUris] = useState<string[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const [tagQuery, setTagQuery] = useState('');
+  const [tagSuggestions, setTagSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
+  const [taggedPlaces, setTaggedPlaces] = useState<PlaceRow[]>([]);
+  const [isTagSearching, setIsTagSearching] = useState(false);
+
+  const [peopleQuery, setPeopleQuery] = useState('');
+  const [peopleSuggestions, setPeopleSuggestions] = useState<UserRow[]>([]);
+  const [taggedUsers, setTaggedUsers] = useState<UserRow[]>([]);
+  const [isPeopleSearching, setIsPeopleSearching] = useState(false);
 
   const sessionTokenRef = useRef(createPlacesSessionToken());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tagSessionTokenRef = useRef(createPlacesSessionToken());
+  const tagDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const peopleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -79,6 +97,57 @@ export default function SearchScreen() {
     };
   }, [query]);
 
+  useEffect(() => {
+    if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current);
+
+    if (!tagQuery.trim()) {
+      setTagSuggestions([]);
+      return;
+    }
+
+    tagDebounceRef.current = setTimeout(async () => {
+      setIsTagSearching(true);
+      try {
+        const results = await autocompletePlaces(tagQuery, tagSessionTokenRef.current);
+        setTagSuggestions(results);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Search failed.');
+      } finally {
+        setIsTagSearching(false);
+      }
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current);
+    };
+  }, [tagQuery]);
+
+  useEffect(() => {
+    if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
+    if (!session) return;
+
+    if (!peopleQuery.trim()) {
+      setPeopleSuggestions([]);
+      return;
+    }
+
+    peopleDebounceRef.current = setTimeout(async () => {
+      setIsPeopleSearching(true);
+      try {
+        const results = await searchUsers(peopleQuery, session.user.id);
+        setPeopleSuggestions(results);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Search failed.');
+      } finally {
+        setIsPeopleSearching(false);
+      }
+    }, DEBOUNCE_MS);
+
+    return () => {
+      if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
+    };
+  }, [peopleQuery, session]);
+
   async function handleSelect(suggestion: PlaceAutocompleteSuggestion) {
     setError(null);
     setIsSearching(true);
@@ -92,7 +161,14 @@ export default function SearchScreen() {
       setNote('');
       setVisitedOn(todayIsoDate());
       setSavedVisitId(null);
-      setPhotoUris([]);
+      setPendingPhotos([]);
+      setUploadedPhotoUris([]);
+      setTagQuery('');
+      setTagSuggestions([]);
+      setTaggedPlaces([]);
+      setPeopleQuery('');
+      setPeopleSuggestions([]);
+      setTaggedUsers([]);
       setQuery('');
       setSuggestions([]);
       // Session is done (Place Details closed it) — start a fresh one for the next search.
@@ -101,6 +177,84 @@ export default function SearchScreen() {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
     } finally {
       setIsSearching(false);
+    }
+  }
+
+  async function handleSelectTag(suggestion: PlaceAutocompleteSuggestion) {
+    setError(null);
+    setIsTagSearching(true);
+    try {
+      const details = await fetchPlaceDetails(suggestion.placeId, tagSessionTokenRef.current);
+      const cached = await cachePlaceHierarchy(details);
+      setTaggedPlaces((prev) => {
+        if (cached.id === selectedPlace?.id || prev.some((p) => p.id === cached.id)) return prev;
+        return [...prev, cached];
+      });
+      setTagQuery('');
+      setTagSuggestions([]);
+      tagSessionTokenRef.current = createPlacesSessionToken();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add that location.');
+    } finally {
+      setIsTagSearching(false);
+    }
+  }
+
+  function handleRemoveTag(placeId: string) {
+    setTaggedPlaces((prev) => prev.filter((p) => p.id !== placeId));
+  }
+
+  function handleSelectPerson(user: UserRow) {
+    setTaggedUsers((prev) => (prev.some((u) => u.id === user.id) ? prev : [...prev, user]));
+    setPeopleQuery('');
+    setPeopleSuggestions([]);
+  }
+
+  function handleRemovePerson(userId: string) {
+    setTaggedUsers((prev) => prev.filter((u) => u.id !== userId));
+  }
+
+  function handleRemovePendingPhoto(index: number) {
+    setPendingPhotos((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function pickImage(): Promise<ImagePicker.ImagePickerAsset | null> {
+    const result = await pickImageFromLibrary();
+    if (result === 'denied') {
+      setError('Photo library permission is required to add photos.');
+      return null;
+    }
+    return result;
+  }
+
+  async function handlePickPhoto() {
+    if (pendingPhotos.length + uploadedPhotoUris.length >= MAX_VISIT_PHOTOS) return;
+    setError(null);
+    const asset = await pickImage();
+    if (asset) setPendingPhotos((prev) => [...prev, asset]);
+  }
+
+  async function handleAddPhotoAfterSave() {
+    if (!savedVisitId || uploadedPhotoUris.length >= MAX_VISIT_PHOTOS) return;
+    setError(null);
+    const asset = await pickImage();
+    if (!asset) return;
+
+    setIsUploadingPhoto(true);
+    try {
+      await uploadPhotoForVisit({
+        visitId: savedVisitId,
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        width: asset.width,
+        height: asset.height,
+        position: uploadedPhotoUris.length,
+      });
+      setUploadedPhotoUris((prev) => [...prev, asset.uri]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload that photo.');
+    } finally {
+      setIsUploadingPhoto(false);
     }
   }
 
@@ -122,6 +276,39 @@ export default function SearchScreen() {
         .single();
       if (insertError) throw insertError;
       setSavedVisitId(data.id);
+
+      if (taggedPlaces.length > 0) {
+        await supabase
+          .from('visit_tagged_places')
+          .insert(taggedPlaces.map((place) => ({ visit_id: data.id, place_id: place.id })));
+      }
+
+      if (taggedUsers.length > 0) {
+        await supabase
+          .from('visit_tagged_users')
+          .insert(taggedUsers.map((user) => ({ visit_id: data.id, user_id: user.id })));
+      }
+
+      const stillPending: ImagePicker.ImagePickerAsset[] = [];
+      for (const [index, asset] of pendingPhotos.entries()) {
+        try {
+          await uploadPhotoForVisit({
+            visitId: data.id,
+            uri: asset.uri,
+            mimeType: asset.mimeType,
+            width: asset.width,
+            height: asset.height,
+            position: index,
+          });
+          setUploadedPhotoUris((prev) => [...prev, asset.uri]);
+        } catch {
+          stillPending.push(asset);
+        }
+      }
+      setPendingPhotos(stillPending);
+      if (stillPending.length > 0) {
+        setError(`Visit saved, but ${stillPending.length} photo(s) failed to upload — try again below.`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save that visit.');
     } finally {
@@ -129,42 +316,7 @@ export default function SearchScreen() {
     }
   }
 
-  async function handleAddPhoto() {
-    if (!savedVisitId || photoUris.length >= MAX_VISIT_PHOTOS) return;
-    setError(null);
-
-    if (Platform.OS !== 'web') {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setError('Photo library permission is required to add photos.');
-        return;
-      }
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets[0]) return;
-
-    const asset = result.assets[0];
-    setIsUploadingPhoto(true);
-    try {
-      await uploadPhotoForVisit({
-        visitId: savedVisitId,
-        uri: asset.uri,
-        mimeType: asset.mimeType,
-        width: asset.width,
-        height: asset.height,
-        position: photoUris.length,
-      });
-      setPhotoUris((prev) => [...prev, asset.uri]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that photo.');
-    } finally {
-      setIsUploadingPhoto(false);
-    }
-  }
+  const totalPhotoCount = pendingPhotos.length + uploadedPhotoUris.length;
 
   return (
     <ThemedView style={styles.container}>
@@ -193,17 +345,99 @@ export default function SearchScreen() {
             {!savedVisitId ? (
               <ThemedView style={styles.form}>
                 <RatingSlider value={rating} onChange={setRating} />
+
+                <View style={styles.photoSection}>
+                  {(pendingPhotos.length > 0 || uploadedPhotoUris.length > 0) && (
+                    <View style={styles.photoRow}>
+                      {pendingPhotos.map((asset, index) => (
+                        <Pressable key={asset.uri} onPress={() => handleRemovePendingPhoto(index)}>
+                          <Image source={{ uri: asset.uri }} style={styles.photoThumbnail} />
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                  {totalPhotoCount < MAX_VISIT_PHOTOS && (
+                    <Button
+                      label={`Add photo (${totalPhotoCount}/${MAX_VISIT_PHOTOS})`}
+                      variant="secondary"
+                      onPress={handlePickPhoto}
+                    />
+                  )}
+                </View>
+
                 <TextField
                   placeholder="Note (optional)"
                   value={note}
                   onChangeText={setNote}
                   multiline
                 />
-                <TextField
-                  placeholder="Visited on (YYYY-MM-DD)"
-                  value={visitedOn}
-                  onChangeText={setVisitedOn}
-                />
+                <DateCarousel value={visitedOn} onChange={setVisitedOn} />
+
+                <View style={styles.tagSection}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Tag specific spots (optional)
+                  </ThemedText>
+                  {taggedPlaces.length > 0 && (
+                    <View style={styles.tagRow}>
+                      {taggedPlaces.map((place) => (
+                        <Pressable key={place.id} onPress={() => handleRemoveTag(place.id)}>
+                          <ThemedView type="backgroundSelected" style={styles.tagChip}>
+                            <ThemedText type="small">{place.name} ✕</ThemedText>
+                          </ThemedView>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                  <TextField
+                    placeholder="Search a trail, landmark, spot..."
+                    value={tagQuery}
+                    onChangeText={setTagQuery}
+                  />
+                  {tagSuggestions.map((item) => (
+                    <Pressable key={item.placeId} onPress={() => handleSelectTag(item)}>
+                      <ThemedView type="backgroundSelected" style={styles.suggestionRow}>
+                        <ThemedText type="small">{item.primaryText}</ThemedText>
+                        {item.secondaryText && (
+                          <ThemedText type="small" themeColor="textSecondary">
+                            {item.secondaryText}
+                          </ThemedText>
+                        )}
+                      </ThemedView>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <View style={styles.tagSection}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Tag people (optional)
+                  </ThemedText>
+                  {taggedUsers.length > 0 && (
+                    <View style={styles.tagRow}>
+                      {taggedUsers.map((user) => (
+                        <Pressable key={user.id} onPress={() => handleRemovePerson(user.id)}>
+                          <ThemedView type="backgroundSelected" style={styles.tagChip}>
+                            <ThemedText type="small">
+                              {user.name ?? user.handle ?? 'Someone'} ✕
+                            </ThemedText>
+                          </ThemedView>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                  <TextField
+                    placeholder="Search by name or username..."
+                    value={peopleQuery}
+                    onChangeText={setPeopleQuery}
+                  />
+                  {peopleSuggestions.map((user) => (
+                    <Pressable key={user.id} onPress={() => handleSelectPerson(user)}>
+                      <ThemedView type="backgroundSelected" style={styles.suggestionRow}>
+                        <ThemedText type="small">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
+                      </ThemedView>
+                    </Pressable>
+                  ))}
+                </View>
+
                 <Button
                   label="Save visit"
                   onPress={handleSaveVisit}
@@ -214,19 +448,19 @@ export default function SearchScreen() {
               <ThemedView style={styles.form}>
                 <ThemedText type="small">Visit saved.</ThemedText>
 
-                {photoUris.length > 0 && (
+                {uploadedPhotoUris.length > 0 && (
                   <View style={styles.photoRow}>
-                    {photoUris.map((uri) => (
+                    {uploadedPhotoUris.map((uri) => (
                       <Image key={uri} source={{ uri }} style={styles.photoThumbnail} />
                     ))}
                   </View>
                 )}
 
-                {photoUris.length < MAX_VISIT_PHOTOS && (
+                {uploadedPhotoUris.length < MAX_VISIT_PHOTOS && (
                   <Button
-                    label={`Add photo (${photoUris.length}/${MAX_VISIT_PHOTOS})`}
+                    label={`Add photo (${uploadedPhotoUris.length}/${MAX_VISIT_PHOTOS})`}
                     variant="secondary"
-                    onPress={handleAddPhoto}
+                    onPress={handleAddPhotoAfterSave}
                     loading={isUploadingPhoto}
                   />
                 )}
@@ -291,6 +525,9 @@ const styles = StyleSheet.create({
   form: {
     gap: Spacing.two,
   },
+  photoSection: {
+    gap: Spacing.two,
+  },
   photoRow: {
     flexDirection: 'row',
     gap: Spacing.two,
@@ -300,6 +537,19 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: Spacing.two,
+  },
+  tagSection: {
+    gap: Spacing.two,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    flexWrap: 'wrap',
+  },
+  tagChip: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.five,
   },
   pressed: {
     opacity: 0.7,

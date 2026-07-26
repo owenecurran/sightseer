@@ -142,6 +142,45 @@ export type Database = {
           },
         ]
       }
+      comments: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          user_id: string
+          visit_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          user_id: string
+          visit_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       follows: {
         Row: {
           created_at: string
@@ -252,6 +291,7 @@ export type Database = {
       places: {
         Row: {
           cached_at: string
+          category: string | null
           geog: unknown
           google_place_id: string | null
           id: string
@@ -265,6 +305,7 @@ export type Database = {
         }
         Insert: {
           cached_at?: string
+          category?: string | null
           geog?: unknown
           google_place_id?: string | null
           id?: string
@@ -278,6 +319,7 @@ export type Database = {
         }
         Update: {
           cached_at?: string
+          category?: string | null
           geog?: unknown
           google_place_id?: string | null
           id?: string
@@ -295,6 +337,60 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "places"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reports: {
+        Row: {
+          created_at: string
+          id: string
+          reason: string
+          reporter_id: string
+          snapshot_author_name: string | null
+          snapshot_note: string | null
+          snapshot_place_name: string | null
+          snapshot_rating: number | null
+          status: string
+          visit_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reason: string
+          reporter_id: string
+          snapshot_author_name?: string | null
+          snapshot_note?: string | null
+          snapshot_place_name?: string | null
+          snapshot_rating?: number | null
+          status?: string
+          visit_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reason?: string
+          reporter_id?: string
+          snapshot_author_name?: string | null
+          snapshot_note?: string | null
+          snapshot_place_name?: string | null
+          snapshot_rating?: number | null
+          status?: string
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
             referencedColumns: ["id"]
           },
         ]
@@ -325,6 +421,7 @@ export type Database = {
       }
       users: {
         Row: {
+          avatar_r2_key: string | null
           created_at: string
           discoverable_by_contacts: boolean
           handle: string | null
@@ -332,10 +429,12 @@ export type Database = {
           hashed_phone: string | null
           id: string
           invite_exempt: boolean
+          is_admin: boolean
           is_private: boolean
           name: string | null
         }
         Insert: {
+          avatar_r2_key?: string | null
           created_at?: string
           discoverable_by_contacts?: boolean
           handle?: string | null
@@ -343,10 +442,12 @@ export type Database = {
           hashed_phone?: string | null
           id: string
           invite_exempt?: boolean
+          is_admin?: boolean
           is_private?: boolean
           name?: string | null
         }
         Update: {
+          avatar_r2_key?: string | null
           created_at?: string
           discoverable_by_contacts?: boolean
           handle?: string | null
@@ -354,6 +455,7 @@ export type Database = {
           hashed_phone?: string | null
           id?: string
           invite_exempt?: boolean
+          is_admin?: boolean
           is_private?: boolean
           name?: string | null
         }
@@ -382,6 +484,39 @@ export type Database = {
           },
           {
             foreignKeyName: "visit_tagged_places_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      visit_tagged_users: {
+        Row: {
+          created_at: string
+          user_id: string
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visit_tagged_users_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_tagged_users_visit_id_fkey"
             columns: ["visit_id"]
             isOneToOne: false
             referencedRelation: "visits"

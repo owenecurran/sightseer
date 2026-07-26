@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react';
 import { LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  Easing,
   interpolateColor,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
+  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -18,8 +19,13 @@ import { useTheme } from '@/hooks/use-theme';
 const MAX_VALUE = 10;
 const TRACK_HEIGHT = 12;
 const THUMB_SIZE = 32;
-const LOW_COLOR = '#8B0000';
-const HIGH_COLOR = '#66E0C2';
+// The tappable/draggable area is taller than the visual line — 12px is too
+// thin a target to comfortably hit on a touchscreen.
+const TOUCH_TARGET_HEIGHT = 44;
+const MAX_SHAKE_PX = 4;
+// Value-space stops (0-10), converted to 0-1 progress below.
+const GRADIENT_STOPS = [0, 0.1, 0.5, 0.9, 1];
+const GRADIENT_COLORS = ['#40013a', '#d40404', '#f7da1e', '#04b02f', '#05e8b7'];
 
 function clamp(n: number, min: number, max: number) {
   'worklet';
@@ -52,8 +58,19 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
   const theme = useTheme();
   const [trackWidth, setTrackWidth] = useState(0);
   const progress = useSharedValue(value / MAX_VALUE);
-  const shakeOffset = useSharedValue(0);
+  // Continuous background wobble, always running; its amplitude (shakeIntensity)
+  // is what actually makes it visible or not, so this never needs restarting.
+  const shakePhase = useSharedValue(-1);
+  const shakeIntensity = useSharedValue(0);
   const lastHapticValue = useSharedValue(value);
+
+  useEffect(() => {
+    shakePhase.value = withRepeat(
+      withTiming(1, { duration: 70, easing: Easing.linear }),
+      -1,
+      true
+    );
+  }, [shakePhase]);
 
   // Keep in sync if the value is reset from outside (e.g. selecting a new
   // place resets the form) rather than from this slider's own drag.
@@ -68,33 +85,52 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
 
   const usableWidth = Math.max(trackWidth - THUMB_SIZE, 1);
 
-  const pan = Gesture.Pan().onChange((event) => {
-    progress.value = clamp(progress.value + event.changeX / usableWidth, 0, 1);
+  // Shared by touch-down (tap-to-snap) and drag: always derive progress from
+  // the touch's absolute position within the track, never accumulated
+  // deltas — deltas measured against a view that's itself being animated is
+  // exactly what caused the thumb to drift ahead of the cursor.
+  function updateFromTrackX(x: number) {
+    'worklet';
+    progress.value = clamp(x / trackWidth, 0, 1);
 
     const nextValue = roundToTenth(progress.value * MAX_VALUE);
-    // Shake amplitude grows the closer the value gets to either extreme.
-    const intensity = clamp(Math.abs(progress.value - 0.5) * 2, 0, 1);
-    shakeOffset.value = withSequence(
-      withTiming(intensity * 6, { duration: 40 }),
-      withTiming(-intensity * 6, { duration: 40 }),
-      withTiming(0, { duration: 40 })
-    );
+    const rawIntensity = clamp(Math.abs(progress.value - 0.5) * 2, 0, 1);
+    // Cubic falloff: stays near-imperceptible until close to either
+    // extreme, instead of growing the moment you leave dead center.
+    shakeIntensity.value = rawIntensity ** 3;
 
     if (nextValue !== lastHapticValue.value) {
       lastHapticValue.value = nextValue;
-      runOnJS(triggerHaptic)(intensity);
+      runOnJS(triggerHaptic)(rawIntensity);
       runOnJS(onChange)(nextValue);
     }
-  });
+  }
+
+  const pan = Gesture.Pan()
+    .minDistance(0)
+    .onBegin((event) => {
+      updateFromTrackX(event.x);
+    })
+    .onChange((event) => {
+      updateFromTrackX(event.x);
+    })
+    .onFinalize(() => {
+      shakeIntensity.value = withTiming(0, { duration: 150 });
+    });
 
   const fillStyle = useAnimatedStyle(() => ({
     width: `${progress.value * 100}%`,
-    backgroundColor: interpolateColor(progress.value, [0, 1], [LOW_COLOR, HIGH_COLOR]),
+    backgroundColor: interpolateColor(progress.value, GRADIENT_STOPS, GRADIENT_COLORS),
   }));
 
   const thumbStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * usableWidth + shakeOffset.value }],
-    backgroundColor: interpolateColor(progress.value, [0, 1], [LOW_COLOR, HIGH_COLOR]),
+    transform: [
+      {
+        translateX:
+          progress.value * usableWidth + shakePhase.value * shakeIntensity.value * MAX_SHAKE_PX,
+      },
+    ],
+    backgroundColor: interpolateColor(progress.value, GRADIENT_STOPS, GRADIENT_COLORS),
   }));
 
   return (
@@ -103,17 +139,17 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
         {value.toFixed(1)}
       </ThemedText>
 
-      <View style={styles.track} onLayout={handleLayout}>
-        <View style={[styles.trackBackground, { backgroundColor: theme.backgroundElement }]} />
-        {trackWidth > 0 && (
-          <>
-            <Animated.View style={[styles.fill, fillStyle]} />
-            <GestureDetector gesture={pan}>
+      <GestureDetector gesture={pan}>
+        <View style={styles.track} onLayout={handleLayout}>
+          <View style={[styles.trackBackground, { backgroundColor: theme.backgroundElement }]} />
+          {trackWidth > 0 && (
+            <>
+              <Animated.View style={[styles.fill, fillStyle]} />
               <Animated.View style={[styles.thumb, thumbStyle, { borderColor: theme.background }]} />
-            </GestureDetector>
-          </>
-        )}
-      </View>
+            </>
+          )}
+        </View>
+      </GestureDetector>
     </View>
   );
 }
@@ -128,26 +164,27 @@ const styles = StyleSheet.create({
   },
   track: {
     width: '100%',
-    height: TRACK_HEIGHT,
-    justifyContent: 'center',
+    height: TOUCH_TARGET_HEIGHT,
   },
   trackBackground: {
     position: 'absolute',
+    top: (TOUCH_TARGET_HEIGHT - TRACK_HEIGHT) / 2,
     width: '100%',
     height: TRACK_HEIGHT,
     borderRadius: TRACK_HEIGHT / 2,
   },
   fill: {
     position: 'absolute',
+    top: (TOUCH_TARGET_HEIGHT - TRACK_HEIGHT) / 2,
     height: TRACK_HEIGHT,
     borderRadius: TRACK_HEIGHT / 2,
   },
   thumb: {
     position: 'absolute',
+    top: (TOUCH_TARGET_HEIGHT - THUMB_SIZE) / 2,
     width: THUMB_SIZE,
     height: THUMB_SIZE,
     borderRadius: THUMB_SIZE / 2,
-    top: -(THUMB_SIZE - TRACK_HEIGHT) / 2,
     borderWidth: 2,
   },
 });
