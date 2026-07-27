@@ -341,6 +341,96 @@ export type Database = {
           },
         ]
       }
+      profile_prompt_attachments: {
+        Row: {
+          attachment_type: string
+          board_id: string | null
+          created_at: string
+          id: string
+          photo_r2_key: string | null
+          position: number
+          prompt_id: string
+          text_value: string | null
+          visit_id: string | null
+        }
+        Insert: {
+          attachment_type: string
+          board_id?: string | null
+          created_at?: string
+          id?: string
+          photo_r2_key?: string | null
+          position?: number
+          prompt_id: string
+          text_value?: string | null
+          visit_id?: string | null
+        }
+        Update: {
+          attachment_type?: string
+          board_id?: string | null
+          created_at?: string
+          id?: string
+          photo_r2_key?: string | null
+          position?: number
+          prompt_id?: string
+          text_value?: string | null
+          visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_prompt_attachments_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_prompt_attachments_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "profile_prompts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_prompt_attachments_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profile_prompts: {
+        Row: {
+          created_at: string
+          id: string
+          position: number
+          prompt_slug: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          position: number
+          prompt_slug: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          position?: number
+          prompt_slug?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_prompts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reports: {
         Row: {
           created_at: string
@@ -422,6 +512,7 @@ export type Database = {
       users: {
         Row: {
           avatar_r2_key: string | null
+          bio: string | null
           created_at: string
           discoverable_by_contacts: boolean
           handle: string | null
@@ -435,6 +526,7 @@ export type Database = {
         }
         Insert: {
           avatar_r2_key?: string | null
+          bio?: string | null
           created_at?: string
           discoverable_by_contacts?: boolean
           handle?: string | null
@@ -448,6 +540,7 @@ export type Database = {
         }
         Update: {
           avatar_r2_key?: string | null
+          bio?: string | null
           created_at?: string
           discoverable_by_contacts?: boolean
           handle?: string | null

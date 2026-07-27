@@ -62,4 +62,9 @@ export const Spacing = {
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+// The web tab bar (app-tabs.web.tsx) floats via position:'absolute' over
+// content rather than reserving its own layout space, so every screen's
+// top padding needs this extra clearance on web specifically (0 elsewhere —
+// NativeTabs reserves real space for its own bottom bar already).
+export const TopTabInset = Platform.select({ web: 48 }) ?? 0;
 export const MaxContentWidth = 800;

@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import type { Database } from '@/lib/database.types';
 import { getPlaceBreadcrumb } from '@/lib/places-cache';
 import { getPhotoViewUrls } from '@/lib/photo-view';
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
+    paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
   },
   list: {

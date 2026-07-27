@@ -5,6 +5,7 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
+import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
 import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -12,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
 import { RatingSlider } from '@/components/ui/rating-slider';
 import { TextField } from '@/components/ui/text-field';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
 import {
@@ -32,8 +33,13 @@ const DEBOUNCE_MS = 300;
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 type UserRow = Database['public']['Tables']['users']['Row'];
 
+// Local date, not toISOString() (which is UTC and rolls over to "tomorrow"
+// in the evening for any timezone behind UTC).
 function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
 }
 
 export default function SearchScreen() {
@@ -51,9 +57,12 @@ export default function SearchScreen() {
   const [isSavingVisit, setIsSavingVisit] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
 
-  const [pendingPhotos, setPendingPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [pendingPhotos, setPendingPhotos] = useState<CroppedPhoto[]>([]);
   const [uploadedPhotoUris, setUploadedPhotoUris] = useState<string[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [cropSource, setCropSource] = useState<{ uri: string; target: 'pending' | 'after-save' } | null>(
+    null
+  );
 
   const [tagQuery, setTagQuery] = useState('');
   const [tagSuggestions, setTagSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
@@ -231,30 +240,46 @@ export default function SearchScreen() {
     if (pendingPhotos.length + uploadedPhotoUris.length >= MAX_VISIT_PHOTOS) return;
     setError(null);
     const asset = await pickImage();
-    if (asset) setPendingPhotos((prev) => [...prev, asset]);
+    if (asset) setCropSource({ uri: asset.uri, target: 'pending' });
   }
 
   async function handleAddPhotoAfterSave() {
     if (!savedVisitId || uploadedPhotoUris.length >= MAX_VISIT_PHOTOS) return;
     setError(null);
     const asset = await pickImage();
-    if (!asset) return;
+    if (asset) setCropSource({ uri: asset.uri, target: 'after-save' });
+  }
 
-    setIsUploadingPhoto(true);
-    try {
-      await uploadPhotoForVisit({
-        visitId: savedVisitId,
-        uri: asset.uri,
-        mimeType: asset.mimeType,
-        width: asset.width,
-        height: asset.height,
-        position: uploadedPhotoUris.length,
-      });
-      setUploadedPhotoUris((prev) => [...prev, asset.uri]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that photo.');
-    } finally {
-      setIsUploadingPhoto(false);
+  function handleCropCancel() {
+    setCropSource(null);
+  }
+
+  async function handleCropConfirm(result: CroppedPhoto) {
+    const target = cropSource?.target;
+    setCropSource(null);
+
+    if (target === 'pending') {
+      setPendingPhotos((prev) => [...prev, result]);
+      return;
+    }
+
+    if (target === 'after-save' && savedVisitId) {
+      setIsUploadingPhoto(true);
+      try {
+        await uploadPhotoForVisit({
+          visitId: savedVisitId,
+          uri: result.uri,
+          mimeType: 'image/jpeg',
+          width: result.width,
+          height: result.height,
+          position: uploadedPhotoUris.length,
+        });
+        setUploadedPhotoUris((prev) => [...prev, result.uri]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not upload that photo.');
+      } finally {
+        setIsUploadingPhoto(false);
+      }
     }
   }
 
@@ -289,13 +314,13 @@ export default function SearchScreen() {
           .insert(taggedUsers.map((user) => ({ visit_id: data.id, user_id: user.id })));
       }
 
-      const stillPending: ImagePicker.ImagePickerAsset[] = [];
+      const stillPending: CroppedPhoto[] = [];
       for (const [index, asset] of pendingPhotos.entries()) {
         try {
           await uploadPhotoForVisit({
             visitId: data.id,
             uri: asset.uri,
-            mimeType: asset.mimeType,
+            mimeType: 'image/jpeg',
             width: asset.width,
             height: asset.height,
             position: index,
@@ -488,6 +513,13 @@ export default function SearchScreen() {
             </Pressable>
           )}
         />
+
+        <PhotoCropModal
+          visible={cropSource != null}
+          uri={cropSource?.uri ?? null}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
       </SafeAreaView>
     </ThemedView>
   );
@@ -503,7 +535,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
+    paddingTop: Spacing.four + TopTabInset,
     paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },

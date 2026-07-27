@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { VisitMenu } from '@/components/visit-menu';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getFeedVisits, likeVisit, unlikeVisit, type FeedVisit, type TaggedPlace } from '@/lib/feed';
@@ -67,13 +67,13 @@ export default function HomeScreen() {
         .then(async (feedVisits) => {
           setVisits(feedVisits);
           const photoIds = feedVisits.flatMap((v) => v.photoIds);
-          if (photoIds.length > 0) {
-            setPhotoUrls(await getPhotoViewUrls(photoIds));
-          }
           const authorIds = [...new Set(feedVisits.map((v) => v.user_id))];
-          if (authorIds.length > 0) {
-            setAvatarUrls(await getAvatarViewUrls(authorIds));
-          }
+          const [photos, avatars] = await Promise.all([
+            photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
+            authorIds.length > 0 ? getAvatarViewUrls(authorIds) : Promise.resolve({}),
+          ]);
+          setPhotoUrls(photos);
+          setAvatarUrls(avatars);
         })
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your feed.'))
         .finally(() => setIsLoading(false));
@@ -164,25 +164,27 @@ export default function HomeScreen() {
                   onDeleted={() => handleVisitDeleted(item.id)}
                 />
               </View>
-              <ThemedText type="default">{item.placeName}</ThemedText>
-              {item.taggedPlaces.length > 0 && (
-                <ThemedText type="small">
-                  {item.taggedPlaces.map((place, index) => (
-                    <ThemedText
-                      key={place.name}
-                      type="small"
-                      style={{ color: categoryColor(place.category, theme.textSecondary) }}>
-                      {index > 0 ? ' · ' : ''}
-                      {place.name}
-                    </ThemedText>
-                  ))}
+              <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}>
+                <ThemedText type="default">{item.placeName}</ThemedText>
+                {item.taggedPlaces.length > 0 && (
+                  <ThemedText type="small">
+                    {item.taggedPlaces.map((place, index) => (
+                      <ThemedText
+                        key={place.name}
+                        type="small"
+                        style={{ color: categoryColor(place.category, theme.textSecondary) }}>
+                        {index > 0 ? ' · ' : ''}
+                        {place.name}
+                      </ThemedText>
+                    ))}
+                  </ThemedText>
+                )}
+                <ThemedText type="small" themeColor="textSecondary">
+                  {item.rating.toFixed(1)} ★
+                  {item.visitNumber > 1 ? ` · ${ordinal(item.visitNumber)} visit` : ''}
+                  {item.note ? ` · ${item.note}` : ''}
                 </ThemedText>
-              )}
-              <ThemedText type="small" themeColor="textSecondary">
-                {item.rating.toFixed(1)} ★
-                {item.visitNumber > 1 ? ` · ${ordinal(item.visitNumber)} visit` : ''}
-                {item.note ? ` · ${item.note}` : ''}
-              </ThemedText>
+              </Pressable>
               <PhotoGrid urls={item.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
 
               <View style={styles.actionsRow}>
@@ -223,7 +225,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four,
+    paddingTop: Spacing.four + TopTabInset,
     paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },

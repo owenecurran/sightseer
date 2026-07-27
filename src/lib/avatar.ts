@@ -1,3 +1,4 @@
+import { getCachedUrls } from '@/lib/media-url-cache';
 import { supabase } from '@/lib/supabase';
 
 const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -43,14 +44,17 @@ export async function uploadAvatar(params: UploadAvatarParams): Promise<string> 
 }
 
 // Batched, not one call per avatar — a feed load may need many at once.
+// Cached across calls (see media-url-cache).
 export async function getAvatarViewUrls(userIds: string[]): Promise<Record<string, string>> {
   if (userIds.length === 0) return {};
 
-  const { data, error } = await supabase.functions.invoke('get-avatar-urls', {
-    body: { userIds },
-  });
-  if (error) throw error;
+  return getCachedUrls(userIds, async (missingIds) => {
+    const { data, error } = await supabase.functions.invoke('get-avatar-urls', {
+      body: { userIds: missingIds },
+    });
+    if (error) throw error;
 
-  const { urls } = data as { urls: { userId: string; url: string }[] };
-  return Object.fromEntries(urls.map((u) => [u.userId, u.url]));
+    const { urls } = data as { urls: { userId: string; url: string }[] };
+    return Object.fromEntries(urls.map((u) => [u.userId, u.url]));
+  });
 }
