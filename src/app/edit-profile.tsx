@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PromptEditor } from '@/components/prompt-editor';
@@ -25,6 +25,7 @@ export default function EditProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
   const [name, setName] = useState(profile?.name ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
+  const [showMap, setShowMap] = useState(profile?.show_map ?? false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
@@ -66,7 +67,7 @@ export default function EditProfileScreen() {
     setIsSaving(true);
     const { error: updateError } = await supabase
       .from('users')
-      .update({ name: name.trim(), bio: bio.trim() || null })
+      .update({ name: name.trim(), bio: bio.trim() || null, show_map: showMap })
       .eq('id', session.user.id);
     setIsSaving(false);
 
@@ -99,68 +100,77 @@ export default function EditProfileScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Pressable onPress={() => router.back()}>
-          <ThemedText type="link">← Back</ThemedText>
-        </Pressable>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <Pressable onPress={() => router.back()}>
+            <ThemedText type="link">← Back</ThemedText>
+          </Pressable>
 
-        <ThemedText type="subtitle">Edit profile</ThemedText>
+          <ThemedText type="subtitle">Edit profile</ThemedText>
 
-        <ThemedText type="small" themeColor="textSecondary">
-          Name
-        </ThemedText>
-        <TextField placeholder="Your name" value={name} onChangeText={setName} autoCapitalize="words" />
-
-        <ThemedText type="small" themeColor="textSecondary">
-          Bio
-        </ThemedText>
-        <TextField
-          placeholder="Tell people a bit about yourself"
-          value={bio}
-          onChangeText={(text) => setBio(text.slice(0, BIO_MAX_LENGTH))}
-          multiline
-        />
-        <ThemedText type="small" themeColor="textSecondary">
-          {bio.length}/{BIO_MAX_LENGTH}
-        </ThemedText>
-
-        {error && (
           <ThemedText type="small" themeColor="textSecondary">
-            {error}
+            Name
           </ThemedText>
-        )}
+          <TextField placeholder="Your name" value={name} onChangeText={setName} autoCapitalize="words" />
 
-        <Button label="Save" onPress={handleSave} loading={isSaving} />
+          <ThemedText type="small" themeColor="textSecondary">
+            Bio
+          </ThemedText>
+          <TextField
+            placeholder="Tell people a bit about yourself"
+            value={bio}
+            onChangeText={(text) => setBio(text.slice(0, BIO_MAX_LENGTH))}
+            multiline
+          />
+          <ThemedText type="small" themeColor="textSecondary">
+            {bio.length}/{BIO_MAX_LENGTH}
+          </ThemedText>
 
-        <ThemedText type="smallBold">Prompts</ThemedText>
-        <View style={styles.promptsList}>
-          {prompts.map((existing, index) => (
-            <PromptEditor
-              key={existing.id}
-              userId={session?.user.id ?? ''}
-              position={existing.position}
-              existing={existing}
-              usedSlugs={prompts.filter((p) => p.id !== existing.id).map((p) => p.promptSlug)}
-              ownVisits={ownVisits}
-              ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
-              onChanged={loadPrompts}
-              onMoveUp={index > 0 ? () => handleMove(index, -1) : undefined}
-              onMoveDown={index < prompts.length - 1 ? () => handleMove(index, 1) : undefined}
-            />
-          ))}
+          <Pressable onPress={() => setShowMap((prev) => !prev)} style={styles.mapToggleRow}>
+            <ThemedView type={showMap ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
+              {showMap && <ThemedText type="smallBold">✓</ThemedText>}
+            </ThemedView>
+            <ThemedText type="small">Show a map of places I’ve visited on my profile</ThemedText>
+          </Pressable>
 
-          {prompts.length < PROMPT_SLOT_COUNT && (
-            <PromptEditor
-              key="new"
-              userId={session?.user.id ?? ''}
-              position={nextPosition}
-              existing={undefined}
-              usedSlugs={prompts.map((p) => p.promptSlug)}
-              ownVisits={ownVisits}
-              ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
-              onChanged={loadPrompts}
-            />
+          {error && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
           )}
-        </View>
+
+          <Button label="Save" onPress={handleSave} loading={isSaving} />
+
+          <ThemedText type="smallBold">Prompts</ThemedText>
+          <View style={styles.promptsList}>
+            {prompts.map((existing, index) => (
+              <PromptEditor
+                key={existing.id}
+                userId={session?.user.id ?? ''}
+                position={existing.position}
+                existing={existing}
+                usedSlugs={prompts.filter((p) => p.id !== existing.id).map((p) => p.promptSlug)}
+                ownVisits={ownVisits}
+                ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
+                onChanged={loadPrompts}
+                onMoveUp={index > 0 ? () => handleMove(index, -1) : undefined}
+                onMoveDown={index < prompts.length - 1 ? () => handleMove(index, 1) : undefined}
+              />
+            ))}
+
+            {prompts.length < PROMPT_SLOT_COUNT && (
+              <PromptEditor
+                key="new"
+                userId={session?.user.id ?? ''}
+                position={nextPosition}
+                existing={undefined}
+                usedSlugs={prompts.map((p) => p.promptSlug)}
+                ownVisits={ownVisits}
+                ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
+                onChanged={loadPrompts}
+              />
+            )}
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -172,13 +182,31 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    alignSelf: 'center',
     width: '100%',
-    maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
     paddingBottom: Spacing.four,
+  },
+  // The ScrollView itself stays full width (so its scrollbar sits at the
+  // true browser edge on web) — centering happens on its content instead.
+  scrollContent: {
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
     gap: Spacing.three,
+    paddingBottom: Spacing.four,
+  },
+  mapToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: Spacing.one,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   promptsList: {
     gap: Spacing.two,

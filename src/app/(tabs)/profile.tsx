@@ -4,6 +4,7 @@ import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PhotoGrid } from '@/components/photo-grid';
+import { ProfileMap } from '@/components/profile-map';
 import { ProfilePromptsSection } from '@/components/profile-prompts-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -192,6 +193,8 @@ export default function ProfileScreen() {
               )}
 
               {session && <ProfilePromptsSection userId={session.user.id} />}
+
+              {session && profile?.show_map && <ProfileMap userId={session.user.id} />}
 
               {error && (
                 <ThemedText type="small" themeColor="textSecondary">

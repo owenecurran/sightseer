@@ -290,6 +290,7 @@ export type Database = {
       }
       places: {
         Row: {
+          boundary_geometry: unknown
           cached_at: string
           category: string | null
           geog: unknown
@@ -304,6 +305,7 @@ export type Database = {
           source: string
         }
         Insert: {
+          boundary_geometry?: unknown
           cached_at?: string
           category?: string | null
           geog?: unknown
@@ -318,6 +320,7 @@ export type Database = {
           source: string
         }
         Update: {
+          boundary_geometry?: unknown
           cached_at?: string
           category?: string | null
           geog?: unknown
@@ -523,6 +526,7 @@ export type Database = {
           is_admin: boolean
           is_private: boolean
           name: string | null
+          show_map: boolean
         }
         Insert: {
           avatar_r2_key?: string | null
@@ -537,6 +541,7 @@ export type Database = {
           is_admin?: boolean
           is_private?: boolean
           name?: string | null
+          show_map?: boolean
         }
         Update: {
           avatar_r2_key?: string | null
@@ -551,6 +556,7 @@ export type Database = {
           is_admin?: boolean
           is_private?: boolean
           name?: string | null
+          show_map?: boolean
         }
         Relationships: []
       }
@@ -975,6 +981,15 @@ export type Database = {
         Returns: {
           avg_rating: number
           review_count: number
+        }[]
+      }
+      get_visited_regions: {
+        Args: { profile_user_id: string }
+        Returns: {
+          boundary_geojson: string
+          id: string
+          level: string
+          name: string
         }[]
       }
       gettransactionid: { Args: never; Returns: unknown }
@@ -1601,6 +1616,10 @@ export type Database = {
       st_wrapx: {
         Args: { geom: unknown; move: number; wrap: number }
         Returns: unknown
+      }
+      store_place_boundary: {
+        Args: { geojson: Json; place_id: string }
+        Returns: undefined
       }
       unlockrows: { Args: { "": string }; Returns: number }
       updategeometrysrid: {
