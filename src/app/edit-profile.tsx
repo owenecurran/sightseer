@@ -67,7 +67,11 @@ export default function EditProfileScreen() {
     setIsSaving(true);
     const { error: updateError } = await supabase
       .from('users')
-      .update({ name: name.trim(), bio: bio.trim() || null, show_map: showMap })
+      .update({
+        name: name.trim(),
+        bio: bio.trim() || null,
+        show_map: showMap,
+      })
       .eq('id', session.user.id);
     setIsSaving(false);
 
@@ -105,16 +109,12 @@ export default function EditProfileScreen() {
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
 
-          <ThemedText type="subtitle">Edit profile</ThemedText>
+          <ThemedText type="displaySerif">Edit profile</ThemedText>
 
-          <ThemedText type="small" themeColor="textSecondary">
-            Name
-          </ThemedText>
+          <ThemedText type="sectionLabel">Name</ThemedText>
           <TextField placeholder="Your name" value={name} onChangeText={setName} autoCapitalize="words" />
 
-          <ThemedText type="small" themeColor="textSecondary">
-            Bio
-          </ThemedText>
+          <ThemedText type="sectionLabel">Bio</ThemedText>
           <TextField
             placeholder="Tell people a bit about yourself"
             value={bio}
@@ -140,7 +140,7 @@ export default function EditProfileScreen() {
 
           <Button label="Save" onPress={handleSave} loading={isSaving} />
 
-          <ThemedText type="smallBold">Prompts</ThemedText>
+          <ThemedText type="sectionLabel">Prompts</ThemedText>
           <View style={styles.promptsList}>
             {prompts.map((existing, index) => (
               <PromptEditor

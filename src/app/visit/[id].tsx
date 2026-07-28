@@ -111,7 +111,7 @@ export default function VisitDetailScreen() {
               />
             </View>
 
-            <ThemedText type="default">{visit.placeName}</ThemedText>
+            <ThemedText type="headline">{visit.placeName}</ThemedText>
             {visit.taggedPlaces.length > 0 && (
               <ThemedText type="small">
                 {visit.taggedPlaces.map((place, index) => (

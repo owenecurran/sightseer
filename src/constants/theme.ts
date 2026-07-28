@@ -1,30 +1,42 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * The app's single fixed brand theme — no light/dark switching. Every
+ * screen goes through this one palette via useTheme()/ThemedView/ThemedText,
+ * so this is the one place that defines the app's whole visual identity.
  */
 
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
-export const Colors = {
-  light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
-  },
-  dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-  },
+// The dark editorial brand look — not theme-adaptive (doesn't switch with
+// system light/dark mode), used explicitly rather than folded into `Colors`
+// below.
+export const BrandColors = {
+  background: '#03100a',
+  sage: '#a0bd91',
+  cream: '#eae7cf',
 } as const;
 
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+export const Colors = {
+  text: BrandColors.cream,
+  background: BrandColors.background,
+  backgroundElement: '#0f2318',
+  backgroundSelected: '#1a3524',
+  textSecondary: 'rgba(234,231,207,0.65)',
+  sage: BrandColors.sage,
+} as const;
+
+export type ThemeColor = keyof typeof Colors;
+
+// Registered via useFonts() in src/app/_layout.tsx — expo-font's web loader
+// injects real @font-face rules under these same family names, so (unlike
+// the OS-font branching below) one flat set works across every platform.
+export const BrandFonts = {
+  serifDisplay: 'BethanyElingston',
+  condensedHeavy: 'MoonGetHeavy',
+  roundedStat: 'HelveticaRoundedBold',
+  wideMedium: 'ObviouslyWideMedium',
+} as const;
 
 export const Fonts = Platform.select({
   ios: {

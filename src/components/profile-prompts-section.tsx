@@ -3,10 +3,12 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { ReviewPromptCard } from '@/components/review-prompt-card';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { StretchText } from '@/components/ui/stretch-text';
 import { Spacing } from '@/constants/theme';
 import { PROFILE_PROMPTS } from '@/constants/profile-prompts';
+import { getPhotoViewUrls } from '@/lib/photo-view';
 import { getPromptPhotoUrls, listPrompts, type ProfilePrompt } from '@/lib/profile-prompts';
 
 function promptLabel(slug: string): string {
@@ -20,6 +22,7 @@ type ProfilePromptsSectionProps = {
 export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [visitPhotoUrls, setVisitPhotoUrls] = useState<Record<string, string>>({});
 
   // useFocusEffect, not useEffect — this screen stays mounted while Edit
   // Profile is pushed on top, so a plain useEffect keyed on userId (which
@@ -29,15 +32,15 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
     useCallback(() => {
       listPrompts(userId).then(async (loaded) => {
         setPrompts(loaded);
-        const photoAttachmentIds = loaded
-          .flatMap((p) => p.attachments)
-          .filter((a) => a.attachmentType === 'photo')
-          .map((a) => a.id);
-        if (photoAttachmentIds.length > 0) {
-          setPhotoUrls(await getPromptPhotoUrls(photoAttachmentIds));
-        } else {
-          setPhotoUrls({});
-        }
+        const attachments = loaded.flatMap((p) => p.attachments);
+
+        const photoAttachmentIds = attachments.filter((a) => a.attachmentType === 'photo').map((a) => a.id);
+        setPhotoUrls(photoAttachmentIds.length > 0 ? await getPromptPhotoUrls(photoAttachmentIds) : {});
+
+        const visitPhotoIds = attachments
+          .filter((a) => a.attachmentType === 'review' && a.visitPhotoId)
+          .map((a) => a.visitPhotoId!);
+        setVisitPhotoUrls(visitPhotoIds.length > 0 ? await getPhotoViewUrls(visitPhotoIds) : {});
       });
     }, [userId])
   );
@@ -47,45 +50,57 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
   return (
     <View style={styles.list}>
       {prompts.map((prompt) => (
-        <ThemedView key={prompt.id} type="backgroundElement" style={styles.card}>
-          <ThemedText type="small" themeColor="textSecondary">
-            {promptLabel(prompt.promptSlug)}
-          </ThemedText>
+        <View key={prompt.id} style={styles.promptGroup}>
+          {prompt.attachments.map((attachment) => {
+            if (attachment.attachmentType === 'text' && attachment.textValue) {
+              return (
+                <View key={attachment.id} style={styles.borderedBox}>
+                  <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
+                  <StretchText type="headline">{attachment.textValue}</StretchText>
+                </View>
+              );
+            }
 
-          {prompt.attachments.map((attachment) => (
-            <View key={attachment.id}>
-              {attachment.attachmentType === 'text' && (
-                <ThemedText type="default">{attachment.textValue}</ThemedText>
-              )}
+            if (attachment.attachmentType === 'photo' && photoUrls[attachment.id]) {
+              return (
+                <View key={attachment.id} style={styles.borderedBox}>
+                  <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
+                  <Image source={{ uri: photoUrls[attachment.id] }} style={styles.photo} contentFit="contain" />
+                </View>
+              );
+            }
 
-              {attachment.attachmentType === 'photo' && photoUrls[attachment.id] && (
-                <Image source={{ uri: photoUrls[attachment.id] }} style={styles.photo} />
-              )}
+            if (attachment.attachmentType === 'review' && attachment.visitId) {
+              return (
+                <ReviewPromptCard
+                  key={attachment.id}
+                  label={promptLabel(prompt.promptSlug)}
+                  visitId={attachment.visitId}
+                  placeName={attachment.visitPlaceName ?? 'Unknown place'}
+                  rating={attachment.visitRating ?? 0}
+                  note={attachment.visitNote}
+                  photoUrl={attachment.visitPhotoId ? visitPhotoUrls[attachment.visitPhotoId] : undefined}
+                  photoWidth={attachment.visitPhotoWidth}
+                  photoHeight={attachment.visitPhotoHeight}
+                />
+              );
+            }
 
-              {attachment.attachmentType === 'review' && (
+            if (attachment.attachmentType === 'board' && attachment.boardId) {
+              return (
                 <Pressable
-                  onPress={() =>
-                    attachment.visitId &&
-                    router.push({ pathname: '/visit/[id]', params: { id: attachment.visitId } })
-                  }>
-                  <ThemedText type="default">
-                    {attachment.visitPlaceName ?? 'Unknown place'}
-                    {attachment.visitRating != null ? ` · ${attachment.visitRating.toFixed(1)} ★` : ''}
-                  </ThemedText>
+                  key={attachment.id}
+                  onPress={() => router.push({ pathname: '/board/[id]', params: { id: attachment.boardId! } })}
+                  style={styles.borderedBox}>
+                  <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
+                  <StretchText type="headline">{attachment.boardName ?? 'Board'}</StretchText>
                 </Pressable>
-              )}
+              );
+            }
 
-              {attachment.attachmentType === 'board' && attachment.boardId && (
-                <Pressable
-                  onPress={() =>
-                    router.push({ pathname: '/board/[id]', params: { id: attachment.boardId! } })
-                  }>
-                  <ThemedText type="link">{attachment.boardName ?? 'Board'}</ThemedText>
-                </Pressable>
-              )}
-            </View>
-          ))}
-        </ThemedView>
+            return null;
+          })}
+        </View>
       ))}
     </View>
   );
@@ -93,13 +108,17 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
 
 const styles = StyleSheet.create({
   list: {
+    gap: Spacing.three,
+  },
+  promptGroup: {
     gap: Spacing.two,
   },
-  card: {
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
-    gap: Spacing.two,
+  borderedBox: {
+    borderWidth: 1,
+    borderColor: 'rgba(234,231,207,0.35)',
+    borderRadius: Spacing.two,
+    padding: Spacing.three,
+    gap: Spacing.one,
   },
   photo: {
     width: '100%',

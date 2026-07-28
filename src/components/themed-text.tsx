@@ -1,10 +1,23 @@
 import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
 
-import { Fonts, ThemeColor } from '@/constants/theme';
+import { BrandFonts, Fonts, ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ThemedTextProps = TextProps & {
-  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
+  type?:
+    | 'default'
+    | 'title'
+    | 'small'
+    | 'smallBold'
+    | 'subtitle'
+    | 'link'
+    | 'linkPrimary'
+    | 'code'
+    | 'displaySerif'
+    | 'headline'
+    | 'statLine'
+    | 'roundedStat'
+    | 'sectionLabel';
   themeColor?: ThemeColor;
 };
 
@@ -23,6 +36,11 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'link' && styles.link,
         type === 'linkPrimary' && styles.linkPrimary,
         type === 'code' && styles.code,
+        type === 'displaySerif' && styles.displaySerif,
+        type === 'headline' && styles.headline,
+        type === 'statLine' && styles.statLine,
+        type === 'roundedStat' && styles.roundedStat,
+        type === 'sectionLabel' && styles.sectionLabel,
         style,
       ]}
       {...rest}
@@ -69,5 +87,31 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
     fontWeight: Platform.select({ android: 700 }) ?? 500,
     fontSize: 12,
+  },
+  displaySerif: {
+    fontFamily: BrandFonts.serifDisplay,
+    fontSize: 32,
+    lineHeight: 36,
+  },
+  headline: {
+    fontFamily: BrandFonts.condensedHeavy,
+    fontSize: 26,
+    lineHeight: 30,
+    textTransform: 'uppercase',
+  },
+  statLine: {
+    fontFamily: BrandFonts.condensedHeavy,
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  roundedStat: {
+    fontFamily: BrandFonts.roundedStat,
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  sectionLabel: {
+    fontFamily: BrandFonts.wideMedium,
+    fontSize: 12,
+    lineHeight: 16,
   },
 });

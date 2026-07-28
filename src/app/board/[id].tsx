@@ -83,7 +83,7 @@ export default function BoardDetailScreen() {
           <ThemedText type="link">← Back</ThemedText>
         </Pressable>
 
-        <ThemedText type="subtitle">{board?.name ?? 'Board'}</ThemedText>
+        <ThemedText type="headline">{board?.name ?? 'Board'}</ThemedText>
         {board?.description && (
           <ThemedText type="small" themeColor="textSecondary">
             {board.description}
@@ -108,7 +108,7 @@ export default function BoardDetailScreen() {
                 {photoUrl && <Image source={{ uri: photoUrl }} style={styles.photo} />}
                 <View style={styles.itemRow}>
                   <View style={styles.itemInfo}>
-                    <ThemedText type="default">{item.visits?.places?.name ?? 'Unknown place'}</ThemedText>
+                    <ThemedText type="headline">{item.visits?.places?.name ?? 'Unknown place'}</ThemedText>
                     <ThemedText type="small" themeColor="textSecondary">
                       {item.visits ? `${item.visits.rating.toFixed(1)} ★` : ''}
                       {item.visits?.note ? ` · ${item.visits.note}` : ''}

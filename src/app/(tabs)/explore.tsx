@@ -89,7 +89,7 @@ export default function SearchScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="subtitle">Search</ThemedText>
+        <ThemedText type="displaySerif">Search</ThemedText>
 
         <TextField placeholder="Search locations or people" value={query} onChangeText={setQuery} />
 
@@ -126,8 +126,8 @@ export default function SearchScreen() {
                 key={place.id}
                 onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}>
                 <ThemedView type="backgroundElement" style={styles.resultRow}>
-                  <ThemedText type="default">{place.name}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="headline">{place.name}</ThemedText>
+                  <ThemedText type="sectionLabel" themeColor="textSecondary">
                     {place.level}
                   </ThemedText>
                 </ThemedView>
@@ -137,7 +137,7 @@ export default function SearchScreen() {
           {showUsers &&
             users.map((user) => (
               <ThemedView key={user.id} type="backgroundElement" style={styles.resultRow}>
-                <ThemedText type="default">{user.name ?? user.handle ?? 'Unnamed'}</ThemedText>
+                <ThemedText type="headline">{user.name ?? user.handle ?? 'Unnamed'}</ThemedText>
                 <Pressable onPress={() => handleFollowToggle(user)}>
                   <ThemedText type="smallBold">{followLabel(user.followStatus)}</ThemedText>
                 </Pressable>

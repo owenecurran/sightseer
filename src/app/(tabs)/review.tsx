@@ -346,7 +346,7 @@ export default function SearchScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="subtitle">Search places</ThemedText>
+        <ThemedText type="sectionLabel">Search places</ThemedText>
 
         <TextField
           placeholder="Search a country, town, or place"

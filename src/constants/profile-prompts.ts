@@ -12,6 +12,8 @@ export type ProfilePromptOption = {
 // category is a later addition) but is added now while the list is small,
 // rather than needing a data migration once real prompts exist.
 export const PROFILE_PROMPTS: ProfilePromptOption[] = [
+  { slug: 'next-trip-destination', label: 'Next trip destination', category: 'planning' },
+  { slug: 'favorite-trip-review', label: 'Favorite trip review', category: 'reflection' },
   { slug: 'hidden-gem', label: 'Best hidden gem I’ve found', category: 'discovery' },
   { slug: 'redo-trip', label: 'A trip I’d redo in a heartbeat', category: 'reflection' },
   { slug: 'comfort-food', label: 'My go-to comfort food spot', category: 'food' },

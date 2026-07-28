@@ -1,14 +1,8 @@
-/**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
- */
-
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 
+// The app uses one fixed brand theme, not a system-adaptive light/dark
+// pair — this hook still exists so every screen keeps going through one
+// indirection point rather than importing Colors directly everywhere.
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
-
-  return Colors[theme];
+  return Colors;
 }

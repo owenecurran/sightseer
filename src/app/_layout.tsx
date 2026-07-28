@@ -1,6 +1,6 @@
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { useFonts } from 'expo-font';
+import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -41,10 +41,23 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const [fontsLoaded] = useFonts({
+    BethanyElingston: require('@/assets/fonts/BethanyElingston.otf'),
+    MoonGetHeavy: require('@/assets/fonts/MOON_GET-HEAVY.otf'),
+    HelveticaRoundedBold: require('@/assets/fonts/HELVETICA-ROUNDED-BOLD-5871D05EAD8DE.otf'),
+    ObviouslyWideMedium: require('@/assets/fonts/ObviouslyWideMedium.otf'),
+  });
+
+  // Native splash stays up (SplashScreen.preventAutoHideAsync() above) until
+  // this returns real content — AnimatedSplashOverlay's own onLayout is what
+  // actually calls hideAsync(), so gating the whole tree on fontsLoaded means
+  // it never mounts, and the splash never hides, until the brand fonts are
+  // ready — avoiding a flash of fallback-font text underneath it.
+  if (!fontsLoaded) return null;
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={DarkTheme}>
         <AuthProvider>
           <AnimatedSplashOverlay />
           <RootNavigator />

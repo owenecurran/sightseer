@@ -75,7 +75,7 @@ export default function PlaceDetailScreen() {
           <ThemedText type="link">← Back</ThemedText>
         </Pressable>
 
-        <ThemedText type="subtitle">{place?.name ?? 'Place'}</ThemedText>
+        <ThemedText type="headline">{place?.name ?? 'Place'}</ThemedText>
         {breadcrumb.length > 0 && (
           <ThemedText type="small" themeColor="textSecondary">
             {breadcrumb}

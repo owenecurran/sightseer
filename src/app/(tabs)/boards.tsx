@@ -52,7 +52,7 @@ export default function BoardsScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="subtitle">Your boards</ThemedText>
+        <ThemedText type="displaySerif">Your boards</ThemedText>
 
         <ThemedView style={styles.newBoardRow}>
           <TextField
@@ -90,9 +90,9 @@ export default function BoardsScreen() {
               onPress={() => router.push({ pathname: '/board/[id]', params: { id: item.id } })}
               style={({ pressed }) => pressed && styles.pressed}>
               <ThemedView type="backgroundElement" style={styles.boardRow}>
-                <ThemedText type="default">{item.name}</ThemedText>
+                <ThemedText type="headline">{item.name}</ThemedText>
                 {item.is_private && (
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="sectionLabel" themeColor="textSecondary">
                     Private
                   </ThemedText>
                 )}

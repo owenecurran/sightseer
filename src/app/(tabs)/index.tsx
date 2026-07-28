@@ -132,7 +132,7 @@ export default function HomeScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="subtitle">Feed</ThemedText>
+        <ThemedText type="displaySerif">Feed</ThemedText>
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
@@ -165,7 +165,7 @@ export default function HomeScreen() {
                 />
               </View>
               <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}>
-                <ThemedText type="default">{item.placeName}</ThemedText>
+                <ThemedText type="headline">{item.placeName}</ThemedText>
                 {item.taggedPlaces.length > 0 && (
                   <ThemedText type="small">
                     {item.taggedPlaces.map((place, index) => (

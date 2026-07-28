@@ -64,7 +64,7 @@ export default function ModerationScreen() {
           <ThemedText type="link">← Back</ThemedText>
         </Pressable>
 
-        <ThemedText type="subtitle">Reports</ThemedText>
+        <ThemedText type="displaySerif">Reports</ThemedText>
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary">

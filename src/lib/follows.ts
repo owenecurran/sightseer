@@ -75,3 +75,56 @@ export async function rejectFollowRequest(followerId: string, followeeId: string
     .eq('followee_id', followeeId);
   if (error) throw error;
 }
+
+export type FollowListEntry = { id: string; handle: string | null; name: string | null };
+
+type FollowerEmbedRow = { users: FollowListEntry | null };
+
+export async function listFollowers(userId: string): Promise<FollowListEntry[]> {
+  const { data, error } = await supabase
+    .from('follows')
+    .select('users!follower_id(id, handle, name)')
+    .eq('followee_id', userId)
+    .eq('status', 'accepted');
+  if (error) throw error;
+  return (data as unknown as FollowerEmbedRow[]).map((r) => r.users).filter((u): u is FollowListEntry => u != null);
+}
+
+export async function listFollowing(userId: string): Promise<FollowListEntry[]> {
+  const { data, error } = await supabase
+    .from('follows')
+    .select('users!followee_id(id, handle, name)')
+    .eq('follower_id', userId)
+    .eq('status', 'accepted');
+  if (error) throw error;
+  return (data as unknown as FollowerEmbedRow[]).map((r) => r.users).filter((u): u is FollowListEntry => u != null);
+}
+
+export async function getFollowStatus(followerId: string, followeeId: string): Promise<FollowStatus | null> {
+  const { data, error } = await supabase
+    .from('follows')
+    .select('status')
+    .eq('follower_id', followerId)
+    .eq('followee_id', followeeId)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.status ?? null;
+}
+
+export async function getFollowCounts(userId: string): Promise<{ following: number; followers: number }> {
+  const [followingResult, followersResult] = await Promise.all([
+    supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('follower_id', userId)
+      .eq('status', 'accepted'),
+    supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('followee_id', userId)
+      .eq('status', 'accepted'),
+  ]);
+  if (followingResult.error) throw followingResult.error;
+  if (followersResult.error) throw followersResult.error;
+  return { following: followingResult.count ?? 0, followers: followersResult.count ?? 0 };
+}
