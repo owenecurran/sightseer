@@ -10,7 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Spacing } from '@/constants/theme';
 
 const FRAME_SIZE = 320;
-const MAX_ZOOM = 3;
+// Capped lower than before (was 3) — zooming all the way in produced
+// visibly soft/blurry crops from typical phone-camera source resolutions.
+// Shared by both review-photo and profile-prompt-photo uploads, so this
+// limit applies uniformly to both.
+const MAX_ZOOM = 2;
 
 function clamp(n: number, min: number, max: number) {
   'worklet';

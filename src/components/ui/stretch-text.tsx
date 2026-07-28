@@ -20,12 +20,24 @@ type StretchTextProps = ThemedTextProps & {
 // ancestor contexts (a flex:1 row cell, a plain padded box) but not others
 // (nested inside a percentage-width column with justifyContent set) —
 // worth remembering if this component is ever generalized past text.
-// One known-unresolved case: inside that same narrow, percentage-width
-// nested context, the visible copy can still fall back to `numberOfLines`
-// ellipsis-truncation instead of the intended compress-to-fit when content
-// is much wider than its container (e.g. a long place name over a narrow
-// photo column) — a reasonable, non-broken-looking fallback, just not the
-// ideal stretched/compressed treatment achieved everywhere else.
+// One known-unresolved case, not fully root-caused despite real effort:
+// occasionally — the narrow percentage-width photo overlay is the
+// confirmed repro, and content rendered inside an async-loaded child
+// component (e.g. a prompt slug resolved after its own data fetch) has
+// also been observed to trigger it — the visible copy's pre-transform box
+// ends up sized to its *container's* width instead of its own content,
+// even with numberOfLines={1} + flexShrink:0 in place. The practical
+// result is `numberOfLines` ellipsis-truncation instead of the intended
+// compress-to-fit. Tried and explicitly reverted: forcing an explicit
+// `width` from the measured contentWidth — it fixes the case it's aimed at
+// but reliably broke a *different*, previously-working context each time,
+// suggesting the underlying box-sizing behavior is genuinely inconsistent
+// across ancestor configurations in this RNW version, not something a
+// single universal style override resolves. Given the cosmetic (not
+// functional) nature of this effect, further chasing was deliberately
+// stopped here — ellipsis-truncation is a reasonable, legible,
+// non-broken-looking fallback, just not the ideal stretched treatment seen
+// in the common case.
 //
 // The measuring copy needs `position: fixed` on web, not merely
 // `absolute` — per CSS's shrink-to-fit sizing rule, an absolutely
@@ -56,22 +68,26 @@ export function StretchText({ children, outline, style, ...rest }: StretchTextPr
 
   return (
     <View onLayout={(e: LayoutChangeEvent) => setContainerWidth(e.nativeEvent.layout.width)} style={styles.container}>
+      {/* The measuring copy must share every font-affecting style (size,
+          weight, etc.) with the visible copy — otherwise its measured width
+          corresponds to a different font size than what's actually
+          rendered, and the computed scaleX is wrong for the real text. */}
       <View style={styles.measure} pointerEvents="none">
         <Text
           {...rest}
           numberOfLines={1}
           onLayout={(e: LayoutChangeEvent) => setContentWidth(e.nativeEvent.layout.width)}
-          style={styles.nowrap}>
+          style={[styles.nowrap, style]}>
           {children}
         </Text>
       </View>
       <Text
         {...rest}
-        numberOfLines={withinRange ? 1 : undefined}
+        numberOfLines={withinRange ? 1 : 2}
         style={[
           withinRange ? styles.nowrap : styles.wrap,
-          { transform: [{ scaleX }], transformOrigin: 'left' },
           style,
+          { transform: [{ scaleX }], transformOrigin: 'left' },
         ]}>
         {children}
       </Text>

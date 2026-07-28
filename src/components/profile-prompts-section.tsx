@@ -1,10 +1,10 @@
-import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ReviewPromptCard } from '@/components/review-prompt-card';
 import { ThemedText } from '@/components/themed-text';
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { StretchText } from '@/components/ui/stretch-text';
 import { Spacing } from '@/constants/theme';
 import { PROFILE_PROMPTS } from '@/constants/profile-prompts';
@@ -61,11 +61,15 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
               );
             }
 
-            if (attachment.attachmentType === 'photo' && photoUrls[attachment.id]) {
+            if (attachment.attachmentType === 'photo') {
               return (
                 <View key={attachment.id} style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <Image source={{ uri: photoUrls[attachment.id] }} style={styles.photo} contentFit="contain" />
+                  <LoadableImage
+                    source={photoUrls[attachment.id] ? { uri: photoUrls[attachment.id] } : undefined}
+                    style={styles.photo}
+                    contentFit="contain"
+                  />
                 </View>
               );
             }
@@ -94,6 +98,18 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
                   <StretchText type="headline">{attachment.boardName ?? 'Board'}</StretchText>
+                </Pressable>
+              );
+            }
+
+            if (attachment.attachmentType === 'place' && attachment.placeId) {
+              return (
+                <Pressable
+                  key={attachment.id}
+                  onPress={() => router.push({ pathname: '/place/[id]', params: { id: attachment.placeId! } })}
+                  style={styles.borderedBox}>
+                  <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
+                  <StretchText type="headline">{attachment.placeName ?? 'Unknown place'}</StretchText>
                 </Pressable>
               );
             }

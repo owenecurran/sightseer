@@ -1,6 +1,6 @@
-import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { Spacing } from '@/constants/theme';
 
 export const MAX_VISIT_PHOTOS = 4;
@@ -15,14 +15,14 @@ export function PhotoGrid({ urls }: PhotoGridProps) {
   if (urls.length === 0) return null;
 
   if (urls.length === 1) {
-    return <Image source={{ uri: urls[0] }} style={styles.single} />;
+    return <LoadableImage source={{ uri: urls[0] }} style={styles.single} />;
   }
 
   if (urls.length === 2) {
     return (
       <View style={styles.row}>
-        <Image source={{ uri: urls[0] }} style={styles.square} />
-        <Image source={{ uri: urls[1] }} style={styles.square} />
+        <LoadableImage source={{ uri: urls[0] }} style={styles.square} />
+        <LoadableImage source={{ uri: urls[1] }} style={styles.square} />
       </View>
     );
   }
@@ -30,10 +30,10 @@ export function PhotoGrid({ urls }: PhotoGridProps) {
   if (urls.length === 3) {
     return (
       <View style={styles.row}>
-        <Image source={{ uri: urls[0] }} style={styles.tall} />
+        <LoadableImage source={{ uri: urls[0] }} style={styles.tall} />
         <View style={styles.column}>
-          <Image source={{ uri: urls[1] }} style={styles.square} />
-          <Image source={{ uri: urls[2] }} style={styles.square} />
+          <LoadableImage source={{ uri: urls[1] }} style={styles.square} />
+          <LoadableImage source={{ uri: urls[2] }} style={styles.square} />
         </View>
       </View>
     );
@@ -42,12 +42,12 @@ export function PhotoGrid({ urls }: PhotoGridProps) {
   return (
     <View style={styles.column}>
       <View style={styles.row}>
-        <Image source={{ uri: urls[0] }} style={styles.square} />
-        <Image source={{ uri: urls[1] }} style={styles.square} />
+        <LoadableImage source={{ uri: urls[0] }} style={styles.square} />
+        <LoadableImage source={{ uri: urls[1] }} style={styles.square} />
       </View>
       <View style={styles.row}>
-        <Image source={{ uri: urls[2] }} style={styles.square} />
-        {urls[3] && <Image source={{ uri: urls[3] }} style={styles.square} />}
+        <LoadableImage source={{ uri: urls[2] }} style={styles.square} />
+        {urls[3] && <LoadableImage source={{ uri: urls[3] }} style={styles.square} />}
       </View>
     </View>
   );

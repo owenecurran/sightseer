@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
+import { PlaceSearchInput } from '@/components/place-search-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
 import { PROFILE_PROMPTS } from '@/constants/profile-prompts';
+import type { Database } from '@/lib/database.types';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import {
   deletePrompt,
@@ -18,11 +20,14 @@ import {
   type ProfilePrompt,
 } from '@/lib/profile-prompts';
 
+type PlaceRow = Database['public']['Tables']['places']['Row'];
+
 const ANSWER_TYPES: { value: AttachmentType; label: string }[] = [
   { value: 'text', label: 'Text' },
   { value: 'photo', label: 'Photo' },
   { value: 'review', label: 'Review' },
   { value: 'board', label: 'Board' },
+  { value: 'place', label: 'Place' },
 ];
 
 const TEXT_ANSWER_MAX_LENGTH = 200;
@@ -33,6 +38,8 @@ type LocalAttachment = {
   textValue: string;
   visitId: string | null;
   boardId: string | null;
+  placeId: string | null;
+  placeName: string | null;
   existingPhotoR2Key: string | null;
   pendingPhotoUri: string | null;
   pendingPhotoMimeType?: string;
@@ -44,6 +51,8 @@ function emptyAttachment(): LocalAttachment {
     textValue: '',
     visitId: null,
     boardId: null,
+    placeId: null,
+    placeName: null,
     existingPhotoR2Key: null,
     pendingPhotoUri: null,
   };
@@ -84,6 +93,8 @@ export function PromptEditor({
           textValue: a.textValue ?? '',
           visitId: a.visitId,
           boardId: a.boardId,
+          placeId: a.placeId,
+          placeName: a.placeName,
           existingPhotoR2Key: a.photoR2Key,
           pendingPhotoUri: null,
         }))
@@ -157,6 +168,10 @@ export function PromptEditor({
         setError('Pick a board for every attachment, or remove the empty one.');
         return;
       }
+      if (a.attachmentType === 'place' && !a.placeId) {
+        setError('Pick a place for every attachment, or remove the empty one.');
+        return;
+      }
     }
 
     setError(null);
@@ -174,6 +189,7 @@ export function PromptEditor({
           photoR2Key: a.attachmentType === 'photo' ? photoR2Key : null,
           visitId: a.attachmentType === 'review' ? a.visitId : null,
           boardId: a.attachmentType === 'board' ? a.boardId : null,
+          placeId: a.attachmentType === 'place' ? a.placeId : null,
         });
       }
 
@@ -368,6 +384,20 @@ export function PromptEditor({
               ))}
             </View>
           )}
+
+          {attachment.attachmentType === 'place' && (
+            <View style={styles.placePicker}>
+              {attachment.placeId && attachment.placeName && (
+                <ThemedView type="backgroundSelected" style={styles.chip}>
+                  <ThemedText type="small">{attachment.placeName}</ThemedText>
+                </ThemedView>
+              )}
+              <PlaceSearchInput
+                placeholder="Search for a place"
+                onSelect={(place: PlaceRow) => updateAttachment(index, { placeId: place.id, placeName: place.name })}
+              />
+            </View>
+          )}
         </View>
       ))}
 
@@ -428,5 +458,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.five,
+  },
+  placePicker: {
+    gap: Spacing.two,
+    alignItems: 'flex-start',
   },
 });

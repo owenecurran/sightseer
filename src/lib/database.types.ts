@@ -351,6 +351,7 @@ export type Database = {
           created_at: string
           id: string
           photo_r2_key: string | null
+          place_id: string | null
           position: number
           prompt_id: string
           text_value: string | null
@@ -362,6 +363,7 @@ export type Database = {
           created_at?: string
           id?: string
           photo_r2_key?: string | null
+          place_id?: string | null
           position?: number
           prompt_id: string
           text_value?: string | null
@@ -373,6 +375,7 @@ export type Database = {
           created_at?: string
           id?: string
           photo_r2_key?: string | null
+          place_id?: string | null
           position?: number
           prompt_id?: string
           text_value?: string | null
@@ -384,6 +387,13 @@ export type Database = {
             columns: ["board_id"]
             isOneToOne: false
             referencedRelation: "boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_prompt_attachments_place_id_fkey"
+            columns: ["place_id"]
+            isOneToOne: false
+            referencedRelation: "places"
             referencedColumns: ["id"]
           },
           {

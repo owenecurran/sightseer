@@ -12,19 +12,26 @@ import { getAvatarViewUrls } from '@/lib/avatar';
 import { listFollowers, listFollowing, type FollowListEntry } from '@/lib/follows';
 
 export default function FollowListScreen() {
-  const { type } = useLocalSearchParams<{ type: 'followers' | 'following' }>();
+  const { type, userId, name } = useLocalSearchParams<{
+    type: 'followers' | 'following';
+    userId?: string;
+    name?: string;
+  }>();
   const { session } = useAuth();
   const [entries, setEntries] = useState<FollowListEntry[]>([]);
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
+  const targetUserId = userId || session?.user.id;
+
   useFocusEffect(
     useCallback(() => {
-      if (!session) return;
+      if (!targetUserId) return;
       setError(null);
       (async () => {
         try {
-          const list = type === 'followers' ? await listFollowers(session.user.id) : await listFollowing(session.user.id);
+          const list =
+            type === 'followers' ? await listFollowers(targetUserId) : await listFollowing(targetUserId);
           setEntries(list);
           const ids = list.map((u) => u.id);
           if (ids.length > 0) {
@@ -34,8 +41,14 @@ export default function FollowListScreen() {
           setError(err instanceof Error ? err.message : 'Could not load this list.');
         }
       })();
-    }, [session, type])
+    }, [targetUserId, type])
   );
+
+  const title = name
+    ? `${name}'s ${type === 'followers' ? 'followers' : 'following'}`
+    : type === 'followers'
+      ? 'Followers'
+      : 'Following';
 
   return (
     <ThemedView style={styles.container}>
@@ -49,7 +62,7 @@ export default function FollowListScreen() {
               <Pressable onPress={() => router.back()}>
                 <ThemedText type="link">← Back</ThemedText>
               </Pressable>
-              <ThemedText type="displaySerif">{type === 'followers' ? 'Followers' : 'Following'}</ThemedText>
+              <ThemedText type="displaySerif">{title}</ThemedText>
               {error && (
                 <ThemedText type="small" themeColor="textSecondary">
                   {error}

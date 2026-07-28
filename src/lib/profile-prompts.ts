@@ -11,6 +11,7 @@ export type PromptAttachment = {
   photoR2Key: string | null;
   visitId: string | null;
   boardId: string | null;
+  placeId: string | null;
   visitPlaceName: string | null;
   visitRating: number | null;
   visitNote: string | null;
@@ -18,6 +19,7 @@ export type PromptAttachment = {
   visitPhotoWidth: number | null;
   visitPhotoHeight: number | null;
   boardName: string | null;
+  placeName: string | null;
 };
 
 export type ProfilePrompt = {
@@ -35,6 +37,7 @@ type RawAttachment = {
   photo_r2_key: string | null;
   visit_id: string | null;
   board_id: string | null;
+  place_id: string | null;
   visits: {
     rating: number;
     note: string | null;
@@ -42,6 +45,7 @@ type RawAttachment = {
     photos: { id: string; position: number; width: number; height: number }[];
   } | null;
   boards: { name: string } | null;
+  places: { name: string } | null;
 };
 
 type RawPrompt = {
@@ -52,7 +56,7 @@ type RawPrompt = {
 };
 
 const PROMPT_SELECT =
-  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, visits(rating, note, places!place_id(name), photos(id, position, width, height)), boards(name))';
+  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, visits(rating, note, places!place_id(name), photos(id, position, width, height)), boards(name), places!place_id(name))';
 
 function mapAttachment(r: RawAttachment): PromptAttachment {
   const firstPhoto = [...(r.visits?.photos ?? [])].sort((a, b) => a.position - b.position)[0];
@@ -63,6 +67,7 @@ function mapAttachment(r: RawAttachment): PromptAttachment {
     photoR2Key: r.photo_r2_key,
     visitId: r.visit_id,
     boardId: r.board_id,
+    placeId: r.place_id,
     visitPlaceName: r.visits?.places?.name ?? null,
     visitRating: r.visits?.rating ?? null,
     visitNote: r.visits?.note ?? null,
@@ -70,6 +75,7 @@ function mapAttachment(r: RawAttachment): PromptAttachment {
     visitPhotoWidth: firstPhoto?.width ?? null,
     visitPhotoHeight: firstPhoto?.height ?? null,
     boardName: r.boards?.name ?? null,
+    placeName: r.places?.name ?? null,
   };
 }
 
@@ -95,6 +101,7 @@ export type AttachmentInput = {
   photoR2Key?: string | null;
   visitId?: string | null;
   boardId?: string | null;
+  placeId?: string | null;
 };
 
 type SavePromptParams = {
@@ -143,6 +150,7 @@ export async function savePrompt(params: SavePromptParams): Promise<void> {
         photo_r2_key: a.photoR2Key ?? null,
         visit_id: a.visitId ?? null,
         board_id: a.boardId ?? null,
+        place_id: a.placeId ?? null,
       }))
     );
     if (insertError) throw insertError;

@@ -135,8 +135,24 @@ export default function UserProfileScreen() {
             )}
 
             <View style={styles.statsRow}>
-              <ThemedText type="statLine">{followCounts.following} following</ThemedText>
-              <ThemedText type="statLine">{followCounts.followers} followers</ThemedText>
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: '/follow-list',
+                    params: { type: 'following', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
+                  })
+                }>
+                <ThemedText type="statLine">{followCounts.following} following</ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: '/follow-list',
+                    params: { type: 'followers', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
+                  })
+                }>
+                <ThemedText type="statLine">{followCounts.followers} followers</ThemedText>
+              </Pressable>
             </View>
 
             {error && <ThemedText type="small">{error}</ThemedText>}

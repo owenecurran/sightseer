@@ -95,8 +95,8 @@ const styles = StyleSheet.create({
   },
   headline: {
     fontFamily: BrandFonts.condensedHeavy,
-    fontSize: 26,
-    lineHeight: 30,
+    fontSize: 34,
+    lineHeight: 38,
     textTransform: 'uppercase',
   },
   statLine: {
