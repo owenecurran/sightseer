@@ -12,9 +12,20 @@ import { Platform } from 'react-native';
 // system light/dark mode), used explicitly rather than folded into `Colors`
 // below.
 export const BrandColors = {
-  background: '#03100a',
+  background: '#031009',
   sage: '#a0bd91',
   cream: '#eae7cf',
+} as const;
+
+// The screen-level background is a diagonal gradient (bottom-left, lighter,
+// to top-right, the flat brand background color) rather than a flat fill —
+// used only by ThemedView's `type="screen"` for each screen's outermost
+// wrapper, not by nested cards/boxes (those stay flat `BrandColors.background`
+// via the regular `background` theme color, so content boxes don't each
+// render their own mini gradient).
+export const GradientColors = {
+  screenStart: '#07120a',
+  screenEnd: '#031009',
 } as const;
 
 export const Colors = {
@@ -73,10 +84,14 @@ export const Spacing = {
   six: 64,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-// The web tab bar (app-tabs.web.tsx) floats via position:'absolute' over
-// content rather than reserving its own layout space, so every screen's
-// top padding needs this extra clearance on web specifically (0 elsewhere —
-// NativeTabs reserves real space for its own bottom bar already).
-export const TopTabInset = Platform.select({ web: 48 }) ?? 0;
+// FloatingNavBar (src/components/floating-nav-bar.tsx) is a single custom
+// component floating over every screen on every platform now (not native
+// per-platform tab chrome) — so every screen needs the same bottom
+// clearance, cross-platform, to keep content from sitting underneath it.
+export const BottomTabInset = 96;
+// No longer needed now that the nav bar is bottom-anchored everywhere (it
+// used to offset web screens for a top-floating web-only tab pill) — kept
+// as a zero-value export rather than touched at every one of its many call
+// sites, since `Spacing.x + TopTabInset` is a harmless no-op at 0.
+export const TopTabInset = 0;
 export const MaxContentWidth = 800;

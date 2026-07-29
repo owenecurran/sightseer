@@ -72,7 +72,7 @@ export default function ResetPasswordScreen() {
 
   if (done) {
     return (
-      <ThemedView style={styles.container}>
+      <ThemedView type="screen" style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
           <ThemedText type="title" style={styles.title}>
             Password updated
@@ -86,7 +86,7 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="title" style={styles.title}>
           Set a new password

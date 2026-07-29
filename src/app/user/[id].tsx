@@ -1,6 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileMap } from '@/components/profile-map';
@@ -9,8 +10,10 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import type { Database } from '@/lib/database.types';
@@ -38,6 +41,8 @@ export default function UserProfileScreen() {
   const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const scrollHandler = useHideOnScrollHandler();
 
   useFocusEffect(
     useCallback(() => {
@@ -68,6 +73,8 @@ export default function UserProfileScreen() {
           setLatestVisit(showcase.latestVisit);
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load this profile.');
+        } finally {
+          setHasLoadedOnce(true);
         }
       })();
     }, [id, session])
@@ -99,10 +106,15 @@ export default function UserProfileScreen() {
   const isSelf = session?.user.id === id;
   const canSeeContent = !user?.is_private || followStatus === 'accepted' || isSelf;
 
+  if (!hasLoadedOnce) return <PageLoader />;
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}>
           <View style={styles.contentWrap}>
             <Pressable onPress={() => router.back()}>
               <ThemedText type="link">← Back</ThemedText>
@@ -185,7 +197,7 @@ export default function UserProfileScreen() {
               </ThemedView>
             )}
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -202,7 +214,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: Spacing.four,
+    paddingBottom: BottomTabInset,
   },
   contentWrap: {
     width: '100%',

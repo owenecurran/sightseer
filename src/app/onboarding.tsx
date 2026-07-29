@@ -52,7 +52,7 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="title" style={styles.title}>
           Set up your profile

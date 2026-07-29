@@ -1,12 +1,15 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { PageLoader } from '@/components/ui/page-loader';
 import { UserRow } from '@/components/user-row';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { listFollowers, listFollowing, type FollowListEntry } from '@/lib/follows';
@@ -21,6 +24,8 @@ export default function FollowListScreen() {
   const [entries, setEntries] = useState<FollowListEntry[]>([]);
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const scrollHandler = useHideOnScrollHandler();
 
   const targetUserId = userId || session?.user.id;
 
@@ -39,6 +44,8 @@ export default function FollowListScreen() {
           }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load this list.');
+        } finally {
+          setHasLoadedOnce(true);
         }
       })();
     }, [targetUserId, type])
@@ -50,13 +57,17 @@ export default function FollowListScreen() {
       ? 'Followers'
       : 'Following';
 
+  if (!hasLoadedOnce) return <PageLoader />;
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <FlatList
+        <Animated.FlatList
           data={entries}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: FollowListEntry) => item.id}
           contentContainerStyle={styles.list}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
           ListHeaderComponent={
             <>
               <Pressable onPress={() => router.back()}>
@@ -100,6 +111,7 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
   list: {

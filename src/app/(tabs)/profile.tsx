@@ -1,6 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileMap } from '@/components/profile-map';
@@ -9,8 +10,10 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
 import {
@@ -34,6 +37,8 @@ export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const scrollHandler = useHideOnScrollHandler();
 
   useFocusEffect(
     useCallback(() => {
@@ -59,6 +64,8 @@ export default function ProfileScreen() {
           }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load your profile.');
+        } finally {
+          setHasLoadedOnce(true);
         }
       })();
     }, [session, profile?.avatar_r2_key])
@@ -113,10 +120,15 @@ export default function ProfileScreen() {
     }
   }
 
+  if (!hasLoadedOnce) return <PageLoader />;
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}>
           <View style={styles.contentWrap}>
             <View style={styles.headerRow}>
               <Pressable onPress={handlePickAvatar} disabled={isUploadingAvatar}>
@@ -199,7 +211,7 @@ export default function ProfileScreen() {
               <Button label="Sign out" variant="secondary" onPress={handleSignOut} loading={isSigningOut} />
             </View>
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>
   );

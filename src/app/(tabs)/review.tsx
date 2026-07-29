@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
@@ -14,6 +15,7 @@ import { DateCarousel } from '@/components/ui/date-carousel';
 import { RatingSlider } from '@/components/ui/rating-slider';
 import { TextField } from '@/components/ui/text-field';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
 import {
@@ -48,6 +50,7 @@ export default function SearchScreen() {
   const [suggestions, setSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const scrollHandler = useHideOnScrollHandler();
 
   const [selectedPlace, setSelectedPlace] = useState<PlaceRow | null>(null);
   const [breadcrumb, setBreadcrumb] = useState('');
@@ -344,8 +347,12 @@ export default function SearchScreen() {
   const totalPhotoCount = pendingPhotos.length + uploadedPhotoUris.length;
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}>
         <ThemedText type="sectionLabel">Search places</ThemedText>
 
         <TextField
@@ -496,12 +503,12 @@ export default function SearchScreen() {
           </ThemedView>
         )}
 
-        <FlatList
-          data={suggestions}
-          keyExtractor={(item) => item.placeId}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <Pressable onPress={() => handleSelect(item)} style={({ pressed }) => pressed && styles.pressed}>
+        <View style={styles.list}>
+          {suggestions.map((item) => (
+            <Pressable
+              key={item.placeId}
+              onPress={() => handleSelect(item)}
+              style={({ pressed }) => pressed && styles.pressed}>
               <ThemedView type="backgroundElement" style={styles.suggestionRow}>
                 <ThemedText type="default">{item.primaryText}</ThemedText>
                 {item.secondaryText && (
@@ -511,8 +518,9 @@ export default function SearchScreen() {
                 )}
               </ThemedView>
             </Pressable>
-          )}
-        />
+          ))}
+        </View>
+        </Animated.ScrollView>
 
         <PhotoCropModal
           visible={cropSource != null}
@@ -531,6 +539,9 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    width: '100%',
+  },
+  scrollContent: {
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,

@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PromptEditor } from '@/components/prompt-editor';
@@ -8,7 +9,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { listMyBoards } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
@@ -31,6 +33,7 @@ export default function EditProfileScreen() {
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
   const [ownVisits, setOwnVisits] = useState<OwnVisitOption[]>([]);
   const [ownBoards, setOwnBoards] = useState<BoardRow[]>([]);
+  const scrollHandler = useHideOnScrollHandler();
 
   const loadPrompts = useCallback(async () => {
     if (!session) return;
@@ -102,9 +105,12 @@ export default function EditProfileScreen() {
   const nextPosition = prompts.length > 0 ? Math.max(...prompts.map((p) => p.position)) + 1 : 0;
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}>
           <Pressable onPress={() => router.back()}>
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
@@ -170,7 +176,7 @@ export default function EditProfileScreen() {
               />
             )}
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -183,9 +189,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     width: '100%',
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: Spacing.four,
   },
   // The ScrollView itself stays full width (so its scrollbar sits at the
   // true browser edge on web) — centering happens on its content instead.
@@ -194,7 +197,9 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     gap: Spacing.three,
-    paddingBottom: Spacing.four,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four + TopTabInset,
+    paddingBottom: BottomTabInset,
   },
   mapToggleRow: {
     flexDirection: 'row',

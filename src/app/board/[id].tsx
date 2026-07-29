@@ -1,12 +1,15 @@
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { PageLoader } from '@/components/ui/page-loader';
+import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
 import { getPhotoViewUrls } from '@/lib/photo-view';
@@ -32,6 +35,8 @@ export default function BoardDetailScreen() {
   const [items, setItems] = useState<BoardItemWithVisit[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const scrollHandler = useHideOnScrollHandler();
 
   useEffect(() => {
     if (!id) return;
@@ -60,6 +65,8 @@ export default function BoardDetailScreen() {
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load this board.');
+      } finally {
+        setHasLoadedOnce(true);
       }
     })();
   }, [id]);
@@ -76,8 +83,10 @@ export default function BoardDetailScreen() {
 
   const isOwner = session && board && session.user.id === board.user_id;
 
+  if (!hasLoadedOnce) return <PageLoader />;
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Pressable onPress={() => router.back()}>
           <ThemedText type="link">← Back</ThemedText>
@@ -96,11 +105,13 @@ export default function BoardDetailScreen() {
           </ThemedText>
         )}
 
-        <FlatList
+        <Animated.FlatList
           data={items}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: BoardItemWithVisit) => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => {
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          renderItem={({ item }: { item: BoardItemWithVisit }) => {
             const photoId = item.visits?.photos[0]?.id;
             const photoUrl = photoId ? photoUrls[photoId] : undefined;
             return (
@@ -142,6 +153,7 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
   list: {

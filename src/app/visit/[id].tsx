@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CommentsSection } from '@/components/comments-section';
@@ -9,8 +10,10 @@ import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
+import { PageLoader } from '@/components/ui/page-loader';
 import { VisitMenu } from '@/components/visit-menu';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { likeVisit, unlikeVisit, type TaggedPlace } from '@/lib/feed';
@@ -42,6 +45,7 @@ export default function VisitDetailScreen() {
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const scrollHandler = useHideOnScrollHandler();
 
   useEffect(() => {
     if (!id || !session) return;
@@ -78,9 +82,15 @@ export default function VisitDetailScreen() {
     }
   }
 
+  if (visit === undefined) return <PageLoader />;
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}>
         <Pressable onPress={() => router.back()}>
           <ThemedText type="link">← Back</ThemedText>
         </Pressable>
@@ -142,6 +152,7 @@ export default function VisitDetailScreen() {
             <SaveToBoard visitId={visit.id} />
           </ThemedView>
         )}
+        </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -153,11 +164,15 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    width: '100%',
+  },
+  scrollContent: {
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
   card: {

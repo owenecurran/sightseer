@@ -1,6 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CommentsSection } from '@/components/comments-section';
@@ -9,8 +10,10 @@ import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
+import { PageLoader } from '@/components/ui/page-loader';
 import { VisitMenu } from '@/components/visit-menu';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getFeedVisits, likeVisit, unlikeVisit, type FeedVisit, type TaggedPlace } from '@/lib/feed';
@@ -53,7 +56,9 @@ export default function HomeScreen() {
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [copiedVisitId, setCopiedVisitId] = useState<string | null>(null);
+  const scrollHandler = useHideOnScrollHandler();
 
   // Refetch on every focus, not just on mount — tab navigators keep sibling
   // screens mounted, so a plain useEffect(...,[session]) would never notice
@@ -76,7 +81,10 @@ export default function HomeScreen() {
           setAvatarUrls(avatars);
         })
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your feed.'))
-        .finally(() => setIsLoading(false));
+        .finally(() => {
+          setIsLoading(false);
+          setHasLoadedOnce(true);
+        });
     }, [session])
   );
 
@@ -129,8 +137,10 @@ export default function HomeScreen() {
     }
   }
 
+  if (!hasLoadedOnce) return <PageLoader />;
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="displaySerif">Feed</ThemedText>
 
@@ -147,11 +157,13 @@ export default function HomeScreen() {
           </ThemedText>
         )}
 
-        <FlatList
+        <Animated.FlatList
           data={visits}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: FeedVisit) => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          renderItem={({ item }: { item: FeedVisit }) => (
             <ThemedView type="backgroundElement" style={styles.card}>
               <View style={styles.headerRow}>
                 <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />

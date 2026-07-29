@@ -28,7 +28,7 @@ export default function SignInScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="title" style={styles.title}>
           Welcome back

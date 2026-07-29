@@ -36,7 +36,7 @@ export default function SignUpScreen() {
 
   if (needsEmailConfirmation) {
     return (
-      <ThemedView style={styles.container}>
+      <ThemedView type="screen" style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
           <ThemedText type="title" style={styles.title}>
             Check your email
@@ -53,7 +53,7 @@ export default function SignUpScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="title" style={styles.title}>
           Create account

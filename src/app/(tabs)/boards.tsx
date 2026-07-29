@@ -1,13 +1,16 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { createBoard, listMyBoards } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
@@ -20,7 +23,9 @@ export default function BoardsScreen() {
   const [newBoardName, setNewBoardName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const scrollHandler = useHideOnScrollHandler();
 
   useFocusEffect(
     useCallback(() => {
@@ -30,7 +35,10 @@ export default function BoardsScreen() {
       listMyBoards(session.user.id)
         .then(setBoards)
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load boards.'))
-        .finally(() => setIsLoading(false));
+        .finally(() => {
+          setIsLoading(false);
+          setHasLoadedOnce(true);
+        });
     }, [session])
   );
 
@@ -49,8 +57,10 @@ export default function BoardsScreen() {
     }
   }
 
+  if (!hasLoadedOnce) return <PageLoader />;
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="displaySerif">Your boards</ThemedText>
 
@@ -81,11 +91,13 @@ export default function BoardsScreen() {
           </ThemedText>
         )}
 
-        <FlatList
+        <Animated.FlatList
           data={boards}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: BoardRow) => item.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          renderItem={({ item }: { item: BoardRow }) => (
             <Pressable
               onPress={() => router.push({ pathname: '/board/[id]', params: { id: item.id } })}
               style={({ pressed }) => pressed && styles.pressed}>

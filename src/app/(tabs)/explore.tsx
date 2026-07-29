@@ -1,12 +1,14 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TextField } from '@/components/ui/text-field';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
 import { followUser, unfollowOrCancelRequest } from '@/lib/follows';
@@ -31,6 +33,7 @@ export default function SearchScreen() {
   const [users, setUsers] = useState<SearchUserResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const scrollHandler = useHideOnScrollHandler();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -87,9 +90,13 @@ export default function SearchScreen() {
   const showUsers = filter !== 'places';
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="displaySerif">Search</ThemedText>
+        <Animated.ScrollView
+          contentContainerStyle={styles.scrollContent}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}>
+          <ThemedText type="displaySerif">Search</ThemedText>
 
         <TextField placeholder="Search locations or people" value={query} onChangeText={setQuery} />
 
@@ -144,6 +151,7 @@ export default function SearchScreen() {
               </ThemedView>
             ))}
         </View>
+        </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -155,6 +163,9 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    width: '100%',
+  },
+  scrollContent: {
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,

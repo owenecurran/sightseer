@@ -46,14 +46,6 @@ export function ReviewPromptCard({
 }: ReviewPromptCardProps) {
   const aspectRatio = photoWidth && photoHeight ? photoWidth / photoHeight : DEFAULT_PHOTO_ASPECT_RATIO;
   const [photoBox, setPhotoBox] = useState({ width: 0, height: 0 });
-  // Driven primarily by the box's *width*, not height — wrapping is a
-  // width problem, and a tall (portrait) photo has a tall bottom-third band
-  // that doesn't mean there's room for much bigger text before it starts
-  // wrapping mid-word. Also capped relative to the band's own height so a
-  // wrapped line (StretchText falls back to wrapping outside its normal
-  // stretch range) still fits vertically instead of bleeding past the card.
-  const bandHeight = photoBox.height / 3;
-  const overlayFontSize = clamp(Math.min(photoBox.width * 0.13, bandHeight * 0.6), 18, 36);
   const badgeSize = clamp(photoBox.height * 0.24, 40, 72);
 
   return (
@@ -72,14 +64,15 @@ export function ReviewPromptCard({
             style={styles.photo}
             contentFit="contain"
           />
-          {/* Overlay occupies the bottom third of the photo, with the
-              place-name text sized off that band's own measured size.
-              overflow:'hidden' is a deliberate safety net, not just
-              decoration — if the size formula above ever still guesses too
-              large for a given photo, this clips rather than lets text
-              bleed past the card's rounded corners. */}
+          {/* Overlay occupies the bottom third of the photo. StretchText's
+              `outline` mode stretches the place name to fill this band on
+              both axes (not just width) and anchors it flush to the
+              bottom edge — overflow:'hidden' is a deliberate safety net,
+              not just decoration, in case that measurement is ever off for
+              a given photo, so text clips rather than bleeds past the
+              card's rounded corners. */}
           <View style={styles.placeOverlay}>
-            <StretchText type="headline" outline style={{ fontSize: overlayFontSize, lineHeight: overlayFontSize * 1.1 }}>
+            <StretchText type="headline" outline>
               {placeName}
             </StretchText>
           </View>
@@ -125,8 +118,9 @@ const styles = StyleSheet.create({
   },
   placeOverlay: {
     height: '33%',
-    justifyContent: 'center',
-    padding: Spacing.two,
+    justifyContent: 'flex-end',
+    paddingHorizontal: Spacing.two,
+    paddingTop: Spacing.two,
     overflow: 'hidden',
   },
   info: {

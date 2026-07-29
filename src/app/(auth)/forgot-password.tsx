@@ -37,7 +37,7 @@ export default function ForgotPasswordScreen() {
 
   if (sent) {
     return (
-      <ThemedView style={styles.container}>
+      <ThemedView type="screen" style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
           <ThemedText type="title" style={styles.title}>
             Check your email
@@ -54,7 +54,7 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="title" style={styles.title}>
           Reset password

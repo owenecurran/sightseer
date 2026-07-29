@@ -1,13 +1,16 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { PageLoader } from '@/components/ui/page-loader';
 import { VisitMenu } from '@/components/visit-menu';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
@@ -29,6 +32,8 @@ export default function AllReviewsScreen() {
   const [visits, setVisits] = useState<OwnVisit[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const scrollHandler = useHideOnScrollHandler();
 
   useFocusEffect(
     useCallback(() => {
@@ -51,6 +56,8 @@ export default function AllReviewsScreen() {
           }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load your reviews.');
+        } finally {
+          setHasLoadedOnce(true);
         }
       })();
     }, [session])
@@ -60,13 +67,17 @@ export default function AllReviewsScreen() {
     setVisits((prev) => prev.filter((v) => v.id !== visitId));
   }
 
+  if (!hasLoadedOnce) return <PageLoader />;
+
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <FlatList
+        <Animated.FlatList
           data={visits}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: OwnVisit) => item.id}
           contentContainerStyle={styles.list}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
           ListHeaderComponent={
             <View style={[styles.contentWrap, styles.headerSection]}>
               <Pressable onPress={() => router.back()}>
