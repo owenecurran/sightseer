@@ -1,4 +1,4 @@
-import { Image, type ImageProps } from 'expo-image';
+import { Image, type ImageLoadEventData, type ImageProps } from 'expo-image';
 import { useState } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
@@ -13,15 +13,18 @@ type LoadableImageProps = Omit<ImageProps, 'style'> & {
 // available yet — e.g. a presigned view URL that hasn't resolved). Covers
 // both "no URL yet" and "URL resolved, bytes still downloading" under one
 // consistent loading treatment instead of the previous silent blank gap.
-export function LoadableImage({ source, style, ...rest }: LoadableImageProps) {
+export function LoadableImage({ source, style, onLoad, ...rest }: LoadableImageProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const hasSource = source != null;
 
+  function handleLoad(event: ImageLoadEventData) {
+    setIsLoaded(true);
+    onLoad?.(event);
+  }
+
   return (
     <View style={[style, styles.clip]}>
-      {hasSource && (
-        <Image {...rest} source={source} style={styles.fill} onLoad={() => setIsLoaded(true)} />
-      )}
+      {hasSource && <Image {...rest} source={source} style={styles.fill} onLoad={handleLoad} />}
       {!isLoaded && <ImageLoadingIcon />}
     </View>
   );

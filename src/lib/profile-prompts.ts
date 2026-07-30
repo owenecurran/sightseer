@@ -16,8 +16,6 @@ export type PromptAttachment = {
   visitRating: number | null;
   visitNote: string | null;
   visitPhotoId: string | null;
-  visitPhotoWidth: number | null;
-  visitPhotoHeight: number | null;
   boardName: string | null;
   placeName: string | null;
 };
@@ -42,7 +40,7 @@ type RawAttachment = {
     rating: number;
     note: string | null;
     places: { name: string } | null;
-    photos: { id: string; position: number; width: number; height: number }[];
+    photos: { id: string; position: number }[];
   } | null;
   boards: { name: string } | null;
   places: { name: string } | null;
@@ -56,7 +54,7 @@ type RawPrompt = {
 };
 
 const PROMPT_SELECT =
-  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, visits(rating, note, places!place_id(name), photos(id, position, width, height)), boards(name), places!place_id(name))';
+  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name))';
 
 function mapAttachment(r: RawAttachment): PromptAttachment {
   const firstPhoto = [...(r.visits?.photos ?? [])].sort((a, b) => a.position - b.position)[0];
@@ -72,8 +70,6 @@ function mapAttachment(r: RawAttachment): PromptAttachment {
     visitRating: r.visits?.rating ?? null,
     visitNote: r.visits?.note ?? null,
     visitPhotoId: firstPhoto?.id ?? null,
-    visitPhotoWidth: firstPhoto?.width ?? null,
-    visitPhotoHeight: firstPhoto?.height ?? null,
     boardName: r.boards?.name ?? null,
     placeName: r.places?.name ?? null,
   };

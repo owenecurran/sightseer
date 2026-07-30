@@ -1,18 +1,18 @@
-import { useState } from 'react';
+import { useState } from "react";
 import {
-  type LayoutChangeEvent,
   Platform,
   StyleSheet,
   View,
-  type TextLayoutEventData,
+  type LayoutChangeEvent,
   type NativeSyntheticEvent,
   type StyleProp,
+  type TextLayoutEventData,
   type TextStyle,
   type ViewStyle,
-} from 'react-native';
+} from "react-native";
 
-import { OutlinedText } from '@/components/ui/outlined-text';
-import { ThemedText, type ThemedTextProps } from '@/components/themed-text';
+import { ThemedText, type ThemedTextProps } from "@/components/themed-text";
+import { OutlinedText } from "@/components/ui/outlined-text";
 
 type StretchTextProps = ThemedTextProps & {
   children: string;
@@ -159,33 +159,40 @@ const OUTLINE_STROKE_RADIUS = 2;
 // clips silently instead of showing "…".
 const WEB_WIDTH_SAFETY_MARGIN = 2;
 
-export function StretchText({ children, outline, style, ...rest }: StretchTextProps) {
+export function StretchText({
+  children,
+  outline,
+  style,
+  ...rest
+}: StretchTextProps) {
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [contentWidth, setContentWidth] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  const rawScale = containerWidth > 0 && contentWidth > 0 ? containerWidth / contentWidth : 1;
+  const rawScale =
+    containerWidth > 0 && contentWidth > 0 ? containerWidth / contentWidth : 1;
   // outline mode never wraps — see comment above — so it always takes the
   // single-line/scaleX path, just with its own much lower floor than the
   // regular grow-or-stretch boxes.
-  const withinRange = outline || (rawScale >= MIN_SCALE && rawScale <= MAX_SCALE);
-  const scaleX = outline
-    ? Math.min(Math.max(rawScale, OUTLINE_MIN_SCALE), OUTLINE_MAX_SCALE_X)
-    : withinRange
-      ? rawScale
+  const withinRange =
+    outline || (rawScale >= MIN_SCALE && rawScale <= MAX_SCALE);
+  const scaleX = outline ? Math.max(rawScale, OUTLINE_MIN_SCALE) : 1;
+  const rawScaleY =
+    containerHeight > 0 && contentHeight > 0
+      ? containerHeight / contentHeight
       : 1;
-  const rawScaleY = containerHeight > 0 && contentHeight > 0 ? containerHeight / contentHeight : 1;
-  const scaleY = outline
-    ? Math.min(Math.max(rawScaleY, OUTLINE_MIN_SCALE), OUTLINE_MAX_SCALE_Y)
-    : 1;
+  const scaleY = outline ? Math.max(rawScaleY, OUTLINE_MIN_SCALE) : 1;
   // See OUTLINE_STROKE_RADIUS above: shrink the pre-transform radius as the
   // applied scale grows, so the outline's *rendered* size stays constant
   // instead of growing right along with the text and swallowing thin
   // letterforms.
-  const outlineStrokeRadius = OUTLINE_STROKE_RADIUS / Math.max(scaleX, scaleY, 1);
+  const outlineStrokeRadius =
+    OUTLINE_STROKE_RADIUS / Math.max(scaleX, scaleY, 1);
   const Text = outline ? OutlinedText : ThemedText;
 
-  function handleMeasureTextLayout(e: NativeSyntheticEvent<TextLayoutEventData>) {
+  function handleMeasureTextLayout(
+    e: NativeSyntheticEvent<TextLayoutEventData>,
+  ) {
     const line = e.nativeEvent.lines[0];
     if (line?.width) setContentWidth(line.width);
     if (line?.height) setContentHeight(line.height);
@@ -197,7 +204,8 @@ export function StretchText({ children, outline, style, ...rest }: StretchTextPr
         setContainerWidth(e.nativeEvent.layout.width);
         setContainerHeight(e.nativeEvent.layout.height);
       }}
-      style={[styles.container, outline ? styles.fillHeight : null]}>
+      style={[styles.container, outline ? styles.fillHeight : null]}
+    >
       {/* The measuring copy must share every font-affecting style (size,
           weight, etc.) with the visible copy — otherwise its measured width
           corresponds to a different font size than what's actually
@@ -217,7 +225,7 @@ export function StretchText({ children, outline, style, ...rest }: StretchTextPr
             immune to the surrounding box's layout constraints — is used
             instead, and does fire reliably there. */}
       <View style={styles.measure} pointerEvents="none">
-        {Platform.OS === 'web' ? (
+        {Platform.OS === "web" ? (
           <Text
             {...rest}
             numberOfLines={1}
@@ -225,7 +233,8 @@ export function StretchText({ children, outline, style, ...rest }: StretchTextPr
               setContentWidth(e.nativeEvent.layout.width);
               setContentHeight(e.nativeEvent.layout.height);
             }}
-            style={[styles.nowrap, style]}>
+            style={[styles.nowrap, style]}
+          >
             {children}
           </Text>
         ) : (
@@ -233,7 +242,8 @@ export function StretchText({ children, outline, style, ...rest }: StretchTextPr
             {...rest}
             numberOfLines={1}
             onTextLayout={handleMeasureTextLayout}
-            style={[styles.nowrap, style, styles.measureText]}>
+            style={[styles.nowrap, style, styles.measureText]}
+          >
             {children}
           </Text>
         )}
@@ -254,23 +264,39 @@ export function StretchText({ children, outline, style, ...rest }: StretchTextPr
           // truncating text with an ellipsis; native's onTextLayout
           // measurement has no such discrepancy, so it stays exact there.
           withinRange && contentWidth > 0
-            ? { width: contentWidth + (Platform.OS === 'web' ? WEB_WIDTH_SAFETY_MARGIN : 0) }
+            ? {
+                width:
+                  contentWidth +
+                  (Platform.OS === "web" ? WEB_WIDTH_SAFETY_MARGIN : 0),
+              }
             : null,
           // outline mode is bottom-anchored (`placeOverlay` in
           // ReviewPromptCard justifies its content to the end) and stretched
           // from that bottom edge upward, so the filled band reads as
           // flush with the photo's bottom rather than centered within it.
-          { transform: [{ scaleX }, { scaleY }], transformOrigin: outline ? 'left bottom' : 'left' },
+          {
+            transform: [{ scaleX }, { scaleY }],
+            transformOrigin: outline ? "left bottom" : "left",
+          },
         ];
         // strokeRadius is an OutlinedText-only prop (unknown to ThemedText),
         // so the two branches can't share one dynamic `Text` component here
         // the way the measuring copy above does.
         return outline ? (
-          <OutlinedText {...rest} numberOfLines={1} strokeRadius={outlineStrokeRadius} style={visibleStyle}>
+          <OutlinedText
+            {...rest}
+            numberOfLines={1}
+            strokeRadius={outlineStrokeRadius}
+            style={visibleStyle}
+          >
             {children}
           </OutlinedText>
         ) : (
-          <ThemedText {...rest} numberOfLines={withinRange ? 1 : undefined} style={visibleStyle}>
+          <ThemedText
+            {...rest}
+            numberOfLines={withinRange ? 1 : undefined}
+            style={visibleStyle}
+          >
             {children}
           </ThemedText>
         );
@@ -281,7 +307,7 @@ export function StretchText({ children, outline, style, ...rest }: StretchTextPr
 
 const styles = StyleSheet.create({
   container: {
-    width: '100%',
+    width: "100%",
   },
   // outline-mode-only: without an explicit height, this View's own onLayout
   // just reports its natural content-driven height (close to the text's own
@@ -290,20 +316,26 @@ const styles = StyleSheet.create({
   // (which has a real resolved height via its own `height:'33%'`), so
   // `containerHeight` reflects the true available space to fill vertically.
   fillHeight: {
-    height: '100%',
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    justifyContent: "flex-end",
   },
   measure: {
-    position: Platform.OS === 'web' ? ('fixed' as ViewStyle['position']) : 'absolute',
+    position:
+      Platform.OS === "web" ? ("fixed" as ViewStyle["position"]) : "absolute",
     opacity: 0,
     // Without this, native Yoga stretches an absolutely-positioned child
     // with no explicit alignSelf to match its parent's cross-axis width by
     // default (unlike web's CSS shrink-to-fit default for position:
     // absolute) — capping this measuring View itself to the container's
     // width before its Text child ever gets a chance to size to content.
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   nowrap: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     flexShrink: 0,
     minWidth: 0,
   },
@@ -331,10 +363,10 @@ const styles = StyleSheet.create({
     // 'none' is a valid CSS max-width value (web-only usage here, guarded
     // by the Platform.OS check above) but isn't in RN's own DimensionValue
     // type, hence the cast.
-    maxWidth: 'none' as unknown as number,
+    maxWidth: "none" as unknown as number,
   },
   wrap: {
-    alignSelf: 'stretch',
+    alignSelf: "stretch",
   },
 });
 
@@ -350,4 +382,4 @@ const styles = StyleSheet.create({
 // react-native-web's default "…", matching the same prefer-silent-clipping
 // precedent `noMaxWidth` and the card's own `overflow:'hidden'` already
 // establish for this component.
-const noEllipsisStyle = { textOverflow: 'clip' } as unknown as TextStyle;
+const noEllipsisStyle = { textOverflow: "clip" } as unknown as TextStyle;

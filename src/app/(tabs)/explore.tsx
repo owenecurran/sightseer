@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LocationSearchModal } from '@/components/location-search-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TextField } from '@/components/ui/text-field';
@@ -12,12 +13,13 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
 import { followUser, unfollowOrCancelRequest } from '@/lib/follows';
-import { searchPlacesAndUsers, type SearchUserResult } from '@/lib/search';
+import { searchPeopleAndBoards, type SearchUserResult } from '@/lib/search';
 
 const DEBOUNCE_MS = 300;
 
+type BoardRow = Database['public']['Tables']['boards']['Row'];
 type PlaceRow = Database['public']['Tables']['places']['Row'];
-type FilterMode = 'all' | 'places' | 'people';
+type SearchMode = 'people_boards' | 'locations';
 
 function followLabel(status: SearchUserResult['followStatus']): string {
   if (status === 'accepted') return 'Following';
@@ -28,21 +30,22 @@ function followLabel(status: SearchUserResult['followStatus']): string {
 export default function SearchScreen() {
   const { session } = useAuth();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterMode>('all');
-  const [places, setPlaces] = useState<PlaceRow[]>([]);
+  const [mode, setMode] = useState<SearchMode>('people_boards');
+  const [boards, setBoards] = useState<BoardRow[]>([]);
   const [users, setUsers] = useState<SearchUserResult[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!session) return;
+    if (!session || mode !== 'people_boards') return;
 
     if (!query.trim()) {
-      setPlaces([]);
+      setBoards([]);
       setUsers([]);
       return;
     }
@@ -51,8 +54,8 @@ export default function SearchScreen() {
       setIsSearching(true);
       setError(null);
       try {
-        const result = await searchPlacesAndUsers(query, session.user.id);
-        setPlaces(result.places);
+        const result = await searchPeopleAndBoards(query, session.user.id);
+        setBoards(result.boards);
         setUsers(result.users);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Search failed.');
@@ -64,7 +67,7 @@ export default function SearchScreen() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, session]);
+  }, [query, session, mode]);
 
   async function handleFollowToggle(user: SearchUserResult) {
     if (!session) return;
@@ -86,8 +89,10 @@ export default function SearchScreen() {
     }
   }
 
-  const showPlaces = filter !== 'people';
-  const showUsers = filter !== 'places';
+  function handleLocationSelected(place: PlaceRow) {
+    setIsPickerOpen(false);
+    router.push({ pathname: '/place/[id]', params: { id: place.id } });
+  }
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -98,61 +103,78 @@ export default function SearchScreen() {
           scrollEventThrottle={16}>
           <ThemedText type="displaySerif">Search</ThemedText>
 
-        <TextField placeholder="Search locations or people" value={query} onChangeText={setQuery} />
-
-        <View style={styles.filterRow}>
-          {(['all', 'places', 'people'] as FilterMode[]).map((mode) => (
-            <Pressable key={mode} onPress={() => setFilter(mode)}>
-              <ThemedView
-                type={filter === mode ? 'backgroundSelected' : 'backgroundElement'}
-                style={styles.filterChip}>
-                <ThemedText type="small" themeColor={filter === mode ? 'text' : 'textSecondary'}>
-                  {mode === 'all' ? 'All' : mode === 'places' ? 'Places' : 'People'}
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
-          ))}
-        </View>
-
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-        )}
-
-        {!isSearching && query.trim().length > 0 && places.length === 0 && users.length === 0 && (
-          <ThemedText type="small" themeColor="textSecondary">
-            No results.
-          </ThemedText>
-        )}
-
-        <View style={styles.results}>
-          {showPlaces &&
-            places.map((place) => (
-              <Pressable
-                key={place.id}
-                onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}>
-                <ThemedView type="backgroundElement" style={styles.resultRow}>
-                  <ThemedText type="headline">{place.name}</ThemedText>
-                  <ThemedText type="sectionLabel" themeColor="textSecondary">
-                    {place.level}
+          <View style={styles.filterRow}>
+            {(['people_boards', 'locations'] as SearchMode[]).map((m) => (
+              <Pressable key={m} onPress={() => setMode(m)}>
+                <ThemedView type={mode === m ? 'backgroundSelected' : 'backgroundElement'} style={styles.filterChip}>
+                  <ThemedText type="small" themeColor={mode === m ? 'text' : 'textSecondary'}>
+                    {m === 'people_boards' ? 'People & Boards' : 'Locations'}
                   </ThemedText>
                 </ThemedView>
               </Pressable>
             ))}
+          </View>
 
-          {showUsers &&
-            users.map((user) => (
-              <ThemedView key={user.id} type="backgroundElement" style={styles.resultRow}>
-                <ThemedText type="headline">{user.name ?? user.handle ?? 'Unnamed'}</ThemedText>
-                <Pressable onPress={() => handleFollowToggle(user)}>
-                  <ThemedText type="smallBold">{followLabel(user.followStatus)}</ThemedText>
-                </Pressable>
+          {error && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
+          )}
+
+          {mode === 'people_boards' ? (
+            <>
+              <TextField placeholder="Search people or boards" value={query} onChangeText={setQuery} />
+
+              {!isSearching && query.trim().length > 0 && boards.length === 0 && users.length === 0 && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  No results.
+                </ThemedText>
+              )}
+
+              <View style={styles.results}>
+                {boards.map((board) => (
+                  <Pressable
+                    key={board.id}
+                    onPress={() => router.push({ pathname: '/board/[id]', params: { id: board.id } })}>
+                    <ThemedView type="backgroundElement" style={styles.resultRow}>
+                      <ThemedText type="headline">{board.name}</ThemedText>
+                      {board.is_private && (
+                        <ThemedText type="sectionLabel" themeColor="textSecondary">
+                          Private
+                        </ThemedText>
+                      )}
+                    </ThemedView>
+                  </Pressable>
+                ))}
+
+                {users.map((user) => (
+                  <ThemedView key={user.id} type="backgroundElement" style={styles.resultRow}>
+                    <ThemedText type="headline">{user.name ?? user.handle ?? 'Unnamed'}</ThemedText>
+                    <Pressable onPress={() => handleFollowToggle(user)}>
+                      <ThemedText type="smallBold">{followLabel(user.followStatus)}</ThemedText>
+                    </Pressable>
+                  </ThemedView>
+                ))}
+              </View>
+            </>
+          ) : (
+            <Pressable onPress={() => setIsPickerOpen(true)}>
+              <ThemedView type="backgroundElement" style={styles.locationsCard}>
+                <ThemedText type="headline">Search the map</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Find a place to view its page.
+                </ThemedText>
               </ThemedView>
-            ))}
-        </View>
+            </Pressable>
+          )}
         </Animated.ScrollView>
       </SafeAreaView>
+
+      <LocationSearchModal
+        visible={isPickerOpen}
+        onCancel={() => setIsPickerOpen(false)}
+        onSelect={handleLocationSelected}
+      />
     </ThemedView>
   );
 }
@@ -193,5 +215,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  locationsCard: {
+    paddingVertical: Spacing.four,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
+    gap: Spacing.one,
   },
 });

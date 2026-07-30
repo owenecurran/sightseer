@@ -84,8 +84,6 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   rating={attachment.visitRating ?? 0}
                   note={attachment.visitNote}
                   photoUrl={attachment.visitPhotoId ? visitPhotoUrls[attachment.visitPhotoId] : undefined}
-                  photoWidth={attachment.visitPhotoWidth}
-                  photoHeight={attachment.visitPhotoHeight}
                 />
               );
             }

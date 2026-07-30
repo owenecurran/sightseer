@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
-type PlaceRow = Database['public']['Tables']['places']['Row'];
+type BoardRow = Database['public']['Tables']['boards']['Row'];
 type UserRow = Database['public']['Tables']['users']['Row'];
 type FollowStatus = Database['public']['Tables']['follows']['Row']['status'];
 
@@ -9,25 +9,29 @@ export type SearchUserResult = UserRow & { followStatus: FollowStatus | null };
 
 const RESULT_LIMIT = 20;
 
-export async function searchPlacesAndUsers(
+// Primary Search-tab mode: people + boards. No explicit is_private filtering
+// needed — RLS's boards_select policy (owner-always, else is_private=false +
+// can_view_user_content) already governs exactly what this may return, same
+// reasoning already relied on elsewhere (e.g. profile-map.ts's visited places).
+export async function searchPeopleAndBoards(
   query: string,
   myUserId: string
-): Promise<{ places: PlaceRow[]; users: SearchUserResult[] }> {
+): Promise<{ users: SearchUserResult[]; boards: BoardRow[] }> {
   const trimmed = query.trim();
-  if (!trimmed) return { places: [], users: [] };
+  if (!trimmed) return { users: [], boards: [] };
   const pattern = `%${trimmed}%`;
 
-  const [placesResult, usersResult] = await Promise.all([
-    supabase.from('places').select('*').ilike('name', pattern).limit(RESULT_LIMIT),
+  const [usersResult, boardsResult] = await Promise.all([
     supabase
       .from('users')
       .select('*')
       .neq('id', myUserId)
       .or(`handle.ilike.${pattern},name.ilike.${pattern}`)
       .limit(RESULT_LIMIT),
+    supabase.from('boards').select('*').or(`name.ilike.${pattern},description.ilike.${pattern}`).limit(RESULT_LIMIT),
   ]);
-  if (placesResult.error) throw placesResult.error;
   if (usersResult.error) throw usersResult.error;
+  if (boardsResult.error) throw boardsResult.error;
 
   const userIds = usersResult.data.map((u) => u.id);
   let statusByUserId = new Map<string, FollowStatus>();
@@ -42,8 +46,8 @@ export async function searchPlacesAndUsers(
   }
 
   return {
-    places: placesResult.data,
     users: usersResult.data.map((u) => ({ ...u, followStatus: statusByUserId.get(u.id) ?? null })),
+    boards: boardsResult.data,
   };
 }
 

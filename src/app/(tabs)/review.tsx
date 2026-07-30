@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LocationSearchModal } from '@/components/location-search-modal';
 import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
 import { SaveToBoard } from '@/components/save-to-board';
@@ -46,10 +47,8 @@ function todayIsoDate(): string {
 
 export default function SearchScreen() {
   const { session } = useAuth();
-  const [query, setQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
   const [selectedPlace, setSelectedPlace] = useState<PlaceRow | null>(null);
@@ -77,37 +76,9 @@ export default function SearchScreen() {
   const [taggedUsers, setTaggedUsers] = useState<UserRow[]>([]);
   const [isPeopleSearching, setIsPeopleSearching] = useState(false);
 
-  const sessionTokenRef = useRef(createPlacesSessionToken());
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tagSessionTokenRef = useRef(createPlacesSessionToken());
   const tagDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const peopleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    if (!query.trim()) {
-      setSuggestions([]);
-      return;
-    }
-
-    debounceRef.current = setTimeout(async () => {
-      setIsSearching(true);
-      setError(null);
-      try {
-        const results = await autocompletePlaces(query, sessionTokenRef.current);
-        setSuggestions(results);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
-      } finally {
-        setIsSearching(false);
-      }
-    }, DEBOUNCE_MS);
-
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
 
   useEffect(() => {
     if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current);
@@ -160,14 +131,15 @@ export default function SearchScreen() {
     };
   }, [peopleQuery, session]);
 
-  async function handleSelect(suggestion: PlaceAutocompleteSuggestion) {
+  // LocationSearchModal already runs the fetchPlaceDetails/cachePlaceHierarchy
+  // steps internally (see its onSelect) before handing back the final
+  // PlaceRow — this just resets the rest of the review form for it.
+  async function handlePlaceSelected(place: PlaceRow) {
     setError(null);
-    setIsSearching(true);
+    setIsPickerOpen(false);
     try {
-      const details = await fetchPlaceDetails(suggestion.placeId, sessionTokenRef.current);
-      const cached = await cachePlaceHierarchy(details);
-      const crumb = await getPlaceBreadcrumb(cached);
-      setSelectedPlace(cached);
+      const crumb = await getPlaceBreadcrumb(place);
+      setSelectedPlace(place);
       setBreadcrumb(crumb);
       setRating(5);
       setNote('');
@@ -181,14 +153,8 @@ export default function SearchScreen() {
       setPeopleQuery('');
       setPeopleSuggestions([]);
       setTaggedUsers([]);
-      setQuery('');
-      setSuggestions([]);
-      // Session is done (Place Details closed it) — start a fresh one for the next search.
-      sessionTokenRef.current = createPlacesSessionToken();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
-    } finally {
-      setIsSearching(false);
     }
   }
 
@@ -355,11 +321,7 @@ export default function SearchScreen() {
           scrollEventThrottle={16}>
         <ThemedText type="sectionLabel">Search places</ThemedText>
 
-        <TextField
-          placeholder="Search a country, town, or place"
-          value={query}
-          onChangeText={setQuery}
-        />
+        <Button label="Search for a place" variant="secondary" onPress={() => setIsPickerOpen(true)} />
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
@@ -503,23 +465,6 @@ export default function SearchScreen() {
           </ThemedView>
         )}
 
-        <View style={styles.list}>
-          {suggestions.map((item) => (
-            <Pressable
-              key={item.placeId}
-              onPress={() => handleSelect(item)}
-              style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.suggestionRow}>
-                <ThemedText type="default">{item.primaryText}</ThemedText>
-                {item.secondaryText && (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {item.secondaryText}
-                  </ThemedText>
-                )}
-              </ThemedView>
-            </Pressable>
-          ))}
-        </View>
         </Animated.ScrollView>
 
         <PhotoCropModal
@@ -527,6 +472,11 @@ export default function SearchScreen() {
           uri={cropSource?.uri ?? null}
           onCancel={handleCropCancel}
           onConfirm={handleCropConfirm}
+        />
+        <LocationSearchModal
+          visible={isPickerOpen}
+          onCancel={() => setIsPickerOpen(false)}
+          onSelect={handlePlaceSelected}
         />
       </SafeAreaView>
     </ThemedView>
@@ -549,9 +499,6 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.four + TopTabInset,
     paddingBottom: BottomTabInset,
     gap: Spacing.three,
-  },
-  list: {
-    gap: Spacing.two,
   },
   suggestionRow: {
     paddingVertical: Spacing.three,
@@ -593,8 +540,5 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.five,
-  },
-  pressed: {
-    opacity: 0.7,
   },
 });
