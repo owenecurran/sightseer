@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.owenecurran.alienapp"
+      "bundleIdentifier": "com.owenecurran.alienapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.owenecurran.alienapp",
@@ -24,7 +27,11 @@
         "googleMaps": {
           "apiKey": "AIzaSyAQbtcr8zMbqmx9BpJ3R0mI-gabtrEjPDY"
         }
-      }
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
