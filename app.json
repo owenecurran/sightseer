@@ -41,7 +41,13 @@
         }
       ],
       "expo-maps",
-      "@rnmapbox/maps"
+      "@rnmapbox/maps",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Alien App uses your location to center the map on where you are."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

@@ -1,13 +1,17 @@
-import { Camera, MapView, PointAnnotation } from '@rnmapbox/maps';
+import { Camera, MapView, MarkerView, PointAnnotation } from '@rnmapbox/maps';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { NearbyPlacePreviewCard } from '@/components/nearby-place-preview-card';
 import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { BrandColors, Spacing } from '@/constants/theme';
 import { MAPBOX_STYLE_URL } from '@/constants/mapbox.native';
+import { getCurrentLocation } from '@/lib/current-location';
 import type { Database } from '@/lib/database.types';
 import {
   autocompletePlaces,
@@ -16,6 +20,7 @@ import {
   type PlaceAutocompleteSuggestion,
   type PlaceDetails,
 } from '@/lib/google-places';
+import { getNearbyReviewedPlaces, getPlacePreviewReview, type NearbyPlace, type PlacePreview } from '@/lib/nearby-places';
 import { cachePlaceHierarchy } from '@/lib/places-cache';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
@@ -23,12 +28,29 @@ type PlaceRow = Database['public']['Tables']['places']['Row'];
 type LocationSearchModalProps = {
   visible: boolean;
   onCancel: () => void;
-  onSelect: (place: PlaceRow) => void;
+  // Optional/unused in 'browse' mode — that mode navigates internally
+  // instead of handing a picked place back to the caller. See the
+  // mode-specific comment above the component body.
+  onSelect?: (place: PlaceRow) => void;
+  // 'pick': today's picker behavior (search → select → confirm bar →
+  // onSelect), used by review.tsx to choose the place a new review is
+  // about. 'browse': the Locations tab's read-only map — search still
+  // recenters the camera, but instead of a confirm bar, markers for places
+  // with existing reviews appear as the viewport settles, and tapping one
+  // shows a preview card that navigates to /place/[id] on tap. Defaults to
+  // 'pick' so review.tsx needs no changes.
+  mode?: 'pick' | 'browse';
 };
 
 const DEBOUNCE_MS = 300;
 const DEFAULT_ZOOM = 3;
 const SELECTED_ZOOM = 13;
+// A "show me my surrounding streets/neighborhood" zoom level, the same kind
+// of default most consumer map apps open to for a current-location view —
+// close enough to be genuinely useful, far enough out that a short drive
+// doesn't immediately fall off the edge of the visible map.
+const CURRENT_LOCATION_ZOOM = 14;
+const VIEWPORT_DEBOUNCE_MS = 500;
 
 // The real map — only rendered on iOS/Android (see location-search-modal.tsx
 // for why web falls back to plain text search). Google Places stays the only
@@ -38,17 +60,23 @@ const SELECTED_ZOOM = 13;
 // POI/label layers are left as-is for v1 (MAPBOX_STYLE_URL is the built-in
 // dark style) — hiding them needs the SDK's style-layer API, noted as a
 // fast-follow rather than blocking this component on style polish.
-export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSearchModalProps) {
+export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick' }: LocationSearchModalProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDetails, setSelectedDetails] = useState<PlaceDetails | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
+  const [previewPlaceId, setPreviewPlaceId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PlacePreview | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   const sessionTokenRef = useRef(createPlacesSessionToken());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewportDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cameraRef = useRef<Camera>(null);
+  const mapRef = useRef<MapView>(null);
 
   // Reset to a blank search each time the picker is (re)opened, rather than
   // showing a stale previous search.
@@ -58,7 +86,29 @@ export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSea
     setSuggestions([]);
     setError(null);
     setSelectedDetails(null);
+    setNearbyPlaces([]);
+    setPreviewPlaceId(null);
+    setPreview(null);
     sessionTokenRef.current = createPlacesSessionToken();
+
+    // Best-effort: center on the user's current location when the picker
+    // opens, before any search happens. If permission is denied or location
+    // can't be determined, getCurrentLocation() resolves null and the map
+    // just stays at its DEFAULT_ZOOM world view — never blocks opening the
+    // picker. `cancelled` guards against animating a camera for a request
+    // that resolves after the user already closed the picker.
+    let cancelled = false;
+    getCurrentLocation().then((coords) => {
+      if (cancelled || !coords) return;
+      cameraRef.current?.setCamera({
+        centerCoordinate: [coords.lng, coords.lat],
+        zoomLevel: CURRENT_LOCATION_ZOOM,
+        animationDuration: 800,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [visible]);
 
   useEffect(() => {
@@ -87,7 +137,6 @@ export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSea
     setError(null);
     try {
       const details = await fetchPlaceDetails(suggestion.placeId, sessionTokenRef.current);
-      setSelectedDetails(details);
       setSuggestions([]);
       // Mapbox coordinates are [longitude, latitude] — the opposite order
       // from the {latitude, longitude} objects expo-maps/react-native-maps
@@ -97,6 +146,12 @@ export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSea
         zoomLevel: SELECTED_ZOOM,
         animationDuration: 600,
       });
+      // 'browse' mode: search is just a way to jump the camera to an area
+      // (matching a searched suggestion to a confirm-bar pick doesn't apply
+      // here — there's nothing to "confirm", the map is read-only). 'pick'
+      // mode keeps today's behavior: show a pin + confirm bar for this
+      // specific result.
+      if (mode === 'pick') setSelectedDetails(details);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
     }
@@ -108,7 +163,7 @@ export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSea
     setError(null);
     try {
       const cached = await cachePlaceHierarchy(selectedDetails);
-      onSelect(cached);
+      onSelect?.(cached);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not use that place.');
     } finally {
@@ -116,16 +171,73 @@ export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSea
     }
   }
 
+  async function handleMapIdle() {
+    if (mode !== 'browse') return;
+    if (viewportDebounceRef.current) clearTimeout(viewportDebounceRef.current);
+    viewportDebounceRef.current = setTimeout(async () => {
+      const bounds = await mapRef.current?.getVisibleBounds();
+      if (!bounds) return;
+      // getVisibleBounds() returns [[rightLon, topLat], [leftLon, bottomLat]].
+      const [[maxLng, maxLat], [minLng, minLat]] = bounds;
+      try {
+        setNearbyPlaces(await getNearbyReviewedPlaces({ minLng, minLat, maxLng, maxLat }));
+      } catch {
+        // Best-effort — a failed nearby-places fetch shouldn't block the map
+        // itself from being usable, so it's silently skipped rather than
+        // surfaced as a blocking error banner.
+      }
+    }, VIEWPORT_DEBOUNCE_MS);
+  }
+
+  async function handleNearbyMarkerPress(place: NearbyPlace) {
+    setPreviewPlaceId(place.id);
+    setPreview(null);
+    setIsPreviewLoading(true);
+    try {
+      setPreview(await getPlacePreviewReview(place.id));
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }
+
+  function handlePreviewPress() {
+    if (!previewPlaceId) return;
+    onCancel();
+    router.push({ pathname: '/place/[id]', params: { id: previewPlaceId } });
+  }
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
       <View style={styles.container}>
-        <MapView style={styles.map} styleURL={MAPBOX_STYLE_URL} scaleBarEnabled={false}>
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          styleURL={MAPBOX_STYLE_URL}
+          scaleBarEnabled={false}
+          onMapIdle={handleMapIdle}>
           <Camera ref={cameraRef} defaultSettings={{ zoomLevel: DEFAULT_ZOOM }} />
           {selectedDetails && (
             <PointAnnotation id="selected-place" coordinate={[selectedDetails.lng, selectedDetails.lat]}>
               <View style={styles.pin} />
             </PointAnnotation>
           )}
+          {mode === 'browse' &&
+            nearbyPlaces.map((place) => (
+              // MarkerView, not PointAnnotation — PointAnnotation's own SDK
+              // docs say it rasterizes children onto a bitmap, which broke
+              // touch handling entirely (confirmed live: onSelected never
+              // fired, even for an unmissably large 60×60 test marker,
+              // despite the marker visibly rendering at the right spot).
+              // MarkerView renders a real interactive view instead, and its
+              // own docs say to put a Pressable/TouchableOpacity directly
+              // inside rather than using an onPress prop on the marker
+              // itself (it doesn't have one).
+              <MarkerView key={place.id} coordinate={[place.lng, place.lat]}>
+                <Pressable onPress={() => handleNearbyMarkerPress(place)}>
+                  <View style={styles.reviewPin} />
+                </Pressable>
+              </MarkerView>
+            ))}
         </MapView>
 
         <SafeAreaView style={styles.overlay} pointerEvents="box-none">
@@ -144,18 +256,18 @@ export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSea
           </View>
 
           {error && (
-            <View style={styles.messageBox}>
+            <ThemedView type="backgroundElement" style={styles.messageBox}>
               <ThemedText type="small">{error}</ThemedText>
-            </View>
+            </ThemedView>
           )}
           {isSearching && !error && (
-            <View style={styles.messageBox}>
+            <ThemedView type="backgroundElement" style={styles.messageBox}>
               <ThemedText type="small">Searching…</ThemedText>
-            </View>
+            </ThemedView>
           )}
 
           {suggestions.length > 0 && (
-            <View style={styles.suggestions}>
+            <ThemedView type="backgroundElement" style={styles.suggestions}>
               {suggestions.map((s) => (
                 <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
                   <ThemedText type="small">{s.primaryText}</ThemedText>
@@ -166,16 +278,29 @@ export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSea
                   )}
                 </Pressable>
               ))}
-            </View>
+            </ThemedView>
           )}
 
-          {selectedDetails && (
+          {mode === 'pick' && selectedDetails && (
             <View style={styles.confirmBar}>
               <Button
                 label={`Use ${selectedDetails.displayName}`}
                 onPress={handleConfirm}
                 loading={isConfirming}
               />
+            </View>
+          )}
+
+          {mode === 'browse' && previewPlaceId && (
+            <View style={styles.confirmBar}>
+              {isPreviewLoading && (
+                <ThemedView type="backgroundElement" style={styles.messageBox}>
+                  <ThemedText type="small">Loading…</ThemedText>
+                </ThemedView>
+              )}
+              {!isPreviewLoading && preview && (
+                <NearbyPlacePreviewCard preview={preview} onPress={handlePreviewPress} />
+              )}
             </View>
           )}
         </SafeAreaView>
@@ -212,13 +337,11 @@ const styles = StyleSheet.create({
   },
   messageBox: {
     marginTop: Spacing.two,
-    backgroundColor: BrandColors.cream,
     borderRadius: Spacing.two,
     padding: Spacing.two,
   },
   suggestions: {
     marginTop: Spacing.two,
-    backgroundColor: BrandColors.cream,
     borderRadius: Spacing.three,
     overflow: 'hidden',
   },
@@ -237,5 +360,17 @@ const styles = StyleSheet.create({
     backgroundColor: BrandColors.sage,
     borderWidth: 3,
     borderColor: BrandColors.cream,
+  },
+  // Inverse of `pin` above (cream fill, sage border) — a deliberately
+  // distinct look from the single pick-mode selection pin, since browse
+  // mode can show many of these at once and they mean something different
+  // ("an existing review here") rather than "this is what you searched for".
+  reviewPin: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: BrandColors.cream,
+    borderWidth: 3,
+    borderColor: BrandColors.sage,
   },
 });

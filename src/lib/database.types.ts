@@ -986,6 +986,22 @@ export type Database = {
         Returns: boolean
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
+      get_nearby_reviewed_places: {
+        Args: {
+          max_lat: number
+          max_lng: number
+          min_lat: number
+          min_lng: number
+        }
+        Returns: {
+          avg_rating: number
+          lat: number
+          lng: number
+          name: string
+          place_id: string
+          review_count: number
+        }[]
+      }
       get_place_aggregate_rating: {
         Args: { target_place_id: string }
         Returns: {

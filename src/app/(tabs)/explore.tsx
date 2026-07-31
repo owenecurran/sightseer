@@ -18,7 +18,6 @@ import { searchPeopleAndBoards, type SearchUserResult } from '@/lib/search';
 const DEBOUNCE_MS = 300;
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
-type PlaceRow = Database['public']['Tables']['places']['Row'];
 type SearchMode = 'people_boards' | 'locations';
 
 function followLabel(status: SearchUserResult['followStatus']): string {
@@ -89,11 +88,6 @@ export default function SearchScreen() {
     }
   }
 
-  function handleLocationSelected(place: PlaceRow) {
-    setIsPickerOpen(false);
-    router.push({ pathname: '/place/[id]', params: { id: place.id } });
-  }
-
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -162,7 +156,7 @@ export default function SearchScreen() {
               <ThemedView type="backgroundElement" style={styles.locationsCard}>
                 <ThemedText type="headline">Search the map</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  Find a place to view its page.
+                  Browse reviewed places, or search for one to view its page.
                 </ThemedText>
               </ThemedView>
             </Pressable>
@@ -170,11 +164,7 @@ export default function SearchScreen() {
         </Animated.ScrollView>
       </SafeAreaView>
 
-      <LocationSearchModal
-        visible={isPickerOpen}
-        onCancel={() => setIsPickerOpen(false)}
-        onSelect={handleLocationSelected}
-      />
+      <LocationSearchModal mode="browse" visible={isPickerOpen} onCancel={() => setIsPickerOpen(false)} />
     </ThemedView>
   );
 }

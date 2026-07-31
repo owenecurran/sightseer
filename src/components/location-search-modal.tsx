@@ -1,33 +1,352 @@
-import { Modal, Pressable, StyleSheet } from 'react-native';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import { router } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
-import { PlaceSearchInput } from '@/components/place-search-input';
+import { NearbyPlacePreviewCard } from '@/components/nearby-place-preview-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { TextField } from '@/components/ui/text-field';
+import { BrandColors, Spacing } from '@/constants/theme';
+import { getCurrentLocation } from '@/lib/current-location';
 import type { Database } from '@/lib/database.types';
+import {
+  autocompletePlaces,
+  createPlacesSessionToken,
+  fetchPlaceDetails,
+  type PlaceAutocompleteSuggestion,
+  type PlaceDetails,
+} from '@/lib/google-places';
+import { getNearbyReviewedPlaces, getPlacePreviewReview, type NearbyPlace, type PlacePreview } from '@/lib/nearby-places';
+import { cachePlaceHierarchy } from '@/lib/places-cache';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
 type LocationSearchModalProps = {
   visible: boolean;
   onCancel: () => void;
-  onSelect: (place: PlaceRow) => void;
+  // Optional/unused in 'browse' mode — see location-search-modal.native.tsx's
+  // matching prop comment, this file mirrors that one's mode split.
+  onSelect?: (place: PlaceRow) => void;
+  mode?: 'pick' | 'browse';
 };
 
-// Web fallback — @rnmapbox/maps has no web renderer at all (same constraint
-// expo-maps already has, see profile-map.tsx), so this is a plain full-screen
-// text-search modal reusing the existing PlaceSearchInput rather than an
-// interactive map. The real map only renders via location-search-modal.native.tsx.
-export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSearchModalProps) {
+const DEBOUNCE_MS = 300;
+const DEFAULT_ZOOM = 2;
+const SELECTED_ZOOM = 13;
+const CURRENT_LOCATION_ZOOM = 14;
+const VIEWPORT_DEBOUNCE_MS = 500;
+// Same style URL as location-search-modal.native.tsx's MAPBOX_STYLE_URL
+// (Mapbox.StyleURL.Dark resolves to this exact string) — kept as a literal
+// here rather than shared, since mapbox-gl-js and @rnmapbox/maps are two
+// unrelated SDKs with nothing else in common to warrant one shared constants
+// file, and @rnmapbox/maps has no web build to import it from anyway.
+const STYLE_URL = 'mapbox://styles/mapbox/dark-v10';
+
+mapboxgl.accessToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
+if (!mapboxgl.accessToken) {
+  console.warn('Missing EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN — Mapbox tiles will not load.');
+}
+
+// Real interactive map on web too, via mapbox-gl-js directly — a separate
+// SDK from @rnmapbox/maps (which has no web renderer at all), but the same
+// underlying Mapbox styles/tiles, so this reads as the same product as the
+// native picker. Mirrors location-search-modal.native.tsx's structure
+// (search → fetch details → animate camera → drop marker → confirm) closely
+// enough that the two files should be read/changed together.
+export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick' }: LocationSearchModalProps) {
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedDetails, setSelectedDetails] = useState<PlaceDetails | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
+  const [previewPlaceId, setPreviewPlaceId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PlacePreview | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+
+  const sessionTokenRef = useRef(createPlacesSessionToken());
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewportDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<View>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const nearbyMarkersRef = useRef<mapboxgl.Marker[]>([]);
+
+  // Created only while the modal is actually visible (not on first mount of
+  // a hidden Modal) — mapbox-gl-js measures its container's real pixel size
+  // at creation time, and a Modal's content can be laid out at zero size
+  // while hidden. Torn down on close so reopening always gets a fresh map
+  // (and a fresh current-location fetch, matching the native picker).
+  useEffect(() => {
+    if (!visible) return;
+
+    setQuery('');
+    setSuggestions([]);
+    setError(null);
+    setSelectedDetails(null);
+    setNearbyPlaces([]);
+    setPreviewPlaceId(null);
+    setPreview(null);
+    sessionTokenRef.current = createPlacesSessionToken();
+
+    const node = containerRef.current as unknown as HTMLElement | null;
+    if (!node) return;
+
+    const map = new mapboxgl.Map({
+      container: node,
+      style: STYLE_URL,
+      center: [0, 20],
+      zoom: DEFAULT_ZOOM,
+    });
+    mapRef.current = map;
+
+    // mapbox-gl-js measures its container's pixel size once at construction
+    // and doesn't automatically notice later layout changes — since `node`
+    // sits inside a flex layout that can still be settling (RN Modal content
+    // + a Fast Refresh reflow) at that exact moment, the map can end up
+    // permanently believing it's 0×0 even after the container visibly
+    // reaches its real size (confirmed via computed styles: canvas painted
+    // fully transparent despite correct final container dimensions). A
+    // ResizeObserver + explicit resize() call is the standard fix for
+    // embedding mapbox-gl-js in a dynamic/flex layout rather than a fixed
+    // page region — but resize() is genuinely expensive (it reallocates the
+    // WebGL drawing buffer), and ResizeObserver can fire many times in quick
+    // succession for unrelated reasons (e.g. the suggestions list mounting
+    // changes sibling layout). Guarding on the size actually changing avoids
+    // hammering resize() redundantly, which was visibly corrupting rendering
+    // (a blank/gray canvas) during rapid interaction in testing.
+    let lastSize = '';
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      const size = `${width}x${height}`;
+      if (size === lastSize) return;
+      lastSize = size;
+      map.resize();
+    });
+    resizeObserver.observe(node);
+
+    map.on('error', (e) => console.warn('Mapbox error:', e.error?.message ?? e));
+
+    if (mode === 'browse') {
+      map.on('moveend', () => {
+        if (viewportDebounceRef.current) clearTimeout(viewportDebounceRef.current);
+        viewportDebounceRef.current = setTimeout(async () => {
+          const bounds = map.getBounds();
+          if (!bounds) return;
+          try {
+            setNearbyPlaces(
+              await getNearbyReviewedPlaces({
+                minLng: bounds.getWest(),
+                minLat: bounds.getSouth(),
+                maxLng: bounds.getEast(),
+                maxLat: bounds.getNorth(),
+              })
+            );
+          } catch {
+            // Best-effort, same reasoning as the native picker's
+            // handleMapIdle — a failed fetch shouldn't block the map.
+          }
+        }, VIEWPORT_DEBOUNCE_MS);
+      });
+    }
+
+    let cancelled = false;
+    getCurrentLocation().then((coords) => {
+      if (cancelled || !coords) return;
+      map.flyTo({ center: [coords.lng, coords.lat], zoom: CURRENT_LOCATION_ZOOM });
+    });
+
+    return () => {
+      cancelled = true;
+      if (viewportDebounceRef.current) clearTimeout(viewportDebounceRef.current);
+      resizeObserver.disconnect();
+      markerRef.current?.remove();
+      markerRef.current = null;
+      // Not individually .remove()'d — map.remove() below tears down the
+      // whole map DOM tree (including any markers still attached to it) in
+      // one shot; this ref just needs resetting so a reopened modal doesn't
+      // hold stale Marker instances pointing at an already-removed map.
+      nearbyMarkersRef.current = [];
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [visible]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!query.trim()) {
+      setSuggestions([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      setError(null);
+      try {
+        setSuggestions(await autocompletePlaces(query, sessionTokenRef.current));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Search failed.');
+      } finally {
+        setIsSearching(false);
+      }
+    }, DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
+
+  // Imperatively syncs mapbox-gl-js Marker instances to nearbyPlaces state —
+  // markers aren't declarative JSX the way @rnmapbox/maps' PointAnnotation
+  // is, so this replaces the whole marker set on every fetch rather than
+  // diffing. Fine at this scale (capped ~60 results per viewport query).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || mode !== 'browse') return;
+
+    nearbyMarkersRef.current.forEach((m) => m.remove());
+    nearbyMarkersRef.current = nearbyPlaces.map((place) => {
+      const marker = new mapboxgl.Marker({ color: BrandColors.cream })
+        .setLngLat([place.lng, place.lat])
+        .addTo(map);
+      marker.getElement().addEventListener('click', () => handleNearbyMarkerPress(place));
+      return marker;
+    });
+
+    return () => {
+      nearbyMarkersRef.current.forEach((m) => m.remove());
+      nearbyMarkersRef.current = [];
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearbyPlaces]);
+
+  async function handleSuggestionSelect(suggestion: PlaceAutocompleteSuggestion) {
+    setError(null);
+    try {
+      const details = await fetchPlaceDetails(suggestion.placeId, sessionTokenRef.current);
+      setSuggestions([]);
+      const map = mapRef.current;
+      if (map) {
+        map.flyTo({ center: [details.lng, details.lat], zoom: SELECTED_ZOOM });
+        // 'browse' mode: search only recenters the camera (nothing to
+        // "confirm" — see the matching comment in
+        // location-search-modal.native.tsx's handleSuggestionSelect).
+        if (mode === 'pick') {
+          setSelectedDetails(details);
+          markerRef.current?.remove();
+          markerRef.current = new mapboxgl.Marker({ color: BrandColors.sage })
+            .setLngLat([details.lng, details.lat])
+            .addTo(map);
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load that place.');
+    }
+  }
+
+  async function handleNearbyMarkerPress(place: NearbyPlace) {
+    setPreviewPlaceId(place.id);
+    setPreview(null);
+    setIsPreviewLoading(true);
+    try {
+      setPreview(await getPlacePreviewReview(place.id));
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }
+
+  function handlePreviewPress() {
+    if (!previewPlaceId) return;
+    onCancel();
+    router.push({ pathname: '/place/[id]', params: { id: previewPlaceId } });
+  }
+
+  async function handleConfirm() {
+    if (!selectedDetails) return;
+    setIsConfirming(true);
+    setError(null);
+    try {
+      const cached = await cachePlaceHierarchy(selectedDetails);
+      onSelect?.(cached);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not use that place.');
+    } finally {
+      setIsConfirming(false);
+    }
+  }
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
-      <ThemedView type="screen" style={styles.container}>
-        <Pressable onPress={onCancel}>
-          <ThemedText type="smallBold">Cancel</ThemedText>
-        </Pressable>
-        <ThemedText type="displaySerif">Find a place</ThemedText>
-        <PlaceSearchInput onSelect={onSelect} placeholder="Search for a place" />
-      </ThemedView>
+      <View style={styles.container}>
+        <View ref={containerRef} style={styles.map} />
+
+        <View style={styles.overlay} pointerEvents="box-none">
+          <View style={styles.searchBar}>
+            <Pressable onPress={onCancel} style={styles.cancelButton}>
+              <ThemedText type="smallBold" themeColor="background">
+                Cancel
+              </ThemedText>
+            </Pressable>
+            <TextField
+              placeholder="Search for a place"
+              value={query}
+              onChangeText={setQuery}
+              style={styles.input}
+            />
+          </View>
+
+          {error && (
+            <ThemedView type="backgroundElement" style={styles.messageBox}>
+              <ThemedText type="small">{error}</ThemedText>
+            </ThemedView>
+          )}
+          {isSearching && !error && (
+            <ThemedView type="backgroundElement" style={styles.messageBox}>
+              <ThemedText type="small">Searching…</ThemedText>
+            </ThemedView>
+          )}
+
+          {suggestions.length > 0 && (
+            <ThemedView type="backgroundElement" style={styles.suggestions}>
+              {suggestions.map((s) => (
+                <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
+                  <ThemedText type="small">{s.primaryText}</ThemedText>
+                  {s.secondaryText && (
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {s.secondaryText}
+                    </ThemedText>
+                  )}
+                </Pressable>
+              ))}
+            </ThemedView>
+          )}
+
+          {mode === 'pick' && selectedDetails && (
+            <View style={styles.confirmBar}>
+              <Button
+                label={`Use ${selectedDetails.displayName}`}
+                onPress={handleConfirm}
+                loading={isConfirming}
+              />
+            </View>
+          )}
+
+          {mode === 'browse' && previewPlaceId && (
+            <View style={styles.confirmBar}>
+              {isPreviewLoading && (
+                <ThemedView type="backgroundElement" style={styles.messageBox}>
+                  <ThemedText type="small">Loading…</ThemedText>
+                </ThemedView>
+              )}
+              {!isPreviewLoading && preview && (
+                <NearbyPlacePreviewCard preview={preview} onPress={handlePreviewPress} />
+              )}
+            </View>
+          )}
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -35,7 +354,56 @@ export function LocationSearchModal({ visible, onCancel, onSelect }: LocationSea
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: Spacing.four,
-    gap: Spacing.three,
+  },
+  // Deliberately NOT position:absolute (unlike `overlay` below) — mapbox-gl-js
+  // takes ownership of its container element's own `position` CSS property
+  // (forces it to `relative`) as part of mounting, which silently defeats
+  // top/left/right/bottom-driven sizing (those only resize position:absolute
+  // or fixed elements). flex:1 sizes this view via normal flex layout
+  // instead, which mapbox-gl-js's own styling doesn't touch — confirmed via
+  // computed styles: this element measured height:0 with absoluteFill (its
+  // position had silently become 'relative', explaining a fully blank map),
+  // fixed by switching to flex sizing here and moving the overlay (which
+  // React fully controls, untouched by mapbox-gl-js) to be the absolutely
+  // positioned layer instead.
+  map: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'space-between',
+    padding: Spacing.three,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: BrandColors.cream,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.five,
+  },
+  input: {
+    flex: 1,
+  },
+  messageBox: {
+    marginTop: Spacing.two,
+    borderRadius: Spacing.two,
+    padding: Spacing.two,
+  },
+  suggestions: {
+    marginTop: Spacing.two,
+    borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    gap: Spacing.half,
+  },
+  confirmBar: {
+    gap: Spacing.two,
   },
 });
