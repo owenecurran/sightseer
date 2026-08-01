@@ -89,6 +89,7 @@ export default function VisitDetailScreen() {
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
           contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
         <Pressable onPress={() => router.back()}>

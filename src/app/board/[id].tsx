@@ -109,6 +109,7 @@ export default function BoardDetailScreen() {
           data={items}
           keyExtractor={(item: BoardItemWithVisit) => item.id}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           renderItem={({ item }: { item: BoardItemWithVisit }) => {

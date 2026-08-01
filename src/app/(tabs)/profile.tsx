@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -14,6 +14,7 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
+import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
 import {
@@ -40,7 +41,8 @@ export default function ProfileScreen() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
-  useFocusEffect(
+  useTabFocusEffect(
+    4,
     useCallback(() => {
       if (!session) return;
       setError(null);
@@ -127,6 +129,7 @@ export default function ProfileScreen() {
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
           contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
           <View style={styles.contentWrap}>
@@ -251,7 +254,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   statsRow: {
-    gap: Spacing.half,
+    flexDirection: 'row',
+    gap: Spacing.three,
   },
   borderedBox: {
     borderWidth: 1,

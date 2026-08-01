@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -11,6 +11,7 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
+import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
 import { createBoard, listMyBoards } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
@@ -27,7 +28,8 @@ export default function BoardsScreen() {
   const [isCreating, setIsCreating] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
-  useFocusEffect(
+  useTabFocusEffect(
+    3,
     useCallback(() => {
       if (!session) return;
       setIsLoading(true);
@@ -95,6 +97,7 @@ export default function BoardsScreen() {
           data={boards}
           keyExtractor={(item: BoardRow) => item.id}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           renderItem={({ item }: { item: BoardRow }) => (
@@ -128,7 +131,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
   newBoardRow: {
@@ -139,8 +141,11 @@ const styles = StyleSheet.create({
   newBoardInput: {
     flex: 1,
   },
+  // paddingBottom belongs on the FlatList's own scrollable content, not the
+  // non-scrolling safeArea wrapper — see index.tsx's identical fix/comment.
   list: {
     gap: Spacing.two,
+    paddingBottom: BottomTabInset,
   },
   boardRow: {
     flexDirection: 'row',

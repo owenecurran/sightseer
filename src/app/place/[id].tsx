@@ -104,6 +104,7 @@ export default function PlaceDetailScreen() {
           data={visits}
           keyExtractor={(item: PlaceVisit) => item.id}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           renderItem={({ item }: { item: PlaceVisit }) => {

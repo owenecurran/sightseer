@@ -317,6 +317,7 @@ export default function SearchScreen() {
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
           contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
         <ThemedText type="sectionLabel">Search places</ThemedText>

@@ -1,8 +1,8 @@
 import { Camera, MapView, MarkerView, PointAnnotation } from '@rnmapbox/maps';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Keyboard, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NearbyPlacePreviewCard } from '@/components/nearby-place-preview-card';
 import { ThemedText } from '@/components/themed-text';
@@ -77,6 +77,14 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
   const viewportDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cameraRef = useRef<Camera>(null);
   const mapRef = useRef<MapView>(null);
+  // `useSafeAreaInsets()` read directly rather than `SafeAreaView` — RN's
+  // `Modal` presents in its own native view hierarchy on iOS, which
+  // `SafeAreaView`'s automatic inset detection doesn't reliably reach into
+  // (confirmed live: the search bar rendered up under the status bar/notch,
+  // unreachable). Reading the insets explicitly and applying them as padding
+  // works regardless of which native layer the Modal's content lives in —
+  // the same approach `floating-nav-bar.tsx` already uses successfully.
+  const insets = useSafeAreaInsets();
 
   // Reset to a blank search each time the picker is (re)opened, rather than
   // showing a stale previous search.
@@ -154,6 +162,20 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       if (mode === 'pick') setSelectedDetails(details);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
+    }
+  }
+
+  // Pressing the keyboard's return key previously did nothing — the
+  // keyboard just stayed open with no way to act on it. Selecting the top
+  // suggestion (if any) matches how this autocomplete already behaves on a
+  // tap, so return does the same thing tapping the first result would;
+  // dismissing the keyboard otherwise, so return always does *something*
+  // rather than only occasionally.
+  function handleSearchSubmit() {
+    if (suggestions.length > 0) {
+      handleSuggestionSelect(suggestions[0]);
+    } else {
+      Keyboard.dismiss();
     }
   }
 
@@ -240,7 +262,12 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
             ))}
         </MapView>
 
-        <SafeAreaView style={styles.overlay} pointerEvents="box-none">
+        <View
+          style={[
+            styles.overlay,
+            { paddingTop: insets.top + Spacing.three, paddingBottom: insets.bottom + Spacing.three },
+          ]}
+          pointerEvents="box-none">
           <View style={styles.searchBar}>
             <Pressable onPress={onCancel} style={styles.cancelButton}>
               <ThemedText type="smallBold" themeColor="background">
@@ -251,6 +278,8 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
               placeholder="Search for a place"
               value={query}
               onChangeText={setQuery}
+              onSubmitEditing={handleSearchSubmit}
+              returnKeyType="search"
               style={styles.input}
             />
           </View>
@@ -303,7 +332,7 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
               )}
             </View>
           )}
-        </SafeAreaView>
+        </View>
       </View>
     </Modal>
   );

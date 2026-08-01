@@ -23,11 +23,6 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyAQbtcr8zMbqmx9BpJ3R0mI-gabtrEjPDY"
-        }
-      },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
@@ -47,7 +42,6 @@
           "imageWidth": 76
         }
       ],
-      "expo-maps",
       "@rnmapbox/maps",
       [
         "expo-location",

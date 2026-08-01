@@ -113,6 +113,7 @@ export default function UserProfileScreen() {
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
           contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
           <View style={styles.contentWrap}>
@@ -237,7 +238,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   statsRow: {
-    gap: Spacing.half,
+    flexDirection: 'row',
+    gap: Spacing.three,
   },
   borderedBox: {
     borderWidth: 1,

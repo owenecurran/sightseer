@@ -1,54 +1,79 @@
 import { useFonts } from 'expo-font';
-import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import type PagerView from 'react-native-pager-view';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { FloatingNavBar } from '@/components/floating-nav-bar';
+import { TAB_ROUTES } from '@/constants/tab-routes';
 import { NavBarVisibilityProvider } from '@/hooks/use-hide-on-scroll';
+import { TabPagerProvider } from '@/hooks/use-tab-pager';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 
 SplashScreen.preventAutoHideAsync();
 
 function RootNavigator() {
   const { session, profile, isLoading } = useAuth();
+  const pathname = usePathname();
+  const pagerRef = useRef<PagerView>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
 
   const isAuthenticated = session !== null;
   const hasCompletedOnboarding = profile?.handle != null;
   const hasPassedInviteGate = profile?.has_shared_invite === true || profile?.invite_exempt === true;
-  const showNavBar = isAuthenticated && hasCompletedOnboarding && hasPassedInviteGate;
+  const isOnMainTab = (TAB_ROUTES as readonly string[]).includes(pathname);
+  // Nav bar now only shows on the 5 main tab screens — Stack-pushed detail
+  // screens (user/[id], place/[id], visit/[id], follow-list, etc.) go back
+  // to needing their own in-content back control, same as a normal Stack
+  // push. Previously this was intentionally *not* scoped (nav present on
+  // every authenticated screen); reversed per explicit follow-up feedback.
+  const showNavBar = isAuthenticated && hasCompletedOnboarding && hasPassedInviteGate && isOnMainTab;
+
+  function setActivePage(index: number) {
+    if (Platform.OS === 'web') {
+      router.navigate(TAB_ROUTES[index]);
+    } else {
+      pagerRef.current?.setPage(index);
+    }
+  }
 
   if (isLoading) return null;
 
   return (
     <NavBarVisibilityProvider>
-      <View style={{ flex: 1 }}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Protected guard={!isAuthenticated}>
-            <Stack.Screen name="(auth)/sign-in" />
-            <Stack.Screen name="(auth)/sign-up" />
-            <Stack.Screen name="(auth)/forgot-password" />
-          </Stack.Protected>
+      <TabPagerProvider
+        value={{ pagerRef, activeIndex, setActiveIndexInternal: setActiveIndex, setActivePage }}>
+        <View style={{ flex: 1 }}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Protected guard={!isAuthenticated}>
+              <Stack.Screen name="(auth)/sign-in" />
+              <Stack.Screen name="(auth)/sign-up" />
+              <Stack.Screen name="(auth)/forgot-password" />
+            </Stack.Protected>
 
-          <Stack.Protected guard={isAuthenticated && !hasCompletedOnboarding}>
-            <Stack.Screen name="onboarding" />
-          </Stack.Protected>
+            <Stack.Protected guard={isAuthenticated && !hasCompletedOnboarding}>
+              <Stack.Screen name="onboarding" />
+            </Stack.Protected>
 
-          <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && !hasPassedInviteGate}>
-            <Stack.Screen name="invite-gate" />
-          </Stack.Protected>
+            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && !hasPassedInviteGate}>
+              <Stack.Screen name="invite-gate" />
+            </Stack.Protected>
 
-          <Stack.Protected guard={showNavBar}>
-            <Stack.Screen name="(tabs)" />
-          </Stack.Protected>
-        </Stack>
-        {/* Rendered as a sibling above the Stack (not inside (tabs)) so it
-            persists across every authenticated screen, including
-            place/visit/user/board/reviews — Stack pushes outside (tabs)
-            that previously had no nav bar at all. */}
-        {showNavBar && <FloatingNavBar />}
-      </View>
+            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && hasPassedInviteGate}>
+              <Stack.Screen name="(tabs)" />
+            </Stack.Protected>
+          </Stack>
+          {/* Rendered as a sibling above the Stack (not inside (tabs)) so it
+              can float over every screen it's meant to — Stack.Protected's
+              own guard used to also gate its render, before nav-bar
+              visibility became route-scoped (isOnMainTab) rather than just
+              auth-scoped. */}
+          {showNavBar && <FloatingNavBar />}
+        </View>
+      </TabPagerProvider>
     </NavBarVisibilityProvider>
   );
 }

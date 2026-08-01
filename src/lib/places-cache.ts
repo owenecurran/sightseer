@@ -15,6 +15,7 @@ function levelFromTypes(types: string[]): PlaceLevel {
 
 const WATER_TYPES = ['beach', 'lake', 'river', 'island'];
 const TRAIL_TYPES = ['hiking_area', 'nature_preserve', 'scenic_spot'];
+const NATIONAL_PARK_TYPES = ['national_park'];
 const FOOD_DRINK_TYPES = [
   'restaurant',
   'bar',
@@ -38,6 +39,10 @@ const FOOD_DRINK_TYPES = [
 // rather than being individually enumerated, since Google adds more over
 // time and hardcoding each one would silently miss new ones.
 function categorizeFromTypes(types: string[]): PlaceCategory {
+  // Checked first — a national park can also carry a generic type like
+  // "nature_preserve" (TRAIL_TYPES below), and the more specific, more
+  // useful category should win rather than falling into the generic bucket.
+  if (types.some((t) => NATIONAL_PARK_TYPES.includes(t))) return 'national_park';
   if (types.some((t) => WATER_TYPES.includes(t))) return 'water';
   if (types.some((t) => TRAIL_TYPES.includes(t))) return 'trail';
   if (types.some((t) => t.endsWith('_restaurant') || FOOD_DRINK_TYPES.includes(t))) return 'food_drink';
@@ -65,6 +70,18 @@ async function getOrCreatePlace(params: {
       .select('*')
       .eq('google_place_id', googlePlaceId)
       .maybeSingle();
+    // NOTE: intentionally does NOT attempt to "upgrade" a stale row's
+    // category here (a place cached before national_park classification
+    // existed keeps reporting category: null via this path) — `places` is
+    // deliberately client-append-only, RLS has no update policy at all
+    // ("corrections happen server-side (service role) only", per
+    // supabase/migrations/20260721120100_rls_policies.sql's own comment).
+    // Confirmed live: attempting a client update here throws a real 406,
+    // it doesn't silently no-op. The *other* lookup path below (match by
+    // level/name/parent) has an existing update call with this same
+    // problem — not touched here since it wasn't part of this change, but
+    // it's the same latent issue and would fail the same way if actually
+    // exercised.
     if (byGoogleId) return byGoogleId;
   }
 

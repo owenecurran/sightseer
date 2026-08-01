@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -14,6 +14,7 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { VisitMenu } from '@/components/visit-menu';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
+import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getFeedVisits, likeVisit, unlikeVisit, type FeedVisit, type TaggedPlace } from '@/lib/feed';
@@ -60,10 +61,13 @@ export default function HomeScreen() {
   const [copiedVisitId, setCopiedVisitId] = useState<string | null>(null);
   const scrollHandler = useHideOnScrollHandler();
 
-  // Refetch on every focus, not just on mount — tab navigators keep sibling
+  // Refetch on every focus, not just on mount — tab navigators (native: a
+  // PagerView, all 5 tabs mounted at once; web: a real Stack) keep sibling
   // screens mounted, so a plain useEffect(...,[session]) would never notice
-  // a follow made on the People tab without this.
-  useFocusEffect(
+  // a follow made on the People tab without this. See use-tab-pager.ts for
+  // why this isn't plain useFocusEffect anymore.
+  useTabFocusEffect(
+    0,
     useCallback(() => {
       if (!session) return;
       setIsLoading(true);
@@ -161,6 +165,7 @@ export default function HomeScreen() {
           data={visits}
           keyExtractor={(item: FeedVisit) => item.id}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           renderItem={({ item }: { item: FeedVisit }) => (
@@ -238,11 +243,16 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
+  // paddingBottom belongs on the FlatList's own scrollable content, not
+  // this non-scrolling wrapper — putting it here (as it used to be) only
+  // shrinks the FlatList's viewport height, it doesn't add space the list
+  // can actually scroll into, so the last card had no clearance from the
+  // floating nav bar once you scrolled all the way down.
   list: {
     gap: Spacing.three,
+    paddingBottom: BottomTabInset,
   },
   card: {
     paddingVertical: Spacing.three,

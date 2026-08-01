@@ -88,30 +88,37 @@ const styles = StyleSheet.create({
     fontWeight: Platform.select({ android: 700 }) ?? 500,
     fontSize: 12,
   },
+  // Custom display fonts (BrandFonts.*) have taller glyph metrics than the
+  // system font a plain `fontSize * 1.1-1.2` lineHeight heuristic assumes —
+  // too tight a lineHeight clips the tops of ascenders/cap-height instead of
+  // just tightening leading, and iOS is stricter about honoring lineHeight
+  // as a hard clip boundary than Android/web are (same fontSize/lineHeight
+  // values rendered fine on both of those, only iOS showed clipping).
+  // Padded to roughly a 1.2x+ ratio here, not just nudged a couple pixels.
   displaySerif: {
     fontFamily: BrandFonts.serifDisplay,
     fontSize: 32,
-    lineHeight: 36,
+    lineHeight: 40,
   },
   headline: {
     fontFamily: BrandFonts.condensedHeavy,
     fontSize: 34,
-    lineHeight: 38,
+    lineHeight: 42,
     textTransform: 'uppercase',
   },
   statLine: {
     fontFamily: BrandFonts.condensedHeavy,
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   roundedStat: {
     fontFamily: BrandFonts.roundedStat,
     fontSize: 14,
-    lineHeight: 18,
+    lineHeight: 20,
   },
   sectionLabel: {
     fontFamily: BrandFonts.wideMedium,
     fontSize: 12,
-    lineHeight: 16,
+    lineHeight: 18,
   },
 });

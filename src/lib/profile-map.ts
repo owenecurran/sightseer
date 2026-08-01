@@ -7,6 +7,34 @@ export type VisitedPlace = {
   lng: number;
 };
 
+type RawCategoryRow = {
+  places: { id: string; name: string; lat: number | null; lng: number | null; category: string | null } | null;
+};
+
+// Same shape/reasoning as getVisitedPlaces below (client-side filter over a
+// small per-user dataset rather than a fragile nested-table PostgREST
+// filter) — this just also keeps `category` so the caller can filter to
+// `'national_park'` for the profile map's National Parks overlay.
+export async function getVisitedPlacesWithCategory(
+  userId: string
+): Promise<(VisitedPlace & { category: string | null })[]> {
+  const { data, error } = await supabase
+    .from('visits')
+    .select('places!place_id(id, name, lat, lng, category)')
+    .eq('user_id', userId);
+  if (error) throw error;
+
+  const seen = new Set<string>();
+  const places: (VisitedPlace & { category: string | null })[] = [];
+  for (const row of data as unknown as RawCategoryRow[]) {
+    const place = row.places;
+    if (!place || place.lat == null || place.lng == null || seen.has(place.id)) continue;
+    seen.add(place.id);
+    places.push({ id: place.id, name: place.name, lat: place.lat, lng: place.lng, category: place.category });
+  }
+  return places;
+}
+
 type RawRow = {
   places: { id: string; name: string; lat: number | null; lng: number | null } | null;
 };
@@ -39,21 +67,23 @@ export async function getVisitedPlaces(userId: string): Promise<VisitedPlace[]> 
 export type VisitedRegion = {
   id: string;
   name: string;
-  // One entry per polygon in the underlying (Multi)Polygon, each the
-  // outer ring only — expo-maps' Polygon type has no documented support
-  // for interior rings (holes), so those are dropped rather than rendered
-  // incorrectly.
-  rings: { latitude: number; longitude: number }[][];
+  level: 'country' | 'admin_area_1';
+  // One entry per polygon in the underlying (Multi)Polygon, each the outer
+  // ring only (interior rings/holes are dropped, same simplification the
+  // expo-maps version made). Kept as raw [lng, lat] tuples — GeoJSON's own
+  // coordinate order — rather than {latitude, longitude} objects, since
+  // these feed a Mapbox ShapeSource/FillLayer now, which wants real GeoJSON.
+  rings: [number, number][][];
 };
 
-function parseMultiPolygonRings(geojson: string): { latitude: number; longitude: number }[][] {
+function parseMultiPolygonRings(geojson: string): [number, number][][] {
   const parsed = JSON.parse(geojson) as { type: string; coordinates: unknown };
   const polygons =
     parsed.type === 'MultiPolygon'
       ? (parsed.coordinates as number[][][][])
       : [parsed.coordinates as number[][][]];
 
-  return polygons.map((polygon) => polygon[0].map(([lng, lat]) => ({ latitude: lat, longitude: lng })));
+  return polygons.map((polygon) => polygon[0].map(([lng, lat]) => [lng, lat] as [number, number]));
 }
 
 // Fetches cached region boundaries, triggers a fetch-place-boundary call
@@ -79,6 +109,13 @@ export async function getVisitedRegions(userId: string): Promise<VisitedRegion[]
   }
 
   return rows
-    .filter((r) => r.boundary_geojson)
-    .map((r) => ({ id: r.id, name: r.name, rings: parseMultiPolygonRings(r.boundary_geojson) }));
+    .filter((r): r is typeof r & { level: 'country' | 'admin_area_1' } =>
+      Boolean(r.boundary_geojson) && (r.level === 'country' || r.level === 'admin_area_1')
+    )
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      level: r.level,
+      rings: parseMultiPolygonRings(r.boundary_geojson as string),
+    }));
 }

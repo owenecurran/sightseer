@@ -66,6 +66,7 @@ export default function FollowListScreen() {
           data={entries}
           keyExtractor={(item: FollowListEntry) => item.id}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           ListHeaderComponent={

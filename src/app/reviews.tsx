@@ -76,6 +76,7 @@ export default function AllReviewsScreen() {
           data={visits}
           keyExtractor={(item: OwnVisit) => item.id}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           ListHeaderComponent={
