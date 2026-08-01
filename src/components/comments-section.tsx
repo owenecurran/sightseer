@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -7,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/hooks/use-theme';
 import { addComment, deleteComment, listComments, type Comment } from '@/lib/comments';
 
 type CommentsSectionProps = {
@@ -17,6 +19,7 @@ type CommentsSectionProps = {
 
 export function CommentsSection({ visitId, visitOwnerId, initialCount }: CommentsSectionProps) {
   const { session } = useAuth();
+  const theme = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -64,9 +67,10 @@ export function CommentsSection({ visitId, visitOwnerId, initialCount }: Comment
 
   if (!isExpanded) {
     return (
-      <Pressable onPress={() => setIsExpanded(true)}>
+      <Pressable onPress={() => setIsExpanded(true)} hitSlop={8} style={styles.entryRow}>
+        <Ionicons name="chatbubble-outline" size={22} color={theme.textSecondary} />
         <ThemedText type="small" themeColor="textSecondary">
-          {count > 0 ? `💬 ${count} comment${count === 1 ? '' : 's'}` : '💬 Add a comment'}
+          {count > 0 ? `${count} comment${count === 1 ? '' : 's'}` : 'Add a comment'}
         </ThemedText>
       </Pressable>
     );
@@ -119,6 +123,11 @@ export function CommentsSection({ visitId, visitOwnerId, initialCount }: Comment
 }
 
 const styles = StyleSheet.create({
+  entryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
   container: {
     gap: Spacing.two,
   },

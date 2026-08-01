@@ -139,6 +139,7 @@ export type Database = {
       }
       boards: {
         Row: {
+          cover_photo_id: string | null
           cover_r2_key: string | null
           created_at: string
           description: string | null
@@ -148,6 +149,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          cover_photo_id?: string | null
           cover_r2_key?: string | null
           created_at?: string
           description?: string | null
@@ -157,6 +159,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          cover_photo_id?: string | null
           cover_r2_key?: string | null
           created_at?: string
           description?: string | null
@@ -166,6 +169,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "boards_cover_photo_id_fkey"
+            columns: ["cover_photo_id"]
+            isOneToOne: false
+            referencedRelation: "photos"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "boards_user_id_fkey"
             columns: ["user_id"]
@@ -690,33 +700,53 @@ export type Database = {
       }
       travel_books: {
         Row: {
+          cover_photo_id: string | null
           cover_r2_key: string | null
           created_at: string
           description: string | null
           id: string
           is_private: boolean
+          location_place_id: string | null
           title: string
           user_id: string
         }
         Insert: {
+          cover_photo_id?: string | null
           cover_r2_key?: string | null
           created_at?: string
           description?: string | null
           id?: string
           is_private?: boolean
+          location_place_id?: string | null
           title: string
           user_id: string
         }
         Update: {
+          cover_photo_id?: string | null
           cover_r2_key?: string | null
           created_at?: string
           description?: string | null
           id?: string
           is_private?: boolean
+          location_place_id?: string | null
           title?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "travel_books_cover_photo_id_fkey"
+            columns: ["cover_photo_id"]
+            isOneToOne: false
+            referencedRelation: "photos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_books_location_place_id_fkey"
+            columns: ["location_place_id"]
+            isOneToOne: false
+            referencedRelation: "places"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "travel_books_user_id_fkey"
             columns: ["user_id"]
@@ -740,7 +770,10 @@ export type Database = {
           invite_exempt: boolean
           is_admin: boolean
           is_private: boolean
+          map_default_center_lat: number | null
+          map_default_center_lng: number | null
           map_default_layers: string[]
+          map_default_zoom: number | null
           name: string | null
           notify_comments: boolean
           notify_follows: boolean
@@ -760,7 +793,10 @@ export type Database = {
           invite_exempt?: boolean
           is_admin?: boolean
           is_private?: boolean
+          map_default_center_lat?: number | null
+          map_default_center_lng?: number | null
           map_default_layers?: string[]
+          map_default_zoom?: number | null
           name?: string | null
           notify_comments?: boolean
           notify_follows?: boolean
@@ -780,7 +816,10 @@ export type Database = {
           invite_exempt?: boolean
           is_admin?: boolean
           is_private?: boolean
+          map_default_center_lat?: number | null
+          map_default_center_lng?: number | null
           map_default_layers?: string[]
+          map_default_zoom?: number | null
           name?: string | null
           notify_comments?: boolean
           notify_follows?: boolean

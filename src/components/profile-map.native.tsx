@@ -22,6 +22,7 @@ import { getVisitedPlacesWithCategory, getVisitedRegions, type VisitedRegion } f
 type ProfileMapProps = {
   userId: string;
   defaultLayers?: string[];
+  defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
 };
 
@@ -52,7 +53,7 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): FeatureCollection
 // `users.map_default_layers`, set via ProfileMapModal's "Set as default")
 // says to show, same layer set/rendering as the full-screen modal, just at
 // preview size. Tap still expands into `ProfileMapModal` for ad hoc toggling.
-export function ProfileMap({ userId, defaultLayers, isOwnProfile }: ProfileMapProps) {
+export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile }: ProfileMapProps) {
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>> | null>(null);
   const [regions, setRegions] = useState<VisitedRegion[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -88,7 +89,12 @@ export function ProfileMap({ userId, defaultLayers, isOwnProfile }: ProfileMapPr
       </ThemedText>
       <Pressable onPress={() => setIsExpanded(true)}>
         <MapView style={styles.map} styleURL={MAPBOX_STYLE_URL} scaleBarEnabled={false} scrollEnabled={false} zoomEnabled={false}>
-          <Camera defaultSettings={{ centerCoordinate: centroid(places), zoomLevel: DEFAULT_ZOOM }} />
+          <Camera
+            defaultSettings={{
+              centerCoordinate: defaultCamera ? [defaultCamera.lng, defaultCamera.lat] : centroid(places),
+              zoomLevel: defaultCamera?.zoom ?? DEFAULT_ZOOM,
+            }}
+          />
           {layers.has('countries') && (
             <ShapeSource id="countries-source" shape={countryFeatures}>
               <FillLayer id="countries-fill" style={{ fillColor: COUNTRY_FILL, fillOpacity: COUNTRY_FILL_OPACITY }} />
@@ -120,6 +126,7 @@ export function ProfileMap({ userId, defaultLayers, isOwnProfile }: ProfileMapPr
         onClose={() => setIsExpanded(false)}
         userId={userId}
         defaultLayers={defaultLayers}
+        defaultCamera={defaultCamera}
         isOwnProfile={isOwnProfile}
       />
     </View>

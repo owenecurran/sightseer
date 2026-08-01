@@ -17,7 +17,7 @@ import {
   autocompletePlaces,
   createPlacesSessionToken,
   fetchPlaceDetails,
-  findNearbyPlace,
+  findNearbyPlaces,
   type PlaceAutocompleteSuggestion,
   type PlaceDetails,
 } from '@/lib/google-places';
@@ -72,11 +72,14 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
   const [previewPlaceId, setPreviewPlaceId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PlacePreview | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-  // Uber-style "drag the map to name an unmarked spot" (pick mode only) —
-  // the center-pin lookup, independent of selectedDetails (an explicit
-  // search pick). null = nothing resolved yet; explicit `false`-ish states
-  // aren't needed since isLoadingCenterPlace covers "still looking."
-  const [centerPlace, setCenterPlace] = useState<PlaceDetails | null>(null);
+  // Uber-style "drag the map to name an unmarked spot" — the center-pin
+  // lookup, independent of selectedDetails (an explicit search pick). Now
+  // used in both modes (pick: choose among candidates to confirm; browse:
+  // choose among candidates to jump straight to that place's page). Up to
+  // NEARBY_MAX_RESULTS candidates; `selectedCenterPlace` is which one (if
+  // any) the user tapped from that list, pick-mode only.
+  const [centerCandidates, setCenterCandidates] = useState<PlaceDetails[]>([]);
+  const [selectedCenterPlace, setSelectedCenterPlace] = useState<PlaceDetails | null>(null);
   const [isLoadingCenterPlace, setIsLoadingCenterPlace] = useState(false);
   const [hasSearchedCenter, setHasSearchedCenter] = useState(false);
 
@@ -111,7 +114,8 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     setNearbyPlaces([]);
     setPreviewPlaceId(null);
     setPreview(null);
-    setCenterPlace(null);
+    setCenterCandidates([]);
+    setSelectedCenterPlace(null);
     setHasSearchedCenter(false);
     sessionTokenRef.current = createPlacesSessionToken();
 
@@ -180,7 +184,8 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       // specific result.
       if (mode === 'pick') {
         setSelectedDetails(details);
-        setCenterPlace(null);
+        setCenterCandidates([]);
+        setSelectedCenterPlace(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
@@ -202,7 +207,7 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
   }
 
   async function handleConfirm() {
-    const target = selectedDetails ?? centerPlace;
+    const target = selectedDetails ?? selectedCenterPlace;
     if (!target) return;
     setIsConfirming(true);
     setError(null);
@@ -213,6 +218,25 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       setError(err instanceof Error ? err.message : 'Could not use that place.');
     } finally {
       setIsConfirming(false);
+    }
+  }
+
+  // pick mode: choosing among the center-pin candidates just picks the
+  // confirm-bar target, same as an explicit search pick. browse mode has no
+  // "confirm" concept — tapping a candidate there jumps straight to that
+  // place's page, mirroring handlePreviewPress below.
+  async function handleCenterCandidatePress(place: PlaceDetails) {
+    if (mode === 'pick') {
+      setSelectedCenterPlace(place);
+      return;
+    }
+    setError(null);
+    try {
+      const cached = await cachePlaceHierarchy(place);
+      onCancel();
+      router.push({ pathname: '/place/[id]', params: { id: cached.id } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open that place.');
     }
   }
 
@@ -231,17 +255,18 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       // search pick no longer applies once the user has moved the map
       // themselves.
       setSelectedDetails(null);
+      setSelectedCenterPlace(null);
       const [lng, lat] = state.properties.center;
       if (viewportDebounceRef.current) clearTimeout(viewportDebounceRef.current);
       viewportDebounceRef.current = setTimeout(async () => {
         setIsLoadingCenterPlace(true);
         try {
-          setCenterPlace(await findNearbyPlace(lat, lng));
+          setCenterCandidates(await findNearbyPlaces(lat, lng));
         } catch {
           // Best-effort, same reasoning as browse mode's nearby fetch below —
           // a failed lookup shouldn't block the map, the user can still type
           // a search instead.
-          setCenterPlace(null);
+          setCenterCandidates([]);
         } finally {
           setIsLoadingCenterPlace(false);
           setHasSearchedCenter(true);
@@ -252,7 +277,12 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
 
     if (mode !== 'browse') return;
     if (viewportDebounceRef.current) clearTimeout(viewportDebounceRef.current);
+    const [lng, lat] = state.properties.center;
     viewportDebounceRef.current = setTimeout(async () => {
+      findNearbyPlaces(lat, lng)
+        .then(setCenterCandidates)
+        .catch(() => setCenterCandidates([]));
+
       const bounds = await mapRef.current?.getVisibleBounds();
       if (!bounds) return;
       // getVisibleBounds() returns [[rightLon, topLat], [leftLon, bottomLat]].
@@ -323,12 +353,11 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
             it. `centerPinDot`'s own negative margin (half its own size)
             shifts it so its tip, not its geometric center, marks the true
             center point. pointerEvents="none" so it never blocks map-drag
-            gestures. */}
-        {mode === 'pick' && (
-          <View style={styles.centerPinWrap} pointerEvents="none">
-            <View style={styles.centerPinDot} />
-          </View>
-        )}
+            gestures. Available in both modes — browse mode uses it to jump
+            straight to a place page instead of a pick/confirm flow. */}
+        <View style={styles.centerPinWrap} pointerEvents="none">
+          <View style={styles.centerPinDot} />
+        </View>
 
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -384,27 +413,50 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
             </ThemedView>
           )}
 
-          {mode === 'pick' && (selectedDetails || centerPlace) && (
+          {mode === 'pick' && (selectedDetails || selectedCenterPlace) && (
             <View style={styles.confirmBar}>
               <Button
-                label={`Use ${(selectedDetails ?? centerPlace)!.displayName}`}
+                label={`Use ${(selectedDetails ?? selectedCenterPlace)!.displayName}`}
                 onPress={handleConfirm}
                 loading={isConfirming}
               />
             </View>
           )}
-          {mode === 'pick' && !selectedDetails && !centerPlace && isLoadingCenterPlace && (
-            <ThemedView type="backgroundElement" style={styles.messageBox}>
-              <ThemedText type="small">Looking here…</ThemedText>
+          {mode === 'pick' && !selectedDetails && !selectedCenterPlace && centerCandidates.length > 0 && (
+            <ThemedView type="backgroundElement" style={styles.suggestions}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {centerCandidates.map((place) => (
+                  <Pressable
+                    key={place.id}
+                    onPress={() => handleCenterCandidatePress(place)}
+                    style={styles.suggestionRow}>
+                    <ThemedText type="small">{place.displayName}</ThemedText>
+                  </Pressable>
+                ))}
+              </ScrollView>
             </ThemedView>
           )}
-          {mode === 'pick' && !selectedDetails && !centerPlace && !isLoadingCenterPlace && hasSearchedCenter && (
-            <ThemedView type="backgroundElement" style={styles.messageBox}>
-              <ThemedText type="small" themeColor="textSecondary">
-                No named place here — try dragging a bit or search instead.
-              </ThemedText>
-            </ThemedView>
-          )}
+          {mode === 'pick' &&
+            !selectedDetails &&
+            !selectedCenterPlace &&
+            centerCandidates.length === 0 &&
+            isLoadingCenterPlace && (
+              <ThemedView type="backgroundElement" style={styles.messageBox}>
+                <ThemedText type="small">Looking here…</ThemedText>
+              </ThemedView>
+            )}
+          {mode === 'pick' &&
+            !selectedDetails &&
+            !selectedCenterPlace &&
+            centerCandidates.length === 0 &&
+            !isLoadingCenterPlace &&
+            hasSearchedCenter && (
+              <ThemedView type="backgroundElement" style={styles.messageBox}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  No named place here — try dragging a bit or search instead.
+                </ThemedText>
+              </ThemedView>
+            )}
 
           {mode === 'browse' && previewPlaceId && (
             <View style={styles.confirmBar}>
@@ -417,6 +469,20 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
                 <NearbyPlacePreviewCard preview={preview} onPress={handlePreviewPress} />
               )}
             </View>
+          )}
+          {mode === 'browse' && !previewPlaceId && centerCandidates.length > 0 && (
+            <ThemedView type="backgroundElement" style={styles.suggestions}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {centerCandidates.map((place) => (
+                  <Pressable
+                    key={place.id}
+                    onPress={() => handleCenterCandidatePress(place)}
+                    style={styles.suggestionRow}>
+                    <ThemedText type="small">{place.displayName}</ThemedText>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </ThemedView>
           )}
         </KeyboardAvoidingView>
       </View>
@@ -486,8 +552,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     gap: Spacing.half,
   },
+  // Extra breathing room above the bare safe-area inset already applied to
+  // the KeyboardAvoidingView — without this the button sits right at the
+  // legal minimum above the home-indicator, which reads as "too low" on
+  // real iOS devices even though nothing is technically obstructing it.
   confirmBar: {
     gap: Spacing.two,
+    marginBottom: Spacing.three,
   },
   pin: {
     width: 20,

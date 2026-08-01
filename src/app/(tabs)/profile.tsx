@@ -25,6 +25,7 @@ import {
   type IncomingFollowRequest,
 } from '@/lib/follows';
 import { pickImageFromLibrary } from '@/lib/image-picker';
+import { parseDefaultCamera } from '@/lib/map-layers';
 import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
 
@@ -184,7 +185,12 @@ export default function ProfileScreen() {
 
             {session && profile?.show_map && (
               <ThemedView type="backgroundElement" style={styles.neutralCard}>
-                <ProfileMap userId={session.user.id} defaultLayers={profile.map_default_layers} isOwnProfile />
+                <ProfileMap
+                  userId={session.user.id}
+                  defaultLayers={profile.map_default_layers}
+                  defaultCamera={parseDefaultCamera(profile)}
+                  isOwnProfile
+                />
               </ThemedView>
             )}
 

@@ -22,6 +22,7 @@ import {
   getTravelBookDetail,
   getTravelBookItems,
   removeVisitFromTravelBook,
+  setTravelBookCoverPhoto,
   type TravelBookCollaborator,
   type TravelBookItem,
   type TravelBookRow,
@@ -32,6 +33,7 @@ export default function TravelBookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
   const [book, setBook] = useState<TravelBookRow | null>(null);
+  const [locationName, setLocationName] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<TravelBookCollaborator[]>([]);
   const [items, setItems] = useState<TravelBookItem[]>([]);
   const [recap, setRecap] = useState<TravelBookRecapRow | null>(null);
@@ -62,6 +64,7 @@ export default function TravelBookDetailScreen() {
             getRecap(id),
           ]);
           setBook(detail.book);
+          setLocationName(detail.locationName);
           setCollaborators(detail.collaborators);
           setItems(bookItems);
           setRecap(bookRecap);
@@ -122,6 +125,17 @@ export default function TravelBookDetailScreen() {
     }
   }
 
+  async function handleSetCover(photoId: string) {
+    if (!book) return;
+    setError(null);
+    try {
+      await setTravelBookCoverPhoto(book.id, photoId);
+      setBook({ ...book, cover_photo_id: photoId });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not set that cover photo.');
+    }
+  }
+
   if (!hasLoadedOnce) return <PageLoader />;
 
   const members = book ? [{ userId: book.user_id, name: '' }, ...collaborators] : [];
@@ -139,6 +153,11 @@ export default function TravelBookDetailScreen() {
           </Pressable>
 
           <ThemedText type="displaySerif">{book?.title ?? 'Travel book'}</ThemedText>
+          {locationName && (
+            <ThemedText type="small" themeColor="sage">
+              {locationName}
+            </ThemedText>
+          )}
           {book?.description && (
             <ThemedText type="small" themeColor="textSecondary">
               {book.description}
@@ -177,6 +196,13 @@ export default function TravelBookDetailScreen() {
                       {item.rating.toFixed(1)} ★{item.note ? ` · ${item.note}` : ''}
                     </ThemedText>
                     <PhotoGrid urls={item.photoIds.map((pid) => photoUrls[pid]).filter((url) => url != null)} />
+                    {session && book?.user_id === session.user.id && item.photoIds[0] && (
+                      <Pressable onPress={() => handleSetCover(item.photoIds[0])} hitSlop={8}>
+                        <ThemedText type="small" themeColor="sage">
+                          {book.cover_photo_id === item.photoIds[0] ? 'Cover photo ✓' : 'Set as cover'}
+                        </ThemedText>
+                      </Pressable>
+                    )}
                   </View>
                   {session && (item.addedBy === session.user.id || book?.user_id === session.user.id) && (
                     <Pressable onPress={() => handleRemoveItem(item)} hitSlop={8}>

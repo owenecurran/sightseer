@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -5,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
+import { useTheme } from '@/hooks/use-theme';
 import { reportVisit, type ReportReason } from '@/lib/reports';
 import { supabase } from '@/lib/supabase';
 
@@ -23,6 +25,7 @@ type VisitMenuProps = {
 
 export function VisitMenu({ visitId, isOwner, onDeleted }: VisitMenuProps) {
   const { session } = useAuth();
+  const theme = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [reportedReason, setReportedReason] = useState<ReportReason | null>(null);
@@ -57,10 +60,8 @@ export function VisitMenu({ visitId, isOwner, onDeleted }: VisitMenuProps) {
 
   if (!isOpen) {
     return (
-      <Pressable onPress={handleToggle}>
-        <ThemedText type="small" themeColor="textSecondary">
-          ⋮
-        </ThemedText>
+      <Pressable onPress={handleToggle} hitSlop={8}>
+        <Ionicons name="ellipsis-horizontal" size={22} color={theme.textSecondary} />
       </Pressable>
     );
   }

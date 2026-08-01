@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { Spacing } from '@/constants/theme';
 import type { BoardVisitItem } from '@/lib/boards';
@@ -9,6 +10,9 @@ import type { BoardVisitItem } from '@/lib/boards';
 type ImagesGridViewProps = {
   items: BoardVisitItem[];
   photoUrls: Record<string, string>;
+  isOwner?: boolean;
+  coverPhotoId?: string | null;
+  onSetCover?: (photoId: string) => void;
 };
 
 const COLUMNS = 3;
@@ -18,12 +22,11 @@ const GAP = 2;
 // is looking for" — a uniform Instagram-Explore-style grid (not variable-
 // height masonry, which Instagram's own grid isn't either), flattening
 // every item's photos into one continuous scroll.
-export function ImagesGridView({ items, photoUrls }: ImagesGridViewProps) {
+export function ImagesGridView({ items, photoUrls, isOwner, coverPhotoId, onSetCover }: ImagesGridViewProps) {
   const tiles = items.flatMap((item) =>
     item.photoIds
-      .map((photoId) => photoUrls[photoId])
-      .filter((url): url is string => url != null)
-      .map((url) => ({ url, visitId: item.visitId, key: `${item.id}-${url}` }))
+      .filter((photoId) => photoUrls[photoId] != null)
+      .map((photoId) => ({ photoId, url: photoUrls[photoId], visitId: item.visitId, key: `${item.id}-${photoId}` }))
   );
 
   if (tiles.length === 0) {
@@ -44,6 +47,19 @@ export function ImagesGridView({ items, photoUrls }: ImagesGridViewProps) {
           style={styles.tile}
           onPress={() => router.push({ pathname: '/visit/[id]', params: { id: tile.visitId } })}>
           <LoadableImage source={{ uri: tile.url }} style={styles.image} />
+          {isOwner && onSetCover && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                onSetCover(tile.photoId);
+              }}
+              hitSlop={4}
+              style={styles.coverButton}>
+              <ThemedView type={coverPhotoId === tile.photoId ? 'backgroundSelected' : 'backgroundElement'} style={styles.coverBadge}>
+                <ThemedText type="small">{coverPhotoId === tile.photoId ? 'Cover ✓' : 'Set as cover'}</ThemedText>
+              </ThemedView>
+            </Pressable>
+          )}
         </Pressable>
       ))}
     </View>
@@ -70,5 +86,17 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  coverButton: {
+    position: 'absolute',
+    bottom: Spacing.one,
+    left: Spacing.one,
+    right: Spacing.one,
+  },
+  coverBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: Spacing.one,
+    borderRadius: Spacing.one,
+    alignItems: 'center',
   },
 });

@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CollectionsSwitcher } from '@/components/collections-switcher';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -40,12 +41,19 @@ export default function BoardsScreen() {
       listMyBoards(session.user.id)
         .then(async (myBoards) => {
           setBoards(myBoards);
-          const latestPhotoIdByBoard = await getLatestReviewPhotoIds(myBoards.map((b) => b.id));
-          const photoIds = Object.values(latestPhotoIdByBoard);
+          // Explicit cover_photo_id wins when set; boards without one fall
+          // back to the most-recently-added item's photo.
+          const boardsWithoutCover = myBoards.filter((b) => !b.cover_photo_id);
+          const latestPhotoIdByBoard = await getLatestReviewPhotoIds(boardsWithoutCover.map((b) => b.id));
+          const photoIdByBoard: Record<string, string> = { ...latestPhotoIdByBoard };
+          for (const b of myBoards) {
+            if (b.cover_photo_id) photoIdByBoard[b.id] = b.cover_photo_id;
+          }
+          const photoIds = Object.values(photoIdByBoard);
           const photoUrls = photoIds.length > 0 ? await getPhotoViewUrls(photoIds) : {};
           setThumbnailUrls(
             Object.fromEntries(
-              Object.entries(latestPhotoIdByBoard)
+              Object.entries(photoIdByBoard)
                 .map(([boardId, photoId]) => [boardId, photoUrls[photoId]])
                 .filter(([, url]) => url != null)
             )
@@ -81,11 +89,7 @@ export default function BoardsScreen() {
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="displaySerif">Your boards</ThemedText>
 
-        <Pressable onPress={() => router.push('/travel-books')}>
-          <ThemedText type="small" themeColor="sage">
-            Travel books ›
-          </ThemedText>
-        </Pressable>
+        <CollectionsSwitcher active="boards" />
 
         <ThemedView style={styles.newBoardRow}>
           <TextField

@@ -5,7 +5,11 @@ import type { Database } from '@/lib/database.types';
 
 export type TravelBookRow = Database['public']['Tables']['travel_books']['Row'];
 
-export async function listMyTravelBooks(userId: string): Promise<TravelBookRow[]> {
+export type TravelBookListItem = TravelBookRow & { locationName: string | null };
+
+type TravelBookWithPlace = TravelBookRow & { places: { name: string } | null };
+
+export async function listMyTravelBooks(userId: string): Promise<TravelBookListItem[]> {
   const { data: collab, error: collabError } = await supabase
     .from('travel_book_collaborators')
     .select('travel_book_id')
@@ -17,11 +21,15 @@ export async function listMyTravelBooks(userId: string): Promise<TravelBookRow[]
 
   const { data, error } = await supabase
     .from('travel_books')
-    .select('*')
+    .select('*, places!location_place_id(name)')
     .or(filter)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data;
+
+  return (data as unknown as TravelBookWithPlace[]).map(({ places, ...book }) => ({
+    ...book,
+    locationName: places?.name ?? null,
+  }));
 }
 
 export async function createTravelBook(params: {
@@ -29,6 +37,7 @@ export async function createTravelBook(params: {
   title: string;
   description?: string;
   isPrivate?: boolean;
+  locationPlaceId?: string | null;
 }): Promise<TravelBookRow> {
   const { data, error } = await supabase
     .from('travel_books')
@@ -37,6 +46,7 @@ export async function createTravelBook(params: {
       title: params.title,
       description: params.description || null,
       is_private: params.isPrivate ?? false,
+      location_place_id: params.locationPlaceId ?? null,
     })
     .select()
     .single();
@@ -44,21 +54,30 @@ export async function createTravelBook(params: {
   return data;
 }
 
+// Cover is picked from an existing item photo already in the book — no
+// upload, just a reference, same as boards' setBoardCoverPhoto.
+export async function setTravelBookCoverPhoto(bookId: string, photoId: string): Promise<void> {
+  const { error } = await supabase.from('travel_books').update({ cover_photo_id: photoId }).eq('id', bookId);
+  if (error) throw error;
+}
+
 export type TravelBookCollaborator = { userId: string; name: string };
 
 export async function getTravelBookDetail(
   bookId: string
-): Promise<{ book: TravelBookRow; collaborators: TravelBookCollaborator[] }> {
-  const [{ data: book, error: bookError }, { data: collabRows, error: collabError }] = await Promise.all([
-    supabase.from('travel_books').select('*').eq('id', bookId).single(),
+): Promise<{ book: TravelBookRow; locationName: string | null; collaborators: TravelBookCollaborator[] }> {
+  const [{ data: bookData, error: bookError }, { data: collabRows, error: collabError }] = await Promise.all([
+    supabase.from('travel_books').select('*, places!location_place_id(name)').eq('id', bookId).single(),
     supabase.from('travel_book_collaborators').select('user_id, users!user_id(name, handle)').eq('travel_book_id', bookId),
   ]);
   if (bookError) throw bookError;
   if (collabError) throw collabError;
 
+  const { places, ...book } = bookData as unknown as TravelBookWithPlace;
   const rows = collabRows as unknown as { user_id: string; users: { name: string | null; handle: string | null } | null }[];
   return {
     book,
+    locationName: places?.name ?? null,
     collaborators: rows.map((row) => ({
       userId: row.user_id,
       name: row.users?.name ?? row.users?.handle ?? 'Someone',

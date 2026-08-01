@@ -1,6 +1,6 @@
-import { Camera, FillLayer, LineLayer, MapView, PointAnnotation, ShapeSource } from '@rnmapbox/maps';
+import { Camera, FillLayer, LineLayer, MapView, PointAnnotation, ShapeSource, type MapState } from '@rnmapbox/maps';
 import type { FeatureCollection, Polygon } from 'geojson';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,13 +20,20 @@ import {
   STATE_LINE,
   type LayerKey,
 } from '@/lib/map-layers';
-import { getVisitedPlacesWithCategory, getVisitedRegions, saveDefaultMapLayers, type VisitedRegion } from '@/lib/profile-map';
+import {
+  getVisitedPlacesWithCategory,
+  getVisitedRegions,
+  saveDefaultMapCamera,
+  saveDefaultMapLayers,
+  type VisitedRegion,
+} from '@/lib/profile-map';
 
 type ProfileMapModalProps = {
   visible: boolean;
   onClose: () => void;
   userId: string;
   defaultLayers?: string[];
+  defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
 };
 
@@ -52,12 +59,26 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): FeatureCollection
 // overlappable highlights (not mutually exclusive with each other or with
 // the region fills), matching "customize what's being highlighted" rather
 // than a single-select filter.
-export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwnProfile }: ProfileMapModalProps) {
+export function ProfileMapModal({
+  visible,
+  onClose,
+  userId,
+  defaultLayers,
+  defaultCamera,
+  isOwnProfile,
+}: ProfileMapModalProps) {
   const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(defaultLayers));
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>>>([]);
   const [regions, setRegions] = useState<VisitedRegion[]>([]);
   const [isSavingDefault, setIsSavingDefault] = useState(false);
+  const [isLockingView, setIsLockingView] = useState(false);
   const insets = useSafeAreaInsets();
+  // Camera is uncontrolled (defaultSettings-only) — track the latest
+  // position via onMapIdle so "Lock this view" can read wherever the user
+  // has actually panned/zoomed to, not just the initial centroid.
+  const latestCameraRef = useRef<{ lat: number; lng: number; zoom: number } | null>(
+    defaultCamera ?? null
+  );
 
   useEffect(() => {
     if (!visible) return;
@@ -83,6 +104,22 @@ export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwn
     }
   }
 
+  async function handleLockView() {
+    const camera = latestCameraRef.current;
+    if (!camera) return;
+    setIsLockingView(true);
+    try {
+      await saveDefaultMapCamera(userId, { lat: camera.lat, lng: camera.lng }, camera.zoom);
+    } finally {
+      setIsLockingView(false);
+    }
+  }
+
+  function handleMapIdle(state: MapState) {
+    const [lng, lat] = state.properties.center;
+    latestCameraRef.current = { lat, lng, zoom: state.properties.zoom };
+  }
+
   function toggleLayer(key: LayerKey) {
     setActiveLayers((prev) => {
       const next = new Set(prev);
@@ -92,13 +129,15 @@ export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwn
     });
   }
 
-  const centerCoordinate: [number, number] | undefined =
-    places.length > 0
+  const centerCoordinate: [number, number] | undefined = defaultCamera
+    ? [defaultCamera.lng, defaultCamera.lat]
+    : places.length > 0
       ? [
           places.reduce((sum, p) => sum + p.lng, 0) / places.length,
           places.reduce((sum, p) => sum + p.lat, 0) / places.length,
         ]
       : undefined;
+  const initialZoom = defaultCamera?.zoom ?? DEFAULT_ZOOM;
 
   const nationalParks = places.filter((p) => p.category === 'national_park');
   const countryFeatures = regionsToFeatureCollection(regions.filter((r) => r.level === 'country'));
@@ -107,8 +146,8 @@ export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwn
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.container}>
-        <MapView style={styles.map} styleURL={MAPBOX_STYLE_URL} scaleBarEnabled={false}>
-          <Camera defaultSettings={{ centerCoordinate, zoomLevel: DEFAULT_ZOOM }} />
+        <MapView style={styles.map} styleURL={MAPBOX_STYLE_URL} scaleBarEnabled={false} onMapIdle={handleMapIdle}>
+          <Camera defaultSettings={{ centerCoordinate, zoomLevel: initialZoom }} />
 
           {activeLayers.has('countries') && (
             <ShapeSource id="countries-source" shape={countryFeatures}>
@@ -161,11 +200,18 @@ export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwn
               })}
             </View>
             {isOwnProfile && (
-              <Pressable onPress={handleSaveDefault} disabled={isSavingDefault}>
-                <ThemedText type="small" themeColor="sage">
-                  {isSavingDefault ? 'Saving…' : 'Set as default'}
-                </ThemedText>
-              </Pressable>
+              <View style={styles.ownerActionsRow}>
+                <Pressable onPress={handleSaveDefault} disabled={isSavingDefault}>
+                  <ThemedText type="small" themeColor="sage">
+                    {isSavingDefault ? 'Saving…' : 'Set as default'}
+                  </ThemedText>
+                </Pressable>
+                <Pressable onPress={handleLockView} disabled={isLockingView}>
+                  <ThemedText type="small" themeColor="sage">
+                    {isLockingView ? 'Locking…' : 'Lock this view'}
+                  </ThemedText>
+                </Pressable>
+              </View>
             )}
           </View>
         </View>
@@ -193,8 +239,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.five,
   },
+  // Extra lift above the bare safe-area padding — the SDK's own Mapbox
+  // logo/attribution mark renders in the bottom-left corner by default with
+  // no room carved out for it, so "Set as default" was crowding/overlapping it.
   bottomBar: {
     gap: Spacing.two,
+    marginBottom: Spacing.four,
+  },
+  ownerActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
   },
   chipRow: {
     flexDirection: 'row',

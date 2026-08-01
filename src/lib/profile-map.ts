@@ -11,6 +11,22 @@ export async function saveDefaultMapLayers(userId: string, layers: LayerKey[]): 
   if (error) throw error;
 }
 
+// Locks the profile map's starting camera position (center + zoom only —
+// still a live, interactive map once opened, this just fixes the initial
+// framing instead of the default auto-centroid). Nullable columns: a user
+// who's never locked a view falls back to today's auto-centroid behavior.
+export async function saveDefaultMapCamera(
+  userId: string,
+  center: { lat: number; lng: number },
+  zoom: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ map_default_center_lat: center.lat, map_default_center_lng: center.lng, map_default_zoom: zoom })
+    .eq('id', userId);
+  if (error) throw error;
+}
+
 export type VisitedPlace = {
   id: string;
   name: string;

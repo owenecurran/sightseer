@@ -124,6 +124,40 @@ export async function getFollowStatus(followerId: string, followeeId: string): P
   return data?.status ?? null;
 }
 
+export type MutualFollower = { id: string; name: string | null; handle: string | null };
+
+// "Followed by X (+N others)" on a search result — accounts the *viewer*
+// follows who also follow each candidate. One batched query (viewer's own
+// following list, then a single follows lookup intersected against every
+// candidate at once), not one query per search result.
+export async function listMutualFollowers(
+  viewerId: string,
+  candidateIds: string[]
+): Promise<Map<string, MutualFollower[]>> {
+  const result = new Map<string, MutualFollower[]>();
+  if (candidateIds.length === 0) return result;
+
+  const viewerFollowing = await listFollowing(viewerId);
+  const viewerFollowingIds = viewerFollowing.map((u) => u.id);
+  if (viewerFollowingIds.length === 0) return result;
+
+  const { data, error } = await supabase
+    .from('follows')
+    .select('followee_id, users!follower_id(id, name, handle)')
+    .in('followee_id', candidateIds)
+    .in('follower_id', viewerFollowingIds)
+    .eq('status', 'accepted');
+  if (error) throw error;
+
+  for (const row of data as unknown as { followee_id: string; users: MutualFollower | null }[]) {
+    if (!row.users) continue;
+    const list = result.get(row.followee_id) ?? [];
+    list.push(row.users);
+    result.set(row.followee_id, list);
+  }
+  return result;
+}
+
 export async function getFollowCounts(userId: string): Promise<{ following: number; followers: number }> {
   const [followingResult, followersResult] = await Promise.all([
     supabase

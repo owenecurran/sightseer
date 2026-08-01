@@ -51,6 +51,14 @@ export async function saveVisitToBoard(boardId: string, visitId: string): Promis
   if (error) throw error;
 }
 
+// Cover is picked from an existing item photo already saved to the board —
+// no upload, just a reference — so board owners can set it directly from
+// whatever's already there.
+export async function setBoardCoverPhoto(boardId: string, photoId: string): Promise<void> {
+  const { error } = await supabase.from('boards').update({ cover_photo_id: photoId }).eq('id', boardId);
+  if (error) throw error;
+}
+
 export async function removeVisitFromBoard(boardId: string, visitId: string): Promise<void> {
   const { error } = await supabase
     .from('board_items')
@@ -148,4 +156,47 @@ export async function getBoardItems(boardId: string): Promise<BoardVisitItem[]> 
       placeLng: row.visits.places?.lng ?? null,
       photoIds: [...row.visits.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
     }));
+}
+
+type OwnVisitRow = {
+  id: string;
+  rating: number;
+  note: string | null;
+  visited_on: string;
+  created_at: string;
+  user_id: string;
+  users: { handle: string | null; name: string | null } | null;
+  places: { name: string; lat: number | null; lng: number | null } | null;
+  photos: { id: string; position: number }[];
+};
+
+// Same BoardVisitItem shape as getBoardItems, so reviews.tsx can reuse the
+// board-detail view-mode components unmodified. No board_items join — id
+// equals visitId here since there's no wrapping join row for a user's own
+// visits.
+export async function getMyVisitItems(userId: string): Promise<BoardVisitItem[]> {
+  const { data, error } = await supabase
+    .from('visits')
+    .select(
+      'id, rating, note, visited_on, created_at, user_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position)'
+    )
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const rows = data as unknown as OwnVisitRow[];
+  return rows.map((row) => ({
+    id: row.id,
+    visitId: row.id,
+    addedAt: row.created_at,
+    rating: row.rating,
+    note: row.note,
+    visitedOn: row.visited_on,
+    authorId: row.user_id,
+    authorName: row.users?.name ?? row.users?.handle ?? 'Someone',
+    placeName: row.places?.name ?? 'Unknown place',
+    placeLat: row.places?.lat ?? null,
+    placeLng: row.places?.lng ?? null,
+    photoIds: [...row.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
+  }));
 }

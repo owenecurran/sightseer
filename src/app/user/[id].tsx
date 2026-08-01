@@ -19,6 +19,7 @@ import { getAvatarViewUrls } from '@/lib/avatar';
 import { blockUser, isBlocking, unblockUser } from '@/lib/blocks';
 import type { Database } from '@/lib/database.types';
 import { followUser, getFollowCounts, getFollowStatus, unfollowOrCancelRequest } from '@/lib/follows';
+import { parseDefaultCamera } from '@/lib/map-layers';
 import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { supabase } from '@/lib/supabase';
 
@@ -260,6 +261,7 @@ export default function UserProfileScreen() {
                 <ProfileMap
                   userId={user.id}
                   defaultLayers={user.map_default_layers}
+                  defaultCamera={parseDefaultCamera(user)}
                   isOwnProfile={session?.user.id === user.id}
                 />
               </ThemedView>

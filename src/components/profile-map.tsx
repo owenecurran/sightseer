@@ -21,6 +21,7 @@ import { getVisitedPlacesWithCategory, getVisitedRegions, type VisitedRegion } f
 type ProfileMapProps = {
   userId: string;
   defaultLayers?: string[];
+  defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
 };
 
@@ -49,7 +50,7 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): GeoJSON.FeatureCo
 // this is just a preview — tap opens ProfileMapModal for the real thing.
 // Renders whichever layers `defaultLayers` says to show, same layer set as
 // the modal — see profile-map.native.tsx's matching comment.
-export function ProfileMap({ userId, defaultLayers, isOwnProfile }: ProfileMapProps) {
+export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile }: ProfileMapProps) {
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>> | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const containerRef = useRef<View>(null);
@@ -73,8 +74,8 @@ export function ProfileMap({ userId, defaultLayers, isOwnProfile }: ProfileMapPr
     const map = new mapboxgl.Map({
       container: node,
       style: STYLE_URL,
-      center: [centerLng, centerLat],
-      zoom: DEFAULT_ZOOM,
+      center: defaultCamera ? [defaultCamera.lng, defaultCamera.lat] : [centerLng, centerLat],
+      zoom: defaultCamera?.zoom ?? DEFAULT_ZOOM,
       interactive: false,
     });
     mapRef.current = map;
@@ -155,6 +156,7 @@ export function ProfileMap({ userId, defaultLayers, isOwnProfile }: ProfileMapPr
         onClose={() => setIsExpanded(false)}
         userId={userId}
         defaultLayers={defaultLayers}
+        defaultCamera={defaultCamera}
         isOwnProfile={isOwnProfile}
       />
     </View>

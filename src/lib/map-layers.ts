@@ -30,6 +30,21 @@ export function parseDefaultLayers(stored: string[] | null | undefined): Set<Lay
   return new Set(filtered.length > 0 ? filtered : DEFAULT_LAYERS);
 }
 
+// Same "row -> prop" shape both profile.tsx and user/[id].tsx need for the
+// locked map-thumbnail camera (map_default_center_lat/lng/zoom) — all three
+// columns are nullable together (unset = "not locked, use auto-centroid"),
+// so this only returns a camera when all three are actually present.
+export function parseDefaultCamera(row: {
+  map_default_center_lat: number | null;
+  map_default_center_lng: number | null;
+  map_default_zoom: number | null;
+}): { lat: number; lng: number; zoom: number } | null {
+  if (row.map_default_center_lat == null || row.map_default_center_lng == null || row.map_default_zoom == null) {
+    return null;
+  }
+  return { lat: row.map_default_center_lat, lng: row.map_default_center_lng, zoom: row.map_default_zoom };
+}
+
 export const COUNTRY_FILL = '#1E88E5';
 export const COUNTRY_FILL_OPACITY = 0.2;
 export const COUNTRY_LINE = '#1E88E5';

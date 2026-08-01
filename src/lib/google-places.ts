@@ -125,15 +125,18 @@ export async function fetchPlaceDetails(
 // trailhead), not "what neighborhood is this."
 const NEARBY_RADIUS_METERS = 150;
 
+// Top-N candidates for "what's here", not a text query.
+const NEARBY_MAX_RESULTS = 5;
+
 // The center-pin/drag-to-locate lookup (location-search-modal's Uber-style
-// "drag the map to name an unmarked spot"): closest real place to a raw
-// lat/lng, not a text query. `rankPreference: 'DISTANCE'` (searchNearby's
-// default is popularity-based relevance, which can return a well-known place
-// slightly further away over the literal closest one — wrong for "what's
-// under this pin"). Returns null rather than throwing when nothing is within
-// range (open water, deep wilderness) — a normal, expected outcome here, not
-// an error condition the caller needs to handle specially.
-export async function findNearbyPlace(lat: number, lng: number): Promise<PlaceDetails | null> {
+// "drag the map to name an unmarked spot"): real places near a raw lat/lng,
+// not a text query. `rankPreference: 'DISTANCE'` (searchNearby's default is
+// popularity-based relevance, which can return a well-known place slightly
+// further away over the literal closest one — wrong for "what's under this
+// pin"). Returns [] rather than throwing when nothing is within range (open
+// water, deep wilderness) — a normal, expected outcome here, not an error
+// condition the caller needs to handle specially.
+export async function findNearbyPlaces(lat: number, lng: number): Promise<PlaceDetails[]> {
   const { apiKey, headers } = getApiKeyAndHeaders();
   const fieldMask = 'places.id,places.displayName,places.types,places.location,places.addressComponents';
 
@@ -148,7 +151,7 @@ export async function findNearbyPlace(lat: number, lng: number): Promise<PlaceDe
     body: JSON.stringify({
       locationRestriction: { circle: { center: { latitude: lat, longitude: lng }, radius: NEARBY_RADIUS_METERS } },
       rankPreference: 'DISTANCE',
-      maxResultCount: 1,
+      maxResultCount: NEARBY_MAX_RESULTS,
     }),
   });
 
@@ -158,15 +161,14 @@ export async function findNearbyPlace(lat: number, lng: number): Promise<PlaceDe
   }
 
   const data = await response.json();
-  const place = data.places?.[0];
-  if (!place) return null;
+  const places: any[] = data.places ?? [];
 
-  return {
+  return places.map((place) => ({
     id: place.id,
     displayName: place.displayName?.text ?? '',
     types: place.types ?? [],
     lat: place.location?.latitude,
     lng: place.location?.longitude,
     addressComponents: place.addressComponents ?? [],
-  };
+  }));
 }

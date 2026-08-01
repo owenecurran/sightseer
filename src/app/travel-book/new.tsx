@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { LocationSearchModal } from '@/components/location-search-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { searchUsers } from '@/lib/search';
 import { addCollaborator, createTravelBook } from '@/lib/travel-books';
 
 type UserRow = Database['public']['Tables']['users']['Row'];
+type PlaceRow = Database['public']['Tables']['places']['Row'];
 
 const DEBOUNCE_MS = 300;
 
@@ -26,6 +28,8 @@ export default function NewTravelBookScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [location, setLocation] = useState<PlaceRow | null>(null);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -72,6 +76,7 @@ export default function NewTravelBookScreen() {
         title: title.trim(),
         description: description.trim(),
         isPrivate,
+        locationPlaceId: location?.id,
       });
       for (const collaborator of collaborators) {
         await addCollaborator(book.id, collaborator.id);
@@ -100,6 +105,21 @@ export default function NewTravelBookScreen() {
 
           <TextField placeholder="Trip title" value={title} onChangeText={setTitle} />
           <TextField placeholder="Description (optional)" value={description} onChangeText={setDescription} multiline />
+
+          <Pressable onPress={() => setIsLocationPickerOpen(true)} style={styles.locationRow}>
+            <ThemedView type="backgroundElement" style={styles.locationChip}>
+              <ThemedText type="small" themeColor={location ? 'text' : 'textSecondary'}>
+                {location ? location.name : 'Trip location (optional)'}
+              </ThemedText>
+            </ThemedView>
+            {location && (
+              <Pressable onPress={() => setLocation(null)} hitSlop={8}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Clear
+                </ThemedText>
+              </Pressable>
+            )}
+          </Pressable>
 
           <Pressable onPress={() => setIsPrivate((prev) => !prev)} style={styles.checkboxRow}>
             <ThemedView type={isPrivate ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
@@ -141,6 +161,15 @@ export default function NewTravelBookScreen() {
 
           <Button label="Create travel book" onPress={handleCreate} loading={isCreating} disabled={!title.trim()} />
         </Animated.ScrollView>
+
+        <LocationSearchModal
+          visible={isLocationPickerOpen}
+          onCancel={() => setIsLocationPickerOpen(false)}
+          onSelect={(place) => {
+            setLocation(place);
+            setIsLocationPickerOpen(false);
+          }}
+        />
       </SafeAreaView>
     </ThemedView>
   );
@@ -162,6 +191,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
     paddingBottom: BottomTabInset,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  locationChip: {
+    flex: 1,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
   },
   checkboxRow: {
     flexDirection: 'row',

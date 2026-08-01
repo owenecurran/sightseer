@@ -14,7 +14,7 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
-import { getBoardItems, type BoardVisitItem } from '@/lib/boards';
+import { getBoardItems, setBoardCoverPhoto, type BoardVisitItem } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
@@ -76,6 +76,17 @@ export default function BoardDetailScreen() {
     setItems((prev) => prev.filter((item) => item.id !== itemId));
   }
 
+  async function handleSetCover(photoId: string) {
+    if (!board) return;
+    setError(null);
+    try {
+      await setBoardCoverPhoto(board.id, photoId);
+      setBoard({ ...board, cover_photo_id: photoId });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not set that cover photo.');
+    }
+  }
+
   const isOwner = Boolean(session && board && session.user.id === board.user_id);
 
   if (!hasLoadedOnce) return <PageLoader />;
@@ -131,7 +142,13 @@ export default function BoardDetailScreen() {
             onScroll={scrollHandler}
             scrollEventThrottle={16}>
             {viewMode === 'images' ? (
-              <ImagesGridView items={items} photoUrls={photoUrls} />
+              <ImagesGridView
+                items={items}
+                photoUrls={photoUrls}
+                isOwner={isOwner}
+                coverPhotoId={board?.cover_photo_id}
+                onSetCover={handleSetCover}
+              />
             ) : (
               <ListView items={items} photoUrls={photoUrls} isOwner={isOwner} onRemove={handleRemove} />
             )}

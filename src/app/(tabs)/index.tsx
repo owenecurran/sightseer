@@ -1,7 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CommentsSection } from '@/components/comments-section';
@@ -13,7 +21,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { VisitMenu } from '@/components/visit-menu';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BrandColors, BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
@@ -182,70 +190,128 @@ export default function HomeScreen() {
             item.type === 'recap' ? (
               <RecapCard recap={item.recap} avatarUrl={avatarUrls[item.recap.authorId]} coverUrl={recapCoverUrls[item.recap.id]} />
             ) : (
-              <ThemedView type="backgroundElement" style={styles.card}>
-                <View style={styles.headerRow}>
-                  <Pressable
-                    style={styles.headerAuthor}
-                    onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.visit.user_id } })}>
-                    <Avatar uri={avatarUrls[item.visit.user_id]} name={item.visit.authorName} size={28} />
-                    <ThemedText type="smallBold" style={styles.headerText}>
-                      {formatAuthorLine(item.visit.authorName, item.visit.taggedUserNames)}
-                    </ThemedText>
-                  </Pressable>
-                  <VisitMenu
-                    visitId={item.visit.id}
-                    isOwner={session?.user.id === item.visit.user_id}
-                    onDeleted={() => handleVisitDeleted(item.visit.id)}
-                  />
-                </View>
-                <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visit.id } })}>
-                  <ThemedText type="headline">{item.visit.placeName}</ThemedText>
-                  {item.visit.taggedPlaces.length > 0 && (
-                    <ThemedText type="small">
-                      {item.visit.taggedPlaces.map((place, index) => (
-                        <ThemedText
-                          key={place.name}
-                          type="small"
-                          style={{ color: categoryColor(place.category, theme.textSecondary) }}>
-                          {index > 0 ? ' · ' : ''}
-                          {place.name}
-                        </ThemedText>
-                      ))}
-                    </ThemedText>
-                  )}
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {item.visit.rating.toFixed(1)} ★
-                    {item.visit.visitNumber > 1 ? ` · ${ordinal(item.visit.visitNumber)} visit` : ''}
-                    {item.visit.note ? ` · ${item.visit.note}` : ''}
-                  </ThemedText>
-                </Pressable>
-                <PhotoGrid urls={item.visit.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
-
-                <View style={styles.actionsRow}>
-                  <Pressable onPress={() => handleToggleLike(item.visit)}>
-                    <ThemedText type="small" themeColor={item.visit.isLikedByMe ? 'text' : 'textSecondary'}>
-                      {item.visit.isLikedByMe ? '♥' : '♡'} {item.visit.likeCount}
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable onPress={() => handleShareVisit(item.visit)}>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {copiedVisitId === item.visit.id ? 'Copied ✓' : '↗ Share'}
-                    </ThemedText>
-                  </Pressable>
-                </View>
-
-                <CommentsSection
-                  visitId={item.visit.id}
-                  visitOwnerId={item.visit.user_id}
-                  initialCount={item.visit.commentCount}
-                />
-
-                <SaveToBoard visitId={item.visit.id} />
-              </ThemedView>
+              <VisitCard
+                visit={item.visit}
+                photoUrls={photoUrls}
+                avatarUrl={avatarUrls[item.visit.user_id]}
+                isOwner={session?.user.id === item.visit.user_id}
+                isCopied={copiedVisitId === item.visit.id}
+                onToggleLike={() => handleToggleLike(item.visit)}
+                onShare={() => handleShareVisit(item.visit)}
+                onDeleted={() => handleVisitDeleted(item.visit.id)}
+                theme={theme}
+              />
             )
           }
         />
       </SafeAreaView>
+    </ThemedView>
+  );
+}
+
+type VisitCardProps = {
+  visit: FeedVisit;
+  photoUrls: Record<string, string>;
+  avatarUrl?: string;
+  isOwner: boolean;
+  isCopied: boolean;
+  onToggleLike: () => void;
+  onShare: () => void;
+  onDeleted: () => void;
+  theme: ReturnType<typeof useTheme>;
+};
+
+function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLike, onShare, onDeleted, theme }: VisitCardProps) {
+  const heartScale = useSharedValue(0);
+  const heartOpacity = useSharedValue(0);
+
+  const heartStyle = useAnimatedStyle(() => ({
+    opacity: heartOpacity.value,
+    transform: [{ scale: heartScale.value }],
+  }));
+
+  // Instagram-style double-tap: like-only, never unlikes an already-liked
+  // post (so a stray extra tap can't accidentally undo a like) — the heart
+  // still bursts every time as a tap acknowledgement, even when it's a
+  // visual-only no-op on the like state itself.
+  function handleDoubleTap() {
+    if (!visit.isLikedByMe) onToggleLike();
+    heartScale.value = 0.6;
+    heartOpacity.value = 1;
+    heartScale.value = withSequence(withTiming(1.15, { duration: 180 }), withTiming(1, { duration: 120 }));
+    heartOpacity.value = withSequence(withTiming(1, { duration: 100 }), withTiming(0, { duration: 400 }));
+  }
+
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      'worklet';
+      runOnJS(handleDoubleTap)();
+    });
+
+  return (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <View style={styles.headerRow}>
+        <Pressable
+          style={styles.headerAuthor}
+          onPress={() => router.push({ pathname: '/user/[id]', params: { id: visit.user_id } })}>
+          <Avatar uri={avatarUrl} name={visit.authorName} size={28} />
+          <ThemedText type="smallBold" style={styles.headerText}>
+            {formatAuthorLine(visit.authorName, visit.taggedUserNames)}
+          </ThemedText>
+        </Pressable>
+        <VisitMenu visitId={visit.id} isOwner={isOwner} onDeleted={onDeleted} />
+      </View>
+      <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: visit.id } })}>
+        <ThemedText type="headline">{visit.placeName}</ThemedText>
+        {visit.taggedPlaces.length > 0 && (
+          <ThemedText type="small">
+            {visit.taggedPlaces.map((place, index) => (
+              <ThemedText key={place.name} type="small" style={{ color: categoryColor(place.category, theme.textSecondary) }}>
+                {index > 0 ? ' · ' : ''}
+                {place.name}
+              </ThemedText>
+            ))}
+          </ThemedText>
+        )}
+        <ThemedText type="small" themeColor="textSecondary">
+          {visit.rating.toFixed(1)} ★
+          {visit.visitNumber > 1 ? ` · ${ordinal(visit.visitNumber)} visit` : ''}
+          {visit.note ? ` · ${visit.note}` : ''}
+        </ThemedText>
+      </Pressable>
+
+      <GestureDetector gesture={doubleTap}>
+        <View>
+          <PhotoGrid urls={visit.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
+          <Animated.View style={[styles.heartBurst, heartStyle]} pointerEvents="none">
+            <Ionicons name="heart" size={72} color={BrandColors.cream} />
+          </Animated.View>
+        </View>
+      </GestureDetector>
+
+      <View style={styles.actionsRow}>
+        <Pressable onPress={onToggleLike} hitSlop={8} style={styles.actionButton}>
+          <Ionicons
+            name={visit.isLikedByMe ? 'heart' : 'heart-outline'}
+            size={24}
+            color={visit.isLikedByMe ? theme.text : theme.textSecondary}
+          />
+          <ThemedText type="small" themeColor={visit.isLikedByMe ? 'text' : 'textSecondary'}>
+            {visit.likeCount}
+          </ThemedText>
+        </Pressable>
+        <Pressable onPress={onShare} hitSlop={8} style={styles.actionButton}>
+          <Ionicons name="arrow-redo-outline" size={24} color={theme.textSecondary} />
+          <ThemedText type="small" themeColor="textSecondary">
+            {isCopied ? 'Copied ✓' : 'Share'}
+          </ThemedText>
+        </Pressable>
+      </View>
+
+      <CommentsSection visitId={visit.id} visitOwnerId={visit.user_id} initialCount={visit.commentCount} />
+
+      <SaveToBoard visitId={visit.id} />
     </ThemedView>
   );
 }
@@ -325,7 +391,17 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: Spacing.three,
+    gap: Spacing.four,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  heartBurst: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   recapCover: {
     width: '100%',

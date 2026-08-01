@@ -18,13 +18,20 @@ import {
   STATE_LINE,
   type LayerKey,
 } from '@/lib/map-layers';
-import { getVisitedPlacesWithCategory, getVisitedRegions, saveDefaultMapLayers, type VisitedRegion } from '@/lib/profile-map';
+import {
+  getVisitedPlacesWithCategory,
+  getVisitedRegions,
+  saveDefaultMapCamera,
+  saveDefaultMapLayers,
+  type VisitedRegion,
+} from '@/lib/profile-map';
 
 type ProfileMapModalProps = {
   visible: boolean;
   onClose: () => void;
   userId: string;
   defaultLayers?: string[];
+  defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
 };
 
@@ -54,9 +61,17 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): GeoJSON.FeatureCo
 // location-search-modal.tsx's mapbox-gl-js lifecycle patterns (flex-sized
 // container, not absoluteFill; ResizeObserver-driven resize()) closely
 // enough the two should be read together if either needs changing.
-export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwnProfile }: ProfileMapModalProps) {
+export function ProfileMapModal({
+  visible,
+  onClose,
+  userId,
+  defaultLayers,
+  defaultCamera,
+  isOwnProfile,
+}: ProfileMapModalProps) {
   const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(defaultLayers));
   const [isSavingDefault, setIsSavingDefault] = useState(false);
+  const [isLockingView, setIsLockingView] = useState(false);
   const containerRef = useRef<View>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -71,7 +86,12 @@ export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwn
     const initialLayers = parseDefaultLayers(defaultLayers);
     setActiveLayers(initialLayers);
 
-    const map = new mapboxgl.Map({ container: node, style: STYLE_URL, center: [0, 20], zoom: DEFAULT_ZOOM });
+    const map = new mapboxgl.Map({
+      container: node,
+      style: STYLE_URL,
+      center: defaultCamera ? [defaultCamera.lng, defaultCamera.lat] : [0, 20],
+      zoom: defaultCamera?.zoom ?? DEFAULT_ZOOM,
+    });
     mapRef.current = map;
 
     let lastSize = '';
@@ -92,7 +112,7 @@ export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwn
       ]);
       if (cancelled) return;
 
-      if (places.length > 0) {
+      if (!defaultCamera && places.length > 0) {
         const centerLng = places.reduce((sum, p) => sum + p.lng, 0) / places.length;
         const centerLat = places.reduce((sum, p) => sum + p.lat, 0) / places.length;
         map.setCenter([centerLng, centerLat]);
@@ -200,6 +220,18 @@ export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwn
     }
   }
 
+  async function handleLockView() {
+    const map = mapRef.current;
+    if (!map) return;
+    const center = map.getCenter();
+    setIsLockingView(true);
+    try {
+      await saveDefaultMapCamera(userId, { lat: center.lat, lng: center.lng }, map.getZoom());
+    } finally {
+      setIsLockingView(false);
+    }
+  }
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.container}>
@@ -228,11 +260,18 @@ export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwn
               })}
             </View>
             {isOwnProfile && (
-              <Pressable onPress={handleSaveDefault} disabled={isSavingDefault}>
-                <ThemedText type="small" themeColor="sage">
-                  {isSavingDefault ? 'Saving…' : 'Set as default'}
-                </ThemedText>
-              </Pressable>
+              <View style={styles.ownerActionsRow}>
+                <Pressable onPress={handleSaveDefault} disabled={isSavingDefault}>
+                  <ThemedText type="small" themeColor="sage">
+                    {isSavingDefault ? 'Saving…' : 'Set as default'}
+                  </ThemedText>
+                </Pressable>
+                <Pressable onPress={handleLockView} disabled={isLockingView}>
+                  <ThemedText type="small" themeColor="sage">
+                    {isLockingView ? 'Locking…' : 'Lock this view'}
+                  </ThemedText>
+                </Pressable>
+              </View>
             )}
           </View>
         </View>
@@ -262,8 +301,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.five,
   },
+  // Extra lift above the SDK's own bottom-left Mapbox logo/attribution mark
+  // — see the matching comment in profile-map-modal.native.tsx.
   bottomBar: {
     gap: Spacing.two,
+    marginBottom: Spacing.four,
+  },
+  ownerActionsRow: {
+    flexDirection: 'row',
+    gap: Spacing.three,
   },
   chipRow: {
     flexDirection: 'row',
