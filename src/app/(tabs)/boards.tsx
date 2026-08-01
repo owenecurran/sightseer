@@ -1,6 +1,7 @@
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -13,14 +14,16 @@ import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constan
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
-import { createBoard, listMyBoards } from '@/lib/boards';
+import { createBoard, getLatestReviewPhotoIds, listMyBoards } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
+import { getPhotoViewUrls } from '@/lib/photo-view';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
 export default function BoardsScreen() {
   const { session } = useAuth();
   const [boards, setBoards] = useState<BoardRow[]>([]);
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [newBoardName, setNewBoardName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -35,7 +38,19 @@ export default function BoardsScreen() {
       setIsLoading(true);
       setError(null);
       listMyBoards(session.user.id)
-        .then(setBoards)
+        .then(async (myBoards) => {
+          setBoards(myBoards);
+          const latestPhotoIdByBoard = await getLatestReviewPhotoIds(myBoards.map((b) => b.id));
+          const photoIds = Object.values(latestPhotoIdByBoard);
+          const photoUrls = photoIds.length > 0 ? await getPhotoViewUrls(photoIds) : {};
+          setThumbnailUrls(
+            Object.fromEntries(
+              Object.entries(latestPhotoIdByBoard)
+                .map(([boardId, photoId]) => [boardId, photoUrls[photoId]])
+                .filter(([, url]) => url != null)
+            )
+          );
+        })
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load boards.'))
         .finally(() => {
           setIsLoading(false);
@@ -65,6 +80,12 @@ export default function BoardsScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="displaySerif">Your boards</ThemedText>
+
+        <Pressable onPress={() => router.push('/travel-books')}>
+          <ThemedText type="small" themeColor="sage">
+            Travel books ›
+          </ThemedText>
+        </Pressable>
 
         <ThemedView style={styles.newBoardRow}>
           <TextField
@@ -105,12 +126,20 @@ export default function BoardsScreen() {
               onPress={() => router.push({ pathname: '/board/[id]', params: { id: item.id } })}
               style={({ pressed }) => pressed && styles.pressed}>
               <ThemedView type="backgroundElement" style={styles.boardRow}>
-                <ThemedText type="headline">{item.name}</ThemedText>
-                {item.is_private && (
-                  <ThemedText type="sectionLabel" themeColor="textSecondary">
-                    Private
-                  </ThemedText>
-                )}
+                <View style={styles.boardRowLeading}>
+                  <ThemedText type="headline">{item.name}</ThemedText>
+                  {item.is_private && (
+                    <ThemedText type="sectionLabel" themeColor="textSecondary">
+                      Private
+                    </ThemedText>
+                  )}
+                </View>
+                <View style={styles.boardRowTrailing}>
+                  {thumbnailUrls[item.id] && (
+                    <Image source={{ uri: thumbnailUrls[item.id] }} style={styles.thumbnail} />
+                  )}
+                  <ThemedText type="headline">›</ThemedText>
+                </View>
               </ThemedView>
             </Pressable>
           )}
@@ -150,9 +179,25 @@ const styles = StyleSheet.create({
   boardRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
+    gap: Spacing.two,
+  },
+  boardRowLeading: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  boardRowTrailing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  thumbnail: {
+    width: 40,
+    height: 40,
+    borderRadius: Spacing.one,
   },
   pressed: {
     opacity: 0.7,

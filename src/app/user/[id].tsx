@@ -16,6 +16,7 @@ import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constan
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
+import { blockUser, isBlocking, unblockUser } from '@/lib/blocks';
 import type { Database } from '@/lib/database.types';
 import { followUser, getFollowCounts, getFollowStatus, unfollowOrCancelRequest } from '@/lib/follows';
 import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
@@ -41,6 +42,9 @@ export default function UserProfileScreen() {
   const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [confirmingBlock, setConfirmingBlock] = useState(false);
+  const [isUpdatingBlock, setIsUpdatingBlock] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
@@ -58,19 +62,21 @@ export default function UserProfileScreen() {
           if (userError) throw userError;
           setUser(userData);
 
-          const [avatars, status, counts, showcase] = await Promise.all([
+          const [avatars, status, counts, showcase, blocked] = await Promise.all([
             userData.avatar_r2_key
               ? getAvatarViewUrls([id])
               : Promise.resolve<Record<string, string>>({}),
             getFollowStatus(session.user.id, id),
             getFollowCounts(id),
             getProfileShowcase(id),
+            isBlocking(session.user.id, id),
           ]);
           setAvatarUrl(avatars[id] ?? null);
           setFollowStatus(status);
           setFollowCounts(counts);
           setTotalVisits(showcase.totalVisits);
           setLatestVisit(showcase.latestVisit);
+          setIsBlocked(blocked);
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load this profile.');
         } finally {
@@ -103,8 +109,38 @@ export default function UserProfileScreen() {
     }
   }
 
+  async function handleBlock() {
+    if (!session || !user) return;
+    setError(null);
+    setIsUpdatingBlock(true);
+    try {
+      await blockUser(session.user.id, user.id);
+      setIsBlocked(true);
+      setConfirmingBlock(false);
+      setFollowStatus(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not block that user.');
+    } finally {
+      setIsUpdatingBlock(false);
+    }
+  }
+
+  async function handleUnblock() {
+    if (!session || !user) return;
+    setError(null);
+    setIsUpdatingBlock(true);
+    try {
+      await unblockUser(session.user.id, user.id);
+      setIsBlocked(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not unblock that user.');
+    } finally {
+      setIsUpdatingBlock(false);
+    }
+  }
+
   const isSelf = session?.user.id === id;
-  const canSeeContent = !user?.is_private || followStatus === 'accepted' || isSelf;
+  const canSeeContent = !isBlocked && (!user?.is_private || followStatus === 'accepted' || isSelf);
 
   if (!hasLoadedOnce) return <PageLoader />;
 
@@ -138,13 +174,40 @@ export default function UserProfileScreen() {
 
             {user?.bio && <ThemedText type="default">{user.bio}</ThemedText>}
 
-            {!isSelf && (
-              <Button
-                label={followLabel(followStatus)}
-                variant={followStatus === 'accepted' ? 'secondary' : 'primary'}
-                onPress={handleFollowToggle}
-                loading={isUpdatingFollow}
-              />
+            {!isSelf && isBlocked && (
+              <Button label="Unblock" variant="secondary" onPress={handleUnblock} loading={isUpdatingBlock} />
+            )}
+
+            {!isSelf && !isBlocked && (
+              <View style={styles.followRow}>
+                <Button
+                  label={followLabel(followStatus)}
+                  variant={followStatus === 'accepted' ? 'secondary' : 'primary'}
+                  onPress={handleFollowToggle}
+                  loading={isUpdatingFollow}
+                />
+                {confirmingBlock ? (
+                  <View style={styles.blockConfirmRow}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Block this user?
+                    </ThemedText>
+                    <Pressable onPress={handleBlock} disabled={isUpdatingBlock}>
+                      <ThemedText type="smallBold">Confirm</ThemedText>
+                    </Pressable>
+                    <Pressable onPress={() => setConfirmingBlock(false)}>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Cancel
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable onPress={() => setConfirmingBlock(true)}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Block
+                    </ThemedText>
+                  </Pressable>
+                )}
+              </View>
             )}
 
             <View style={styles.statsRow}>
@@ -172,7 +235,7 @@ export default function UserProfileScreen() {
 
             {!canSeeContent && (
               <ThemedText type="small" themeColor="textSecondary">
-                This account is private.
+                {isBlocked ? 'You’ve blocked this account.' : 'This account is private.'}
               </ThemedText>
             )}
 
@@ -244,6 +307,15 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: Spacing.three,
+  },
+  followRow: {
+    gap: Spacing.two,
+  },
+  blockConfirmRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.three,
+    alignItems: 'center',
   },
   borderedBox: {
     borderWidth: 1,

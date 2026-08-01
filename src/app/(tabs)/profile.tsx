@@ -26,12 +26,14 @@ import {
 } from '@/lib/follows';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
+import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
 
 export default function ProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
   const [requests, setRequests] = useState<IncomingFollowRequest[]>([]);
   const [totalVisits, setTotalVisits] = useState(0);
   const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
+  const [latestTagged, setLatestTagged] = useState<TaggedVisit | null>(null);
   const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -46,15 +48,17 @@ export default function ProfileScreen() {
       setError(null);
       (async () => {
         try {
-          const [incoming, counts, showcase] = await Promise.all([
+          const [incoming, counts, showcase, taggedShowcase] = await Promise.all([
             listIncomingFollowRequests(session.user.id),
             getFollowCounts(session.user.id),
             getProfileShowcase(session.user.id),
+            getTaggedInShowcase(session.user.id),
           ]);
           setRequests(incoming);
           setFollowCounts(counts);
           setTotalVisits(showcase.totalVisits);
           setLatestVisit(showcase.latestVisit);
+          setLatestTagged(taggedShowcase.latestTagged);
 
           if (profile?.avatar_r2_key) {
             const urls = await getAvatarViewUrls([session.user.id]);
@@ -153,6 +157,16 @@ export default function ProfileScreen() {
               <View style={styles.latestReviewRow}>
                 <View style={styles.latestReviewText}>
                   <StretchText type="headline">{latestVisit?.places?.name ?? 'No reviews yet'}</StretchText>
+                </View>
+                <ThemedText type="headline">›</ThemedText>
+              </View>
+            </Pressable>
+
+            <Pressable onPress={() => router.push('/tagged-in')} style={styles.borderedBox}>
+              <ThemedText type="sectionLabel">Tagged in</ThemedText>
+              <View style={styles.latestReviewRow}>
+                <View style={styles.latestReviewText}>
+                  <StretchText type="headline">{latestTagged?.placeName ?? 'Not tagged in anything yet'}</StretchText>
                 </View>
                 <ThemedText type="headline">›</ThemedText>
               </View>

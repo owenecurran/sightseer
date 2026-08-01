@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -10,9 +11,10 @@ type UserRowProps = {
   handle: string | null;
   avatarUrl?: string | null;
   onPress?: () => void;
+  trailing?: ReactNode;
 };
 
-export function UserRow({ name, handle, avatarUrl, onPress }: UserRowProps) {
+export function UserRow({ name, handle, avatarUrl, onPress, trailing }: UserRowProps) {
   const content = (
     <ThemedView type="backgroundElement" style={styles.row}>
       <Avatar uri={avatarUrl} name={name ?? handle} size={40} />
@@ -24,6 +26,7 @@ export function UserRow({ name, handle, avatarUrl, onPress }: UserRowProps) {
           </ThemedText>
         )}
       </View>
+      {trailing}
     </ThemedView>
   );
 
@@ -40,6 +43,7 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
   },
   info: {
+    flex: 1,
     gap: Spacing.half,
   },
 });

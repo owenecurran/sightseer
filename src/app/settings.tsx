@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { TextField } from '@/components/ui/text-field';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
+import { listBlockedUsers, unblockUser, type BlockedUser } from '@/lib/blocks';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 
@@ -62,6 +63,33 @@ export default function SettingsScreen() {
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkedProviders = new Set(session?.user.identities?.map((identity) => identity.provider) ?? []);
+
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
+  const [blockedError, setBlockedError] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!session) return;
+      listBlockedUsers(session.user.id)
+        .then(setBlockedUsers)
+        .catch((err) => setBlockedError(err instanceof Error ? err.message : 'Could not load blocked users.'));
+    }, [session])
+  );
+
+  async function handleUnblock(blockedId: string) {
+    if (!session) return;
+    setBlockedError(null);
+    setUnblockingId(blockedId);
+    try {
+      await unblockUser(session.user.id, blockedId);
+      setBlockedUsers((prev) => prev.filter((u) => u.id !== blockedId));
+    } catch (err) {
+      setBlockedError(err instanceof Error ? err.message : 'Could not unblock that user.');
+    } finally {
+      setUnblockingId(null);
+    }
+  }
 
   async function handleLinkApple() {
     setLinkError(null);
@@ -217,6 +245,31 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
+            <ThemedText type="sectionLabel">Blocked users</ThemedText>
+            {blockedError && (
+              <ThemedText type="small" themeColor="textSecondary">
+                {blockedError}
+              </ThemedText>
+            )}
+            {blockedUsers.length === 0 ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                You haven’t blocked anyone.
+              </ThemedText>
+            ) : (
+              blockedUsers.map((user) => (
+                <View key={user.id} style={styles.blockedRow}>
+                  <ThemedText type="small">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
+                  <Pressable onPress={() => handleUnblock(user.id)} disabled={unblockingId === user.id}>
+                    <ThemedText type="small" themeColor="sage">
+                      Unblock
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </View>
+
+          <View style={styles.section}>
             <ThemedText type="sectionLabel">Connected accounts</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               Requires Apple/Google developer setup to actually complete — see AGENTS.md.
@@ -282,5 +335,10 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.one,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  blockedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
 });

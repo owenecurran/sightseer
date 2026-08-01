@@ -76,6 +76,19 @@ export async function rejectFollowRequest(followerId: string, followeeId: string
   if (error) throw error;
 }
 
+// Deletes from the followee's side — RLS already permits either participant
+// to delete a follows row (follows_delete_participant), this is just the
+// first client call that exercises that as the followee rather than the
+// follower (a normal unfollow always calls unfollowOrCancelRequest above).
+export async function removeFollower(followeeId: string, followerId: string): Promise<void> {
+  const { error } = await supabase
+    .from('follows')
+    .delete()
+    .eq('follower_id', followerId)
+    .eq('followee_id', followeeId);
+  if (error) throw error;
+}
+
 export type FollowListEntry = { id: string; handle: string | null; name: string | null };
 
 type FollowerEmbedRow = { users: FollowListEntry | null };

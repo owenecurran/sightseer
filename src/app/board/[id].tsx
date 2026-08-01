@@ -1,39 +1,42 @@
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BoardMapView } from '@/components/board-views/map-view';
+import { FullReviewsView } from '@/components/board-views/full-reviews-view';
+import { ImagesGridView } from '@/components/board-views/images-grid-view';
+import { ListView } from '@/components/board-views/list-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
+import { getBoardItems, type BoardVisitItem } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
-type BoardItemWithVisit = {
-  id: string;
-  visit_id: string | null;
-  visits: {
-    rating: number;
-    note: string | null;
-    places: { name: string } | null;
-    photos: { id: string }[];
-  } | null;
-};
+type ViewMode = 'list' | 'full' | 'images' | 'map';
+
+const VIEW_MODES: { key: ViewMode; label: string }[] = [
+  { key: 'list', label: 'List' },
+  { key: 'full', label: 'Full reviews' },
+  { key: 'images', label: 'Images' },
+  { key: 'map', label: 'Map' },
+];
 
 export default function BoardDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
   const [board, setBoard] = useState<BoardRow | null>(null);
-  const [items, setItems] = useState<BoardItemWithVisit[]>([]);
+  const [items, setItems] = useState<BoardVisitItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
@@ -43,23 +46,15 @@ export default function BoardDetailScreen() {
     (async () => {
       setError(null);
       try {
-        const [{ data: boardData, error: boardError }, { data: itemsData, error: itemsError }] =
-          await Promise.all([
-            supabase.from('boards').select('*').eq('id', id).single(),
-            supabase
-              .from('board_items')
-              .select('id, visit_id, visits(rating, note, places!place_id(name), photos(id))')
-              .eq('board_id', id)
-              .eq('item_type', 'visit')
-              .order('position'),
-          ]);
+        const [{ data: boardData, error: boardError }, boardItems] = await Promise.all([
+          supabase.from('boards').select('*').eq('id', id).single(),
+          getBoardItems(id),
+        ]);
         if (boardError) throw boardError;
-        if (itemsError) throw itemsError;
-        const typedItems = itemsData as unknown as BoardItemWithVisit[];
         setBoard(boardData);
-        setItems(typedItems);
+        setItems(boardItems);
 
-        const photoIds = typedItems.flatMap((item) => item.visits?.photos[0]?.id ?? []);
+        const photoIds = boardItems.flatMap((item) => item.photoIds);
         if (photoIds.length > 0) {
           setPhotoUrls(await getPhotoViewUrls(photoIds));
         }
@@ -81,63 +76,67 @@ export default function BoardDetailScreen() {
     setItems((prev) => prev.filter((item) => item.id !== itemId));
   }
 
-  const isOwner = session && board && session.user.id === board.user_id;
+  const isOwner = Boolean(session && board && session.user.id === board.user_id);
 
   if (!hasLoadedOnce) return <PageLoader />;
 
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Pressable onPress={() => router.back()}>
-          <ThemedText type="link">← Back</ThemedText>
-        </Pressable>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()}>
+            <ThemedText type="link">← Back</ThemedText>
+          </Pressable>
 
-        <ThemedText type="headline">{board?.name ?? 'Board'}</ThemedText>
-        {board?.description && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {board.description}
-          </ThemedText>
+          <ThemedText type="headline">{board?.name ?? 'Board'}</ThemedText>
+          {board?.description && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {board.description}
+            </ThemedText>
+          )}
+
+          {error && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
+          )}
+
+          <View style={styles.modeRow}>
+            {VIEW_MODES.map((mode) => (
+              <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
+                <ThemedView type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.modeChip}>
+                  <ThemedText type="small" themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
+                    {mode.label}
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
+        {items.length === 0 ? (
+          <View style={styles.emptyState}>
+            <ThemedText type="small" themeColor="textSecondary">
+              No reviews saved to this board yet.
+            </ThemedText>
+          </View>
+        ) : viewMode === 'full' ? (
+          <FullReviewsView items={items} photoUrls={photoUrls} />
+        ) : viewMode === 'map' ? (
+          <BoardMapView items={items} />
+        ) : (
+          <Animated.ScrollView
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}>
+            {viewMode === 'images' ? (
+              <ImagesGridView items={items} photoUrls={photoUrls} />
+            ) : (
+              <ListView items={items} photoUrls={photoUrls} isOwner={isOwner} onRemove={handleRemove} />
+            )}
+          </Animated.ScrollView>
         )}
-
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-        )}
-
-        <Animated.FlatList
-          data={items}
-          keyExtractor={(item: BoardItemWithVisit) => item.id}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          onScroll={scrollHandler}
-          scrollEventThrottle={16}
-          renderItem={({ item }: { item: BoardItemWithVisit }) => {
-            const photoId = item.visits?.photos[0]?.id;
-            const photoUrl = photoId ? photoUrls[photoId] : undefined;
-            return (
-              <ThemedView type="backgroundElement" style={styles.itemCard}>
-                {photoUrl && <Image source={{ uri: photoUrl }} style={styles.photo} />}
-                <View style={styles.itemRow}>
-                  <View style={styles.itemInfo}>
-                    <ThemedText type="headline">{item.visits?.places?.name ?? 'Unknown place'}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {item.visits ? `${item.visits.rating.toFixed(1)} ★` : ''}
-                      {item.visits?.note ? ` · ${item.visits.note}` : ''}
-                    </ThemedText>
-                  </View>
-                  {isOwner && (
-                    <Pressable onPress={() => handleRemove(item.id)}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Remove
-                      </ThemedText>
-                    </Pressable>
-                  )}
-                </View>
-              </ThemedView>
-            );
-          }}
-        />
       </SafeAreaView>
     </ThemedView>
   );
@@ -149,33 +148,39 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    alignSelf: 'center',
+    width: '100%',
+    paddingTop: Spacing.four + TopTabInset,
+  },
+  header: {
     width: '100%',
     maxWidth: MaxContentWidth,
+    alignSelf: 'center',
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
-    gap: Spacing.three,
-  },
-  list: {
     gap: Spacing.two,
   },
-  itemCard: {
-    borderRadius: Spacing.three,
-    overflow: 'hidden',
-  },
-  photo: {
-    width: '100%',
-    aspectRatio: 1,
-  },
-  itemRow: {
+  modeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
   },
-  itemInfo: {
-    gap: Spacing.half,
+  modeChip: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.five,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.four,
+  },
+  scrollContent: {
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
+    paddingBottom: BottomTabInset,
   },
 });

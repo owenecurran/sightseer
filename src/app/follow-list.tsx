@@ -12,7 +12,7 @@ import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constan
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
-import { listFollowers, listFollowing, type FollowListEntry } from '@/lib/follows';
+import { listFollowers, listFollowing, removeFollower, type FollowListEntry } from '@/lib/follows';
 
 export default function FollowListScreen() {
   const { type, userId, name } = useLocalSearchParams<{
@@ -24,10 +24,26 @@ export default function FollowListScreen() {
   const [entries, setEntries] = useState<FollowListEntry[]>([]);
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
   const targetUserId = userId || session?.user.id;
+  const isOwnFollowersList = type === 'followers' && targetUserId === session?.user.id;
+
+  async function handleRemove(followerId: string) {
+    if (!session) return;
+    setError(null);
+    setRemovingId(followerId);
+    try {
+      await removeFollower(session.user.id, followerId);
+      setEntries((prev) => prev.filter((e) => e.id !== followerId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove that follower.');
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -93,6 +109,15 @@ export default function FollowListScreen() {
               handle={item.handle}
               avatarUrl={avatarUrls[item.id]}
               onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.id } })}
+              trailing={
+                isOwnFollowersList ? (
+                  <Pressable onPress={() => handleRemove(item.id)} disabled={removingId === item.id} hitSlop={8}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Remove
+                    </ThemedText>
+                  </Pressable>
+                ) : undefined
+              }
             />
           )}
         />

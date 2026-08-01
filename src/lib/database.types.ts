@@ -39,6 +39,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      blocks: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blocks_blocked_id_fkey"
+            columns: ["blocked_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "blocks_blocker_id_fkey"
+            columns: ["blocker_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       board_items: {
         Row: {
           added_at: string
@@ -521,6 +554,177 @@ export type Database = {
           srtext?: string | null
         }
         Relationships: []
+      }
+      travel_book_collaborators: {
+        Row: {
+          added_at: string
+          travel_book_id: string
+          user_id: string
+        }
+        Insert: {
+          added_at?: string
+          travel_book_id: string
+          user_id: string
+        }
+        Update: {
+          added_at?: string
+          travel_book_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_book_collaborators_travel_book_id_fkey"
+            columns: ["travel_book_id"]
+            isOneToOne: false
+            referencedRelation: "travel_books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_book_collaborators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      travel_book_items: {
+        Row: {
+          added_at: string
+          added_by: string
+          id: string
+          travel_book_id: string
+          visit_id: string
+        }
+        Insert: {
+          added_at?: string
+          added_by: string
+          id?: string
+          travel_book_id: string
+          visit_id: string
+        }
+        Update: {
+          added_at?: string
+          added_by?: string
+          id?: string
+          travel_book_id?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_book_items_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_book_items_travel_book_id_fkey"
+            columns: ["travel_book_id"]
+            isOneToOne: false
+            referencedRelation: "travel_books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_book_items_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      travel_book_recaps: {
+        Row: {
+          author_id: string
+          body: string | null
+          cover_r2_key: string | null
+          created_at: string
+          id: string
+          is_published: boolean
+          published_at: string | null
+          rating: number | null
+          title: string
+          travel_book_id: string
+        }
+        Insert: {
+          author_id: string
+          body?: string | null
+          cover_r2_key?: string | null
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          published_at?: string | null
+          rating?: number | null
+          title: string
+          travel_book_id: string
+        }
+        Update: {
+          author_id?: string
+          body?: string | null
+          cover_r2_key?: string | null
+          created_at?: string
+          id?: string
+          is_published?: boolean
+          published_at?: string | null
+          rating?: number | null
+          title?: string
+          travel_book_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_book_recaps_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_book_recaps_travel_book_id_fkey"
+            columns: ["travel_book_id"]
+            isOneToOne: false
+            referencedRelation: "travel_books"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      travel_books: {
+        Row: {
+          cover_r2_key: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_private: boolean
+          title: string
+          user_id: string
+        }
+        Insert: {
+          cover_r2_key?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_private?: boolean
+          title: string
+          user_id: string
+        }
+        Update: {
+          cover_r2_key?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_private?: boolean
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_books_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       users: {
         Row: {
@@ -1034,6 +1238,11 @@ export type Database = {
         }[]
       }
       gettransactionid: { Args: never; Returns: unknown }
+      is_blocked: { Args: { user_a: string; user_b: string }; Returns: boolean }
+      is_travel_book_participant: {
+        Args: { book_id: string; uid: string }
+        Returns: boolean
+      }
       longtransactionsenabled: { Args: never; Returns: boolean }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }

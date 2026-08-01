@@ -10,6 +10,7 @@ import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { VisitMenu } from '@/components/visit-menu';
 import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -17,8 +18,9 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
-import { getFeedVisits, likeVisit, unlikeVisit, type FeedVisit, type TaggedPlace } from '@/lib/feed';
+import { getFeedItems, likeVisit, unlikeVisit, type FeedItem, type FeedVisit, type TaggedPlace } from '@/lib/feed';
 import { getPhotoViewUrls } from '@/lib/photo-view';
+import { getRecapCoverUrls, type FeedRecap } from '@/lib/travel-book-recaps';
 import { shareText } from '@/lib/share';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -52,9 +54,10 @@ function ordinal(n: number): string {
 export default function HomeScreen() {
   const { session } = useAuth();
   const theme = useTheme();
-  const [visits, setVisits] = useState<FeedVisit[]>([]);
+  const [items, setItems] = useState<FeedItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
+  const [recapCoverUrls, setRecapCoverUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -72,17 +75,21 @@ export default function HomeScreen() {
       if (!session) return;
       setIsLoading(true);
       setError(null);
-      getFeedVisits(session.user.id)
-        .then(async (feedVisits) => {
-          setVisits(feedVisits);
+      getFeedItems(session.user.id)
+        .then(async (feedItems) => {
+          setItems(feedItems);
+          const feedVisits = feedItems.flatMap((item) => (item.type === 'visit' ? [item.visit] : []));
+          const feedRecaps = feedItems.flatMap((item) => (item.type === 'recap' ? [item.recap] : []));
           const photoIds = feedVisits.flatMap((v) => v.photoIds);
-          const authorIds = [...new Set(feedVisits.map((v) => v.user_id))];
-          const [photos, avatars] = await Promise.all([
+          const authorIds = [...new Set([...feedVisits.map((v) => v.user_id), ...feedRecaps.map((r) => r.authorId)])];
+          const [photos, avatars, recapCovers] = await Promise.all([
             photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
             authorIds.length > 0 ? getAvatarViewUrls(authorIds) : Promise.resolve({}),
+            feedRecaps.length > 0 ? getRecapCoverUrls(feedRecaps.map((r) => r.id)) : Promise.resolve({}),
           ]);
           setPhotoUrls(photos);
           setAvatarUrls(avatars);
+          setRecapCoverUrls(recapCovers);
         })
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your feed.'))
         .finally(() => {
@@ -101,15 +108,18 @@ export default function HomeScreen() {
       } else {
         await likeVisit(session.user.id, visit.id);
       }
-      setVisits((prev) =>
-        prev.map((v) =>
-          v.id === visit.id
+      setItems((prev) =>
+        prev.map((item) =>
+          item.type === 'visit' && item.visit.id === visit.id
             ? {
-                ...v,
-                isLikedByMe: !v.isLikedByMe,
-                likeCount: v.likeCount + (v.isLikedByMe ? -1 : 1),
+                ...item,
+                visit: {
+                  ...item.visit,
+                  isLikedByMe: !item.visit.isLikedByMe,
+                  likeCount: item.visit.likeCount + (item.visit.isLikedByMe ? -1 : 1),
+                },
               }
-            : v
+            : item
         )
       );
     } catch (err) {
@@ -118,7 +128,7 @@ export default function HomeScreen() {
   }
 
   function handleVisitDeleted(visitId: string) {
-    setVisits((prev) => prev.filter((v) => v.id !== visitId));
+    setItems((prev) => prev.filter((item) => !(item.type === 'visit' && item.visit.id === visitId)));
   }
 
   async function handleShareVisit(visit: FeedVisit) {
@@ -154,7 +164,7 @@ export default function HomeScreen() {
           </ThemedText>
         )}
 
-        {!isLoading && visits.length === 0 && (
+        {!isLoading && items.length === 0 && (
           <ThemedText type="small" themeColor="textSecondary">
             No visits yet from people you follow. Follow someone from the People tab, or check back
             once they log a visit.
@@ -162,77 +172,111 @@ export default function HomeScreen() {
         )}
 
         <Animated.FlatList
-          data={visits}
-          keyExtractor={(item: FeedVisit) => item.id}
+          data={items}
+          keyExtractor={(item: FeedItem) => (item.type === 'visit' ? `visit-${item.visit.id}` : `recap-${item.recap.id}`)}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
-          renderItem={({ item }: { item: FeedVisit }) => (
-            <ThemedView type="backgroundElement" style={styles.card}>
-              <View style={styles.headerRow}>
-                <Pressable
-                  style={styles.headerAuthor}
-                  onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.user_id } })}>
-                  <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />
-                  <ThemedText type="smallBold" style={styles.headerText}>
-                    {formatAuthorLine(item.authorName, item.taggedUserNames)}
-                  </ThemedText>
-                </Pressable>
-                <VisitMenu
-                  visitId={item.id}
-                  isOwner={session?.user.id === item.user_id}
-                  onDeleted={() => handleVisitDeleted(item.id)}
-                />
-              </View>
-              <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}>
-                <ThemedText type="headline">{item.placeName}</ThemedText>
-                {item.taggedPlaces.length > 0 && (
-                  <ThemedText type="small">
-                    {item.taggedPlaces.map((place, index) => (
-                      <ThemedText
-                        key={place.name}
-                        type="small"
-                        style={{ color: categoryColor(place.category, theme.textSecondary) }}>
-                        {index > 0 ? ' · ' : ''}
-                        {place.name}
-                      </ThemedText>
-                    ))}
-                  </ThemedText>
-                )}
-                <ThemedText type="small" themeColor="textSecondary">
-                  {item.rating.toFixed(1)} ★
-                  {item.visitNumber > 1 ? ` · ${ordinal(item.visitNumber)} visit` : ''}
-                  {item.note ? ` · ${item.note}` : ''}
-                </ThemedText>
-              </Pressable>
-              <PhotoGrid urls={item.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
-
-              <View style={styles.actionsRow}>
-                <Pressable onPress={() => handleToggleLike(item)}>
-                  <ThemedText type="small" themeColor={item.isLikedByMe ? 'text' : 'textSecondary'}>
-                    {item.isLikedByMe ? '♥' : '♡'} {item.likeCount}
-                  </ThemedText>
-                </Pressable>
-                <Pressable onPress={() => handleShareVisit(item)}>
+          renderItem={({ item }: { item: FeedItem }) =>
+            item.type === 'recap' ? (
+              <RecapCard recap={item.recap} avatarUrl={avatarUrls[item.recap.authorId]} coverUrl={recapCoverUrls[item.recap.id]} />
+            ) : (
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <View style={styles.headerRow}>
+                  <Pressable
+                    style={styles.headerAuthor}
+                    onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.visit.user_id } })}>
+                    <Avatar uri={avatarUrls[item.visit.user_id]} name={item.visit.authorName} size={28} />
+                    <ThemedText type="smallBold" style={styles.headerText}>
+                      {formatAuthorLine(item.visit.authorName, item.visit.taggedUserNames)}
+                    </ThemedText>
+                  </Pressable>
+                  <VisitMenu
+                    visitId={item.visit.id}
+                    isOwner={session?.user.id === item.visit.user_id}
+                    onDeleted={() => handleVisitDeleted(item.visit.id)}
+                  />
+                </View>
+                <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visit.id } })}>
+                  <ThemedText type="headline">{item.visit.placeName}</ThemedText>
+                  {item.visit.taggedPlaces.length > 0 && (
+                    <ThemedText type="small">
+                      {item.visit.taggedPlaces.map((place, index) => (
+                        <ThemedText
+                          key={place.name}
+                          type="small"
+                          style={{ color: categoryColor(place.category, theme.textSecondary) }}>
+                          {index > 0 ? ' · ' : ''}
+                          {place.name}
+                        </ThemedText>
+                      ))}
+                    </ThemedText>
+                  )}
                   <ThemedText type="small" themeColor="textSecondary">
-                    {copiedVisitId === item.id ? 'Copied ✓' : '↗ Share'}
+                    {item.visit.rating.toFixed(1)} ★
+                    {item.visit.visitNumber > 1 ? ` · ${ordinal(item.visit.visitNumber)} visit` : ''}
+                    {item.visit.note ? ` · ${item.visit.note}` : ''}
                   </ThemedText>
                 </Pressable>
-              </View>
+                <PhotoGrid urls={item.visit.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
 
-              <CommentsSection
-                visitId={item.id}
-                visitOwnerId={item.user_id}
-                initialCount={item.commentCount}
-              />
+                <View style={styles.actionsRow}>
+                  <Pressable onPress={() => handleToggleLike(item.visit)}>
+                    <ThemedText type="small" themeColor={item.visit.isLikedByMe ? 'text' : 'textSecondary'}>
+                      {item.visit.isLikedByMe ? '♥' : '♡'} {item.visit.likeCount}
+                    </ThemedText>
+                  </Pressable>
+                  <Pressable onPress={() => handleShareVisit(item.visit)}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {copiedVisitId === item.visit.id ? 'Copied ✓' : '↗ Share'}
+                    </ThemedText>
+                  </Pressable>
+                </View>
 
-              <SaveToBoard visitId={item.id} />
-            </ThemedView>
-          )}
+                <CommentsSection
+                  visitId={item.visit.id}
+                  visitOwnerId={item.visit.user_id}
+                  initialCount={item.visit.commentCount}
+                />
+
+                <SaveToBoard visitId={item.visit.id} />
+              </ThemedView>
+            )
+          }
         />
       </SafeAreaView>
     </ThemedView>
+  );
+}
+
+function RecapCard({ recap, avatarUrl, coverUrl }: { recap: FeedRecap; avatarUrl?: string; coverUrl?: string }) {
+  return (
+    <Pressable
+      onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: recap.travelBookId } })}>
+      <ThemedView type="backgroundElement" style={styles.card}>
+        <View style={styles.headerRow}>
+          <View style={styles.headerAuthor}>
+            <Avatar uri={avatarUrl} name={recap.authorName} size={28} />
+            <ThemedText type="smallBold" style={styles.headerText}>
+              {recap.authorName} shared a trip recap
+            </ThemedText>
+          </View>
+        </View>
+        {coverUrl && <LoadableImage source={{ uri: coverUrl }} style={styles.recapCover} />}
+        <ThemedText type="headline">{recap.title}</ThemedText>
+        {recap.rating != null && (
+          <ThemedText type="small" themeColor="textSecondary">
+            {recap.rating.toFixed(1)} ★
+          </ThemedText>
+        )}
+        {recap.body && (
+          <ThemedText type="small" numberOfLines={3}>
+            {recap.body}
+          </ThemedText>
+        )}
+      </ThemedView>
+    </Pressable>
   );
 }
 
@@ -282,5 +326,10 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: Spacing.three,
+  },
+  recapCover: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: Spacing.two,
   },
 });
