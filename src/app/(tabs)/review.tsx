@@ -2,9 +2,9 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
@@ -315,7 +315,7 @@ export default function SearchScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -466,7 +466,7 @@ export default function SearchScreen() {
           </ThemedView>
         )}
 
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
 
         <PhotoCropModal
           visible={cropSource != null}

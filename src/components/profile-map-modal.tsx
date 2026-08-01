@@ -6,36 +6,29 @@ import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BrandColors, Spacing } from '@/constants/theme';
-import { getVisitedPlacesWithCategory, getVisitedRegions, type VisitedRegion } from '@/lib/profile-map';
+import {
+  COUNTRY_FILL,
+  COUNTRY_FILL_OPACITY,
+  COUNTRY_LINE,
+  LAYER_OPTIONS,
+  NATIONAL_PARK_COLOR,
+  parseDefaultLayers,
+  STATE_FILL,
+  STATE_FILL_OPACITY,
+  STATE_LINE,
+  type LayerKey,
+} from '@/lib/map-layers';
+import { getVisitedPlacesWithCategory, getVisitedRegions, saveDefaultMapLayers, type VisitedRegion } from '@/lib/profile-map';
 
 type ProfileMapModalProps = {
   visible: boolean;
   onClose: () => void;
   userId: string;
+  defaultLayers?: string[];
+  isOwnProfile?: boolean;
 };
 
-type LayerKey = 'pins' | 'countries' | 'states' | 'national_parks';
-
-const LAYER_OPTIONS: { key: LayerKey; label: string }[] = [
-  { key: 'pins', label: 'Pins' },
-  { key: 'countries', label: 'Countries' },
-  { key: 'states', label: 'States' },
-  { key: 'national_parks', label: 'National Parks' },
-];
-
 const DEFAULT_ZOOM = 2;
-// Plain 6-digit hex + a separate opacity property, not 8-digit RGBA-in-hex
-// (e.g. '#1E88E533') — confirmed live: mapbox-gl-js's style spec validator
-// rejects that format outright ("color expected"), unlike React Native's
-// own color parser, which tolerates it fine. Kept as separate color/opacity
-// pairs on both platforms (not just web) for consistency, even though
-// @rnmapbox/maps didn't error on the combined form.
-const COUNTRY_FILL = '#1E88E5';
-const COUNTRY_FILL_OPACITY = 0.2;
-const COUNTRY_LINE = '#1E88E5';
-const STATE_FILL = '#F4511E';
-const STATE_FILL_OPACITY = 0.2;
-const STATE_LINE = '#F4511E';
 // Same style URL as location-search-modal.tsx's STYLE_URL — see that file's
 // comment for why it's kept as a literal rather than a shared constant.
 const STYLE_URL = 'mapbox://styles/mapbox/dark-v10';
@@ -61,8 +54,9 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): GeoJSON.FeatureCo
 // location-search-modal.tsx's mapbox-gl-js lifecycle patterns (flex-sized
 // container, not absoluteFill; ResizeObserver-driven resize()) closely
 // enough the two should be read together if either needs changing.
-export function ProfileMapModal({ visible, onClose, userId }: ProfileMapModalProps) {
-  const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => new Set(['pins']));
+export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwnProfile }: ProfileMapModalProps) {
+  const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(defaultLayers));
+  const [isSavingDefault, setIsSavingDefault] = useState(false);
   const containerRef = useRef<View>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -71,6 +65,11 @@ export function ProfileMapModal({ visible, onClose, userId }: ProfileMapModalPro
     if (!visible) return;
     const node = containerRef.current as unknown as HTMLElement | null;
     if (!node) return;
+
+    // Re-seed from the persisted default each time the modal opens — see the
+    // matching comment in profile-map-modal.native.tsx.
+    const initialLayers = parseDefaultLayers(defaultLayers);
+    setActiveLayers(initialLayers);
 
     const map = new mapboxgl.Map({ container: node, style: STYLE_URL, center: [0, 20], zoom: DEFAULT_ZOOM });
     mapRef.current = map;
@@ -109,7 +108,9 @@ export function ProfileMapModal({ visible, onClose, userId }: ProfileMapModalPro
         }
         if (layers.has('national_parks')) {
           for (const p of places.filter((place) => place.category === 'national_park')) {
-            markersRef.current.push(new mapboxgl.Marker({ color: '#2E7D32' }).setLngLat([p.lng, p.lat]).addTo(map));
+            markersRef.current.push(
+              new mapboxgl.Marker({ color: NATIONAL_PARK_COLOR }).setLngLat([p.lng, p.lat]).addTo(map)
+            );
           }
         }
 
@@ -156,8 +157,8 @@ export function ProfileMapModal({ visible, onClose, userId }: ProfileMapModalPro
       // needed here since the map is freshly created and its style loads
       // before any user interaction could toggle a chip, but addSource/Layer
       // still need the style to be ready, hence gating the very first call.
-      if (map.isStyleLoaded()) applyLayers(activeLayers);
-      else map.once('load', () => applyLayers(activeLayers));
+      if (map.isStyleLoaded()) applyLayers(initialLayers);
+      else map.once('load', () => applyLayers(initialLayers));
 
       applyLayersRef.current = applyLayers;
     })();
@@ -190,6 +191,15 @@ export function ProfileMapModal({ visible, onClose, userId }: ProfileMapModalPro
     });
   }
 
+  async function handleSaveDefault() {
+    setIsSavingDefault(true);
+    try {
+      await saveDefaultMapLayers(userId, Array.from(activeLayers));
+    } finally {
+      setIsSavingDefault(false);
+    }
+  }
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.container}>
@@ -202,19 +212,28 @@ export function ProfileMapModal({ visible, onClose, userId }: ProfileMapModalPro
             </ThemedText>
           </Pressable>
 
-          <View style={styles.chipRow}>
-            {LAYER_OPTIONS.map((option) => {
-              const active = activeLayers.has(option.key);
-              return (
-                <Pressable key={option.key} onPress={() => toggleLayer(option.key)}>
-                  <ThemedView type={active ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
-                    <ThemedText type="small" themeColor={active ? 'text' : 'textSecondary'}>
-                      {option.label}
-                    </ThemedText>
-                  </ThemedView>
-                </Pressable>
-              );
-            })}
+          <View style={styles.bottomBar}>
+            <View style={styles.chipRow}>
+              {LAYER_OPTIONS.map((option) => {
+                const active = activeLayers.has(option.key);
+                return (
+                  <Pressable key={option.key} onPress={() => toggleLayer(option.key)}>
+                    <ThemedView type={active ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
+                      <ThemedText type="small" themeColor={active ? 'text' : 'textSecondary'}>
+                        {option.label}
+                      </ThemedText>
+                    </ThemedView>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {isOwnProfile && (
+              <Pressable onPress={handleSaveDefault} disabled={isSavingDefault}>
+                <ThemedText type="small" themeColor="sage">
+                  {isSavingDefault ? 'Saving…' : 'Set as default'}
+                </ThemedText>
+              </Pressable>
+            )}
           </View>
         </View>
       </View>
@@ -242,6 +261,9 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.five,
+  },
+  bottomBar: {
+    gap: Spacing.two,
   },
   chipRow: {
     flexDirection: 'row',

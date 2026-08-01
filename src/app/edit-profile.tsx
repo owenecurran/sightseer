@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { PromptEditor } from '@/components/prompt-editor';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -107,7 +107,7 @@ export default function EditProfileScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -177,7 +177,7 @@ export default function EditProfileScreen() {
               />
             )}
           </View>
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );

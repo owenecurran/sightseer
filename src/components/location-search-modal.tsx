@@ -16,6 +16,7 @@ import {
   autocompletePlaces,
   createPlacesSessionToken,
   fetchPlaceDetails,
+  findNearbyPlace,
   type PlaceAutocompleteSuggestion,
   type PlaceDetails,
 } from '@/lib/google-places';
@@ -67,6 +68,11 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
   const [previewPlaceId, setPreviewPlaceId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PlacePreview | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  // Uber-style "drag the map to name an unmarked spot" (pick mode only) —
+  // see the matching state/comment in location-search-modal.native.tsx.
+  const [centerPlace, setCenterPlace] = useState<PlaceDetails | null>(null);
+  const [isLoadingCenterPlace, setIsLoadingCenterPlace] = useState(false);
+  const [hasSearchedCenter, setHasSearchedCenter] = useState(false);
 
   const sessionTokenRef = useRef(createPlacesSessionToken());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,6 +81,9 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const nearbyMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  // Set right before any camera move this component itself triggers — see
+  // the matching ref/comment in location-search-modal.native.tsx.
+  const isProgrammaticMoveRef = useRef(false);
 
   // Created only while the modal is actually visible (not on first mount of
   // a hidden Modal) — mapbox-gl-js measures its container's real pixel size
@@ -91,6 +100,8 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     setNearbyPlaces([]);
     setPreviewPlaceId(null);
     setPreview(null);
+    setCenterPlace(null);
+    setHasSearchedCenter(false);
     sessionTokenRef.current = createPlacesSessionToken();
 
     const node = containerRef.current as unknown as HTMLElement | null;
@@ -154,9 +165,38 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       });
     }
 
+    if (mode === 'pick') {
+      map.on('moveend', () => {
+        // A camera move this component itself triggered already knows what
+        // place it's centered on — see the matching comment in
+        // location-search-modal.native.tsx's handleMapIdle.
+        if (isProgrammaticMoveRef.current) {
+          isProgrammaticMoveRef.current = false;
+          return;
+        }
+        setSelectedDetails(null);
+        markerRef.current?.remove();
+        markerRef.current = null;
+        const { lng, lat } = map.getCenter();
+        if (viewportDebounceRef.current) clearTimeout(viewportDebounceRef.current);
+        viewportDebounceRef.current = setTimeout(async () => {
+          setIsLoadingCenterPlace(true);
+          try {
+            setCenterPlace(await findNearbyPlace(lat, lng));
+          } catch {
+            setCenterPlace(null);
+          } finally {
+            setIsLoadingCenterPlace(false);
+            setHasSearchedCenter(true);
+          }
+        }, VIEWPORT_DEBOUNCE_MS);
+      });
+    }
+
     let cancelled = false;
     getCurrentLocation().then((coords) => {
       if (cancelled || !coords) return;
+      isProgrammaticMoveRef.current = true;
       map.flyTo({ center: [coords.lng, coords.lat], zoom: CURRENT_LOCATION_ZOOM });
     });
 
@@ -229,12 +269,14 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       setSuggestions([]);
       const map = mapRef.current;
       if (map) {
+        isProgrammaticMoveRef.current = true;
         map.flyTo({ center: [details.lng, details.lat], zoom: SELECTED_ZOOM });
         // 'browse' mode: search only recenters the camera (nothing to
         // "confirm" — see the matching comment in
         // location-search-modal.native.tsx's handleSuggestionSelect).
         if (mode === 'pick') {
           setSelectedDetails(details);
+          setCenterPlace(null);
           markerRef.current?.remove();
           markerRef.current = new mapboxgl.Marker({ color: BrandColors.sage })
             .setLngLat([details.lng, details.lat])
@@ -264,11 +306,12 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
   }
 
   async function handleConfirm() {
-    if (!selectedDetails) return;
+    const target = selectedDetails ?? centerPlace;
+    if (!target) return;
     setIsConfirming(true);
     setError(null);
     try {
-      const cached = await cachePlaceHierarchy(selectedDetails);
+      const cached = await cachePlaceHierarchy(target);
       onSelect?.(cached);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not use that place.');
@@ -281,6 +324,14 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
       <View style={styles.container}>
         <View ref={containerRef} style={styles.map} />
+
+        {/* Uber-style fixed center pin — see the matching comment in
+            location-search-modal.native.tsx. */}
+        {mode === 'pick' && (
+          <View style={styles.centerPinWrap} pointerEvents="none">
+            <View style={styles.centerPinDot} />
+          </View>
+        )}
 
         <View style={styles.overlay} pointerEvents="box-none">
           <View style={styles.searchBar}>
@@ -323,14 +374,26 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
             </ThemedView>
           )}
 
-          {mode === 'pick' && selectedDetails && (
+          {mode === 'pick' && (selectedDetails || centerPlace) && (
             <View style={styles.confirmBar}>
               <Button
-                label={`Use ${selectedDetails.displayName}`}
+                label={`Use ${(selectedDetails ?? centerPlace)!.displayName}`}
                 onPress={handleConfirm}
                 loading={isConfirming}
               />
             </View>
+          )}
+          {mode === 'pick' && !selectedDetails && !centerPlace && isLoadingCenterPlace && (
+            <ThemedView type="backgroundElement" style={styles.messageBox}>
+              <ThemedText type="small">Looking here…</ThemedText>
+            </ThemedView>
+          )}
+          {mode === 'pick' && !selectedDetails && !centerPlace && !isLoadingCenterPlace && hasSearchedCenter && (
+            <ThemedView type="backgroundElement" style={styles.messageBox}>
+              <ThemedText type="small" themeColor="textSecondary">
+                No named place here — try dragging a bit or search instead.
+              </ThemedText>
+            </ThemedView>
           )}
 
           {mode === 'browse' && previewPlaceId && (
@@ -373,6 +436,20 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     justifyContent: 'space-between',
     padding: Spacing.three,
+  },
+  centerPinWrap: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  centerPinDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: BrandColors.sage,
+    borderWidth: 3,
+    borderColor: BrandColors.cream,
+    transform: [{ translateY: -10 }],
   },
   searchBar: {
     flexDirection: 'row',

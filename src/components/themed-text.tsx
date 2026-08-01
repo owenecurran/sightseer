@@ -88,37 +88,32 @@ const styles = StyleSheet.create({
     fontWeight: Platform.select({ android: 700 }) ?? 500,
     fontSize: 12,
   },
-  // Custom display fonts (BrandFonts.*) have taller glyph metrics than the
-  // system font a plain `fontSize * 1.1-1.2` lineHeight heuristic assumes —
-  // too tight a lineHeight clips the tops of ascenders/cap-height instead of
-  // just tightening leading, and iOS is stricter about honoring lineHeight
-  // as a hard clip boundary than Android/web are (same fontSize/lineHeight
-  // values rendered fine on both of those, only iOS showed clipping).
-  // Padded to roughly a 1.2x+ ratio here, not just nudged a couple pixels.
+  // Custom display fonts (BrandFonts.*) have non-standard glyph metrics per
+  // font, and iOS clips a Text node's glyphs to an explicit `lineHeight` as a
+  // hard boundary (Android/web don't). A hand-picked fontSize*1.2-ish
+  // lineHeight is still guesswork per font and was still clipping on real
+  // devices — no `lineHeight` at all lets iOS/RN fall back to each font's own
+  // natural leading metrics instead, which is what actually avoids clipping
+  // for an arbitrary custom font.
   displaySerif: {
     fontFamily: BrandFonts.serifDisplay,
     fontSize: 32,
-    lineHeight: 40,
   },
   headline: {
     fontFamily: BrandFonts.condensedHeavy,
     fontSize: 34,
-    lineHeight: 42,
     textTransform: 'uppercase',
   },
   statLine: {
     fontFamily: BrandFonts.condensedHeavy,
     fontSize: 15,
-    lineHeight: 22,
   },
   roundedStat: {
     fontFamily: BrandFonts.roundedStat,
     fontSize: 14,
-    lineHeight: 20,
   },
   sectionLabel: {
     fontFamily: BrandFonts.wideMedium,
     fontSize: 12,
-    lineHeight: 18,
   },
 });

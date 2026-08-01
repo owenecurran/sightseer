@@ -1,7 +1,7 @@
-import { Camera, MapView, MarkerView, PointAnnotation } from '@rnmapbox/maps';
+import { Camera, MapView, MarkerView, PointAnnotation, type MapState } from '@rnmapbox/maps';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NearbyPlacePreviewCard } from '@/components/nearby-place-preview-card';
@@ -17,6 +17,7 @@ import {
   autocompletePlaces,
   createPlacesSessionToken,
   fetchPlaceDetails,
+  findNearbyPlace,
   type PlaceAutocompleteSuggestion,
   type PlaceDetails,
 } from '@/lib/google-places';
@@ -71,12 +72,25 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
   const [previewPlaceId, setPreviewPlaceId] = useState<string | null>(null);
   const [preview, setPreview] = useState<PlacePreview | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  // Uber-style "drag the map to name an unmarked spot" (pick mode only) —
+  // the center-pin lookup, independent of selectedDetails (an explicit
+  // search pick). null = nothing resolved yet; explicit `false`-ish states
+  // aren't needed since isLoadingCenterPlace covers "still looking."
+  const [centerPlace, setCenterPlace] = useState<PlaceDetails | null>(null);
+  const [isLoadingCenterPlace, setIsLoadingCenterPlace] = useState(false);
+  const [hasSearchedCenter, setHasSearchedCenter] = useState(false);
 
   const sessionTokenRef = useRef(createPlacesSessionToken());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewportDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cameraRef = useRef<Camera>(null);
   const mapRef = useRef<MapView>(null);
+  // Set right before any camera move this component itself triggers
+  // (current-location centering on open, recentering to a selected search
+  // suggestion) so the resulting onMapIdle settle doesn't get treated as a
+  // real user drag and overwrite that specific pick with an incidental
+  // nearby-lookup match for the same spot.
+  const isProgrammaticMoveRef = useRef(false);
   // `useSafeAreaInsets()` read directly rather than `SafeAreaView` — RN's
   // `Modal` presents in its own native view hierarchy on iOS, which
   // `SafeAreaView`'s automatic inset detection doesn't reliably reach into
@@ -97,6 +111,8 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     setNearbyPlaces([]);
     setPreviewPlaceId(null);
     setPreview(null);
+    setCenterPlace(null);
+    setHasSearchedCenter(false);
     sessionTokenRef.current = createPlacesSessionToken();
 
     // Best-effort: center on the user's current location when the picker
@@ -108,6 +124,7 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     let cancelled = false;
     getCurrentLocation().then((coords) => {
       if (cancelled || !coords) return;
+      isProgrammaticMoveRef.current = true;
       cameraRef.current?.setCamera({
         centerCoordinate: [coords.lng, coords.lat],
         zoomLevel: CURRENT_LOCATION_ZOOM,
@@ -143,12 +160,14 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
 
   async function handleSuggestionSelect(suggestion: PlaceAutocompleteSuggestion) {
     setError(null);
+    Keyboard.dismiss();
     try {
       const details = await fetchPlaceDetails(suggestion.placeId, sessionTokenRef.current);
       setSuggestions([]);
       // Mapbox coordinates are [longitude, latitude] — the opposite order
       // from the {latitude, longitude} objects expo-maps/react-native-maps
       // use elsewhere in this app, easy to transpose by mistake.
+      isProgrammaticMoveRef.current = true;
       cameraRef.current?.setCamera({
         centerCoordinate: [details.lng, details.lat],
         zoomLevel: SELECTED_ZOOM,
@@ -159,7 +178,10 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       // here — there's nothing to "confirm", the map is read-only). 'pick'
       // mode keeps today's behavior: show a pin + confirm bar for this
       // specific result.
-      if (mode === 'pick') setSelectedDetails(details);
+      if (mode === 'pick') {
+        setSelectedDetails(details);
+        setCenterPlace(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
     }
@@ -180,11 +202,12 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
   }
 
   async function handleConfirm() {
-    if (!selectedDetails) return;
+    const target = selectedDetails ?? centerPlace;
+    if (!target) return;
     setIsConfirming(true);
     setError(null);
     try {
-      const cached = await cachePlaceHierarchy(selectedDetails);
+      const cached = await cachePlaceHierarchy(target);
       onSelect?.(cached);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not use that place.');
@@ -193,7 +216,40 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     }
   }
 
-  async function handleMapIdle() {
+  async function handleMapIdle(state: MapState) {
+    // A camera move this component itself triggered (current-location
+    // centering, recentering to a selected search suggestion) already knows
+    // what place it's centered on — skip re-deriving it from a nearby-lookup
+    // for the exact same spot.
+    if (isProgrammaticMoveRef.current) {
+      isProgrammaticMoveRef.current = false;
+      return;
+    }
+
+    if (mode === 'pick') {
+      // A real drag always means "I'm looking somewhere new" — an explicit
+      // search pick no longer applies once the user has moved the map
+      // themselves.
+      setSelectedDetails(null);
+      const [lng, lat] = state.properties.center;
+      if (viewportDebounceRef.current) clearTimeout(viewportDebounceRef.current);
+      viewportDebounceRef.current = setTimeout(async () => {
+        setIsLoadingCenterPlace(true);
+        try {
+          setCenterPlace(await findNearbyPlace(lat, lng));
+        } catch {
+          // Best-effort, same reasoning as browse mode's nearby fetch below —
+          // a failed lookup shouldn't block the map, the user can still type
+          // a search instead.
+          setCenterPlace(null);
+        } finally {
+          setIsLoadingCenterPlace(false);
+          setHasSearchedCenter(true);
+        }
+      }, VIEWPORT_DEBOUNCE_MS);
+      return;
+    }
+
     if (mode !== 'browse') return;
     if (viewportDebounceRef.current) clearTimeout(viewportDebounceRef.current);
     viewportDebounceRef.current = setTimeout(async () => {
@@ -262,7 +318,20 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
             ))}
         </MapView>
 
-        <View
+        {/* Uber-style fixed center pin — a screen-space element, not a map
+            marker, so it visually stays put while the map pans underneath
+            it. `centerPinDot`'s own negative margin (half its own size)
+            shifts it so its tip, not its geometric center, marks the true
+            center point. pointerEvents="none" so it never blocks map-drag
+            gestures. */}
+        {mode === 'pick' && (
+          <View style={styles.centerPinWrap} pointerEvents="none">
+            <View style={styles.centerPinDot} />
+          </View>
+        )}
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={[
             styles.overlay,
             { paddingTop: insets.top + Spacing.three, paddingBottom: insets.bottom + Spacing.three },
@@ -297,27 +366,44 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
 
           {suggestions.length > 0 && (
             <ThemedView type="backgroundElement" style={styles.suggestions}>
-              {suggestions.map((s) => (
-                <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
-                  <ThemedText type="small">{s.primaryText}</ThemedText>
-                  {s.secondaryText && (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {s.secondaryText}
-                    </ThemedText>
-                  )}
-                </Pressable>
-              ))}
+              <ScrollView
+                keyboardDismissMode="on-drag"
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}>
+                {suggestions.map((s) => (
+                  <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
+                    <ThemedText type="small">{s.primaryText}</ThemedText>
+                    {s.secondaryText && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {s.secondaryText}
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
             </ThemedView>
           )}
 
-          {mode === 'pick' && selectedDetails && (
+          {mode === 'pick' && (selectedDetails || centerPlace) && (
             <View style={styles.confirmBar}>
               <Button
-                label={`Use ${selectedDetails.displayName}`}
+                label={`Use ${(selectedDetails ?? centerPlace)!.displayName}`}
                 onPress={handleConfirm}
                 loading={isConfirming}
               />
             </View>
+          )}
+          {mode === 'pick' && !selectedDetails && !centerPlace && isLoadingCenterPlace && (
+            <ThemedView type="backgroundElement" style={styles.messageBox}>
+              <ThemedText type="small">Looking here…</ThemedText>
+            </ThemedView>
+          )}
+          {mode === 'pick' && !selectedDetails && !centerPlace && !isLoadingCenterPlace && hasSearchedCenter && (
+            <ThemedView type="backgroundElement" style={styles.messageBox}>
+              <ThemedText type="small" themeColor="textSecondary">
+                No named place here — try dragging a bit or search instead.
+              </ThemedText>
+            </ThemedView>
           )}
 
           {mode === 'browse' && previewPlaceId && (
@@ -332,7 +418,7 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
               )}
             </View>
           )}
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -349,6 +435,23 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-between',
     padding: Spacing.three,
+  },
+  centerPinWrap: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Shifted up by half its own height so the *tip* of the pin (its visual
+  // bottom point, not its geometric center) marks the true center
+  // coordinate — same convention the map's other pin styles use.
+  centerPinDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: BrandColors.sage,
+    borderWidth: 3,
+    borderColor: BrandColors.cream,
+    transform: [{ translateY: -10 }],
   },
   searchBar: {
     flexDirection: 'row',
@@ -369,9 +472,13 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     padding: Spacing.two,
   },
+  // maxHeight bounds it so the inner ScrollView is actually scrollable (and
+  // so keyboardDismissMode="on-drag" has something to drag) instead of just
+  // growing to fit every suggestion.
   suggestions: {
     marginTop: Spacing.two,
     borderRadius: Spacing.three,
+    maxHeight: 280,
     overflow: 'hidden',
   },
   suggestionRow: {

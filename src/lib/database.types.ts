@@ -529,13 +529,18 @@ export type Database = {
           created_at: string
           discoverable_by_contacts: boolean
           handle: string | null
+          has_set_privacy: boolean
           has_shared_invite: boolean
           hashed_phone: string | null
           id: string
           invite_exempt: boolean
           is_admin: boolean
           is_private: boolean
+          map_default_layers: string[]
           name: string | null
+          notify_comments: boolean
+          notify_follows: boolean
+          notify_likes: boolean
           show_map: boolean
         }
         Insert: {
@@ -544,13 +549,18 @@ export type Database = {
           created_at?: string
           discoverable_by_contacts?: boolean
           handle?: string | null
+          has_set_privacy?: boolean
           has_shared_invite?: boolean
           hashed_phone?: string | null
           id: string
           invite_exempt?: boolean
           is_admin?: boolean
           is_private?: boolean
+          map_default_layers?: string[]
           name?: string | null
+          notify_comments?: boolean
+          notify_follows?: boolean
+          notify_likes?: boolean
           show_map?: boolean
         }
         Update: {
@@ -559,13 +569,18 @@ export type Database = {
           created_at?: string
           discoverable_by_contacts?: boolean
           handle?: string | null
+          has_set_privacy?: boolean
           has_shared_invite?: boolean
           hashed_phone?: string | null
           id?: string
           invite_exempt?: boolean
           is_admin?: boolean
           is_private?: boolean
+          map_default_layers?: string[]
           name?: string | null
+          notify_comments?: boolean
+          notify_follows?: boolean
+          notify_likes?: boolean
           show_map?: boolean
         }
         Relationships: []

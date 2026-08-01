@@ -69,7 +69,7 @@ export function FloatingNavBar() {
           return (
             <View key={href} style={styles.iconRow}>
               <Pressable onPress={() => setActivePage(index)} hitSlop={8} style={styles.iconButton}>
-                <Ionicons name={isActive ? icons.activeIcon : icons.icon} size={24} color={BrandColors.cream} />
+                <Ionicons name={isActive ? icons.activeIcon : icons.icon} size={28} color={BrandColors.cream} />
               </Pressable>
               {index < TAB_ROUTES.length - 1 && <View style={styles.divider} />}
             </View>
@@ -87,13 +87,18 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
+  // Bigger and more rectangular than the original full pill: borderRadius
+  // dropped from 999 (capsule) to a visibly-rounded-rectangle value, and both
+  // paddings increased — see BottomTabInset in constants/theme.ts for the
+  // matching recomputed bottom clearance every screen needs now that this is
+  // taller.
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.backgroundElement,
-    borderRadius: 999,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    borderRadius: Spacing.four,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
   },
   iconRow: {
     flexDirection: 'row',

@@ -8,6 +8,7 @@ import type PagerView from 'react-native-pager-view';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { FloatingNavBar } from '@/components/floating-nav-bar';
+import { KeyboardProviderWrapper } from '@/components/keyboard-provider-wrapper';
 import { TAB_ROUTES } from '@/constants/tab-routes';
 import { NavBarVisibilityProvider } from '@/hooks/use-hide-on-scroll';
 import { TabPagerProvider } from '@/hooks/use-tab-pager';
@@ -23,6 +24,7 @@ function RootNavigator() {
 
   const isAuthenticated = session !== null;
   const hasCompletedOnboarding = profile?.handle != null;
+  const hasSetPrivacy = profile?.has_set_privacy === true;
   const hasPassedInviteGate = profile?.has_shared_invite === true || profile?.invite_exempt === true;
   const isOnMainTab = (TAB_ROUTES as readonly string[]).includes(pathname);
   // Nav bar now only shows on the 5 main tab screens — Stack-pushed detail
@@ -30,7 +32,7 @@ function RootNavigator() {
   // to needing their own in-content back control, same as a normal Stack
   // push. Previously this was intentionally *not* scoped (nav present on
   // every authenticated screen); reversed per explicit follow-up feedback.
-  const showNavBar = isAuthenticated && hasCompletedOnboarding && hasPassedInviteGate && isOnMainTab;
+  const showNavBar = isAuthenticated && hasCompletedOnboarding && hasSetPrivacy && hasPassedInviteGate && isOnMainTab;
 
   function setActivePage(index: number) {
     if (Platform.OS === 'web') {
@@ -58,11 +60,15 @@ function RootNavigator() {
               <Stack.Screen name="onboarding" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && !hasPassedInviteGate}>
+            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && !hasSetPrivacy}>
+              <Stack.Screen name="privacy-choice" />
+            </Stack.Protected>
+
+            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && hasSetPrivacy && !hasPassedInviteGate}>
               <Stack.Screen name="invite-gate" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && hasPassedInviteGate}>
+            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && hasSetPrivacy && hasPassedInviteGate}>
               <Stack.Screen name="(tabs)" />
             </Stack.Protected>
           </Stack>
@@ -95,12 +101,14 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={DarkTheme}>
-        <AuthProvider>
-          <AnimatedSplashOverlay />
-          <RootNavigator />
-        </AuthProvider>
-      </ThemeProvider>
+      <KeyboardProviderWrapper>
+        <ThemeProvider value={DarkTheme}>
+          <AuthProvider>
+            <AnimatedSplashOverlay />
+            <RootNavigator />
+          </AuthProvider>
+        </ThemeProvider>
+      </KeyboardProviderWrapper>
     </GestureHandlerRootView>
   );
 }

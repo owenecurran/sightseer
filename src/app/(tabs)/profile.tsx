@@ -26,7 +26,6 @@ import {
 } from '@/lib/follows';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
-import { supabase } from '@/lib/supabase';
 
 export default function ProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
@@ -35,7 +34,6 @@ export default function ProfileScreen() {
   const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
   const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [error, setError] = useState<string | null>(null);
-  const [isSigningOut, setIsSigningOut] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -93,12 +91,6 @@ export default function ProfileScreen() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not reject that request.');
     }
-  }
-
-  async function handleSignOut() {
-    setIsSigningOut(true);
-    await supabase.auth.signOut();
-    setIsSigningOut(false);
   }
 
   async function handlePickAvatar() {
@@ -178,7 +170,7 @@ export default function ProfileScreen() {
 
             {session && profile?.show_map && (
               <ThemedView type="backgroundElement" style={styles.neutralCard}>
-                <ProfileMap userId={session.user.id} />
+                <ProfileMap userId={session.user.id} defaultLayers={profile.map_default_layers} isOwnProfile />
               </ThemedView>
             )}
 
@@ -211,7 +203,7 @@ export default function ProfileScreen() {
                   </ThemedText>
                 </Pressable>
               )}
-              <Button label="Sign out" variant="secondary" onPress={handleSignOut} loading={isSigningOut} />
+              <Button label="Settings" variant="secondary" onPress={() => router.push('/settings')} />
             </View>
           </View>
         </Animated.ScrollView>

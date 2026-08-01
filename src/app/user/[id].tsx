@@ -194,7 +194,11 @@ export default function UserProfileScreen() {
 
             {canSeeContent && user?.show_map && (
               <ThemedView type="backgroundElement" style={styles.neutralCard}>
-                <ProfileMap userId={user.id} />
+                <ProfileMap
+                  userId={user.id}
+                  defaultLayers={user.map_default_layers}
+                  isOwnProfile={session?.user.id === user.id}
+                />
               </ThemedView>
             )}
           </View>

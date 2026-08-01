@@ -122,7 +122,6 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
   },
   contentWrap: {
     width: '100%',
@@ -133,8 +132,11 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     marginBottom: Spacing.three,
   },
+  // paddingBottom belongs on the FlatList's own scrollable content, not the
+  // non-scrolling safeArea wrapper above — same bug/fix as index.tsx/boards.tsx.
   list: {
     gap: Spacing.two,
+    paddingBottom: BottomTabInset,
   },
   visitRow: {
     flexDirection: 'row',

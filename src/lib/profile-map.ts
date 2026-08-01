@@ -1,4 +1,15 @@
 import { supabase } from '@/lib/supabase';
+import type { LayerKey } from '@/lib/map-layers';
+
+// Persists the profile map's default layer selection (ProfileMapModal's
+// "Set as default" action) — RLS already restricts `users` updates to the
+// authenticated user's own row, so this is only ever meaningful called with
+// the current session's own id (enforced by the caller only showing the
+// affordance on your own profile, not by anything here).
+export async function saveDefaultMapLayers(userId: string, layers: LayerKey[]): Promise<void> {
+  const { error } = await supabase.from('users').update({ map_default_layers: layers }).eq('id', userId);
+  if (error) throw error;
+}
 
 export type VisitedPlace = {
   id: string;

@@ -8,34 +8,29 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MAPBOX_STYLE_URL } from '@/constants/mapbox.native';
 import { BrandColors, Spacing } from '@/constants/theme';
-import { getVisitedPlacesWithCategory, getVisitedRegions, type VisitedRegion } from '@/lib/profile-map';
+import {
+  COUNTRY_FILL,
+  COUNTRY_FILL_OPACITY,
+  COUNTRY_LINE,
+  LAYER_OPTIONS,
+  NATIONAL_PARK_COLOR,
+  parseDefaultLayers,
+  STATE_FILL,
+  STATE_FILL_OPACITY,
+  STATE_LINE,
+  type LayerKey,
+} from '@/lib/map-layers';
+import { getVisitedPlacesWithCategory, getVisitedRegions, saveDefaultMapLayers, type VisitedRegion } from '@/lib/profile-map';
 
 type ProfileMapModalProps = {
   visible: boolean;
   onClose: () => void;
   userId: string;
+  defaultLayers?: string[];
+  isOwnProfile?: boolean;
 };
 
-type LayerKey = 'pins' | 'countries' | 'states' | 'national_parks';
-
-const LAYER_OPTIONS: { key: LayerKey; label: string }[] = [
-  { key: 'pins', label: 'Pins' },
-  { key: 'countries', label: 'Countries' },
-  { key: 'states', label: 'States' },
-  { key: 'national_parks', label: 'National Parks' },
-];
-
 const DEFAULT_ZOOM = 3;
-// Plain 6-digit hex + separate opacity, not 8-digit RGBA-in-hex — see
-// profile-map-modal.tsx's matching comment: mapbox-gl-js (web) rejects that
-// format outright, @rnmapbox/maps didn't error but this stays consistent
-// with the web version rather than silently diverging.
-const COUNTRY_FILL = '#1E88E5';
-const COUNTRY_FILL_OPACITY = 0.2;
-const COUNTRY_LINE = '#1E88E5';
-const STATE_FILL = '#F4511E';
-const STATE_FILL_OPACITY = 0.2;
-const STATE_LINE = '#F4511E';
 
 function regionsToFeatureCollection(regions: VisitedRegion[]): FeatureCollection<Polygon> {
   return {
@@ -57,21 +52,36 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): FeatureCollection
 // overlappable highlights (not mutually exclusive with each other or with
 // the region fills), matching "customize what's being highlighted" rather
 // than a single-select filter.
-export function ProfileMapModal({ visible, onClose, userId }: ProfileMapModalProps) {
-  const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => new Set(['pins']));
+export function ProfileMapModal({ visible, onClose, userId, defaultLayers, isOwnProfile }: ProfileMapModalProps) {
+  const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(defaultLayers));
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>>>([]);
   const [regions, setRegions] = useState<VisitedRegion[]>([]);
+  const [isSavingDefault, setIsSavingDefault] = useState(false);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!visible) return;
+    // Re-seed from the persisted default each time the modal opens (not just
+    // on first mount) — otherwise a save from a previous open would be
+    // invisible until the whole screen remounted.
+    setActiveLayers(parseDefaultLayers(defaultLayers));
     getVisitedPlacesWithCategory(userId)
       .then(setPlaces)
       .catch(() => setPlaces([]));
     getVisitedRegions(userId)
       .then(setRegions)
       .catch(() => setRegions([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, userId]);
+
+  async function handleSaveDefault() {
+    setIsSavingDefault(true);
+    try {
+      await saveDefaultMapLayers(userId, Array.from(activeLayers));
+    } finally {
+      setIsSavingDefault(false);
+    }
+  }
 
   function toggleLayer(key: LayerKey) {
     setActiveLayers((prev) => {
@@ -135,19 +145,28 @@ export function ProfileMapModal({ visible, onClose, userId }: ProfileMapModalPro
             </ThemedText>
           </Pressable>
 
-          <View style={styles.chipRow}>
-            {LAYER_OPTIONS.map((option) => {
-              const active = activeLayers.has(option.key);
-              return (
-                <Pressable key={option.key} onPress={() => toggleLayer(option.key)}>
-                  <ThemedView type={active ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
-                    <ThemedText type="small" themeColor={active ? 'text' : 'textSecondary'}>
-                      {option.label}
-                    </ThemedText>
-                  </ThemedView>
-                </Pressable>
-              );
-            })}
+          <View style={styles.bottomBar}>
+            <View style={styles.chipRow}>
+              {LAYER_OPTIONS.map((option) => {
+                const active = activeLayers.has(option.key);
+                return (
+                  <Pressable key={option.key} onPress={() => toggleLayer(option.key)}>
+                    <ThemedView type={active ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
+                      <ThemedText type="small" themeColor={active ? 'text' : 'textSecondary'}>
+                        {option.label}
+                      </ThemedText>
+                    </ThemedView>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {isOwnProfile && (
+              <Pressable onPress={handleSaveDefault} disabled={isSavingDefault}>
+                <ThemedText type="small" themeColor="sage">
+                  {isSavingDefault ? 'Saving…' : 'Set as default'}
+                </ThemedText>
+              </Pressable>
+            )}
           </View>
         </View>
       </View>
@@ -174,6 +193,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.five,
   },
+  bottomBar: {
+    gap: Spacing.two,
+  },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -196,7 +218,7 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 3,
-    backgroundColor: '#2E7D32',
+    backgroundColor: NATIONAL_PARK_COLOR,
     borderWidth: 2,
     borderColor: BrandColors.cream,
   },

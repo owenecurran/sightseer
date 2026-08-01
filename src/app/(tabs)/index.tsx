@@ -171,10 +171,14 @@ export default function HomeScreen() {
           renderItem={({ item }: { item: FeedVisit }) => (
             <ThemedView type="backgroundElement" style={styles.card}>
               <View style={styles.headerRow}>
-                <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />
-                <ThemedText type="smallBold" style={styles.headerText}>
-                  {formatAuthorLine(item.authorName, item.taggedUserNames)}
-                </ThemedText>
+                <Pressable
+                  style={styles.headerAuthor}
+                  onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.user_id } })}>
+                  <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />
+                  <ThemedText type="smallBold" style={styles.headerText}>
+                    {formatAuthorLine(item.authorName, item.taggedUserNames)}
+                  </ThemedText>
+                </Pressable>
                 <VisitMenu
                   visitId={item.id}
                   isOwner={session?.user.id === item.user_id}
@@ -263,6 +267,12 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  headerAuthor: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
   },

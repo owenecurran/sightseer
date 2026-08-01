@@ -48,7 +48,9 @@
         {
           "locationWhenInUsePermission": "Alien App uses your location to center the map on where you are."
         }
-      ]
+      ],
+      "@react-native-google-signin/google-signin",
+      "expo-apple-authentication"
     ],
     "experiments": {
       "typedRoutes": true,
