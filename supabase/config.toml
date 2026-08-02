@@ -334,6 +334,20 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
+# Used for native/mobile Google sign-in (@react-native-google-signin/google-signin) and the web
+# Sign-In-With-Google button — same client_id GoTrue checks the ID token's audience against
+# (comma-separate multiple client IDs here — iOS, Android, Web — if verifying more than one).
+# Only relevant if `supabase start` is ever run locally; this app points at the hosted project, so
+# the real switch is the hosted Supabase Studio dashboard → Authentication → Providers.
+[auth.external.google]
+enabled = false
+client_id = ""
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+url = ""
+skip_nonce_check = false
+email_optional = false
+
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
 [auth.web3.solana]

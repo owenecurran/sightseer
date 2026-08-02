@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { SocialAuthButtons } from '@/components/ui/social-auth-buttons';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
@@ -80,6 +81,7 @@ export default function SignUpScreen() {
             </ThemedText>
           )}
           <Button label="Sign up" onPress={handleSignUp} loading={isSubmitting} />
+          <SocialAuthButtons onError={setError} />
         </ThemedView>
 
         <Link href="/(auth)/sign-in" style={styles.link}>
