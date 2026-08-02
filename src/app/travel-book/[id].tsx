@@ -1,16 +1,20 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
@@ -32,6 +36,7 @@ import type { TaggedVisit } from '@/lib/tagged-visits';
 export default function TravelBookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
   const [book, setBook] = useState<TravelBookRow | null>(null);
   const [locationName, setLocationName] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<TravelBookCollaborator[]>([]);
@@ -45,7 +50,9 @@ export default function TravelBookDetailScreen() {
   const [isAddExpanded, setIsAddExpanded] = useState(false);
   const [eligibleVisits, setEligibleVisits] = useState<TaggedVisit[]>([]);
   const [isLoadingEligible, setIsLoadingEligible] = useState(false);
+  const [confirmingItem, setConfirmingItem] = useState<TravelBookItem | null>(null);
 
+  const theme = useTheme();
   const scrollHandler = useHideOnScrollHandler();
 
   const isParticipant = Boolean(
@@ -144,7 +151,7 @@ export default function TravelBookDetailScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
@@ -205,10 +212,11 @@ export default function TravelBookDetailScreen() {
                     )}
                   </View>
                   {session && (item.addedBy === session.user.id || book?.user_id === session.user.id) && (
-                    <Pressable onPress={() => handleRemoveItem(item)} hitSlop={8}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Remove
-                      </ThemedText>
+                    <Pressable
+                      onPress={() => setConfirmingItem(item)}
+                      hitSlop={12}
+                      style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
+                      <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
                     </Pressable>
                   )}
                 </ThemedView>
@@ -268,6 +276,17 @@ export default function TravelBookDetailScreen() {
           </View>
         </Animated.ScrollView>
       </SafeAreaView>
+
+      <ConfirmDeleteModal
+        visible={confirmingItem != null}
+        message="Remove this review from the trip?"
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (confirmingItem) handleRemoveItem(confirmingItem);
+          setConfirmingItem(null);
+        }}
+        onCancel={() => setConfirmingItem(null)}
+      />
     </ThemedView>
   );
 }
@@ -287,7 +306,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
   },
   membersRow: {
     flexDirection: 'row',
@@ -322,5 +340,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  menuButton: {
+    padding: Spacing.two,
+  },
+  pressed: {
+    opacity: 0.5,
   },
 });

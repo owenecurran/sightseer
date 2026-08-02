@@ -10,7 +10,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { TextField } from '@/components/ui/text-field';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
@@ -46,6 +47,7 @@ function mutualsLabel(mutuals: MutualFollower[]): string | null {
 
 export default function SearchScreen() {
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<SearchMode>('people_boards');
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
@@ -149,7 +151,7 @@ export default function SearchScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
@@ -296,7 +298,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
   filterRow: {

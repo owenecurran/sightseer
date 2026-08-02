@@ -1,19 +1,13 @@
+import { Image } from 'expo-image';
 import { useEffect } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
-// A small set of loading-state icons shown while an async image URL/photo
-// is still being fetched — only the first (a walking pedestrian) is built
-// out for now; the other two slots are reserved so a different icon can be
-// swapped in later (per-context or at random) without restructuring the
-// call sites that already render <ImageLoadingIcon />.
-const LOADING_ICONS = ['🚶', '🚶', '🚶'] as const;
-
-type ImageLoadingIconProps = {
-  variant?: 0 | 1 | 2;
-};
-
-export function ImageLoadingIcon({ variant = 0 }: ImageLoadingIconProps) {
+// Shown while an async image URL/photo is still being fetched — the walking
+// mark from assets/brand-source/loading-icon.svg, rasterized to
+// assets/images/loading-icon.png (scripts/generate-brand-assets.js
+// regenerates this, and the app-icon/favicon PNGs, from the source SVGs).
+export function ImageLoadingIcon() {
   const walk = useSharedValue(0);
 
   useEffect(() => {
@@ -26,7 +20,7 @@ export function ImageLoadingIcon({ variant = 0 }: ImageLoadingIconProps) {
 
   return (
     <Animated.View style={[styles.container, animatedStyle]}>
-      <Text style={styles.icon}>{LOADING_ICONS[variant]}</Text>
+      <Image source={require('@/assets/images/loading-icon.png')} style={styles.icon} contentFit="contain" />
     </Animated.View>
   );
 }
@@ -38,6 +32,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   icon: {
-    fontSize: 28,
+    width: 24,
+    height: 28,
   },
 });

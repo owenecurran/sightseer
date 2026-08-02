@@ -35,6 +35,12 @@ type ProfileMapModalProps = {
   defaultLayers?: string[];
   defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
+  // Called after a successful "Lock this view" save — the caller's own
+  // profile/user context object is never otherwise updated with the newly
+  // saved camera, so without this the small preview thumbnail (which reads
+  // defaultCamera from that same context) keeps showing the stale value
+  // until the next full reload.
+  onCameraLocked?: () => void;
 };
 
 const DEFAULT_ZOOM = 3;
@@ -66,6 +72,7 @@ export function ProfileMapModal({
   defaultLayers,
   defaultCamera,
   isOwnProfile,
+  onCameraLocked,
 }: ProfileMapModalProps) {
   const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(defaultLayers));
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>>>([]);
@@ -110,6 +117,7 @@ export function ProfileMapModal({
     setIsLockingView(true);
     try {
       await saveDefaultMapCamera(userId, { lat: camera.lat, lng: camera.lng }, camera.zoom);
+      onCameraLocked?.();
     } finally {
       setIsLockingView(false);
     }

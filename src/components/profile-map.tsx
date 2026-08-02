@@ -23,6 +23,7 @@ type ProfileMapProps = {
   defaultLayers?: string[];
   defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
+  onCameraLocked?: () => void;
 };
 
 const MAP_HEIGHT = 220;
@@ -50,7 +51,7 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): GeoJSON.FeatureCo
 // this is just a preview — tap opens ProfileMapModal for the real thing.
 // Renders whichever layers `defaultLayers` says to show, same layer set as
 // the modal — see profile-map.native.tsx's matching comment.
-export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile }: ProfileMapProps) {
+export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile, onCameraLocked }: ProfileMapProps) {
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>> | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const containerRef = useRef<View>(null);
@@ -138,8 +139,15 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile 
       map.remove();
       mapRef.current = null;
     };
+    // Depend on the locked camera's primitive fields, not the `defaultCamera`
+    // object itself (a fresh object every render from parseDefaultCamera())
+    // — object-identity deps would rebuild the whole map on every render.
+    // A real value change (e.g. right after refreshProfile() picks up a new
+    // lock) still needs to rebuild, since mapboxgl.Map's center/zoom are
+    // constructor-only here, same "only applies once" limitation as native's
+    // Camera defaultSettings.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [places, userId, defaultLayers]);
+  }, [places, userId, defaultLayers, defaultCamera?.lat, defaultCamera?.lng, defaultCamera?.zoom]);
 
   if (!places || places.length === 0) return null;
 
@@ -158,6 +166,7 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile 
         defaultLayers={defaultLayers}
         defaultCamera={defaultCamera}
         isOwnProfile={isOwnProfile}
+        onCameraLocked={onCameraLocked}
       />
     </View>
   );

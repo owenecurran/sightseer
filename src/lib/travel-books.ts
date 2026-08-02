@@ -107,7 +107,7 @@ export async function getTravelBookItems(bookId: string, viewerId: string): Prom
   const { data, error } = await supabase
     .from('travel_book_items')
     .select(
-      'id, added_by, added_at, visits(id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position), likes(user_id), visit_tagged_users(users(handle, name)), visit_tagged_places(places(name, category)), comments(id))'
+      'id, added_by, added_at, visits(id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id))'
     )
     .eq('travel_book_id', bookId);
   if (error) throw error;
@@ -151,7 +151,7 @@ async function getOwnVisitsAsTaggedVisit(userId: string): Promise<TaggedVisit[]>
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position), likes(user_id), visit_tagged_users(users(handle, name)), visit_tagged_places(places(name, category)), comments(id)'
+      'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)'
     )
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
@@ -168,5 +168,32 @@ export async function addVisitToTravelBook(bookId: string, visitId: string, adde
 
 export async function removeVisitFromTravelBook(itemId: string): Promise<void> {
   const { error } = await supabase.from('travel_book_items').delete().eq('id', itemId);
+  if (error) throw error;
+}
+
+// Mirrors boards.ts's getBoardIdsContainingVisit — which of the given
+// travel-book ids already contain this visit, for the feed "+" menu's
+// save/saved toggle state.
+export async function getTravelBookIdsContainingVisit(
+  bookIds: string[],
+  visitId: string
+): Promise<Set<string>> {
+  if (bookIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from('travel_book_items')
+    .select('travel_book_id')
+    .eq('visit_id', visitId)
+    .in('travel_book_id', bookIds);
+  if (error) throw error;
+  return new Set(data.map((row) => row.travel_book_id));
+}
+
+// Mirrors boards.ts's removeVisitFromBoard.
+export async function removeVisitFromTravelBookByVisit(bookId: string, visitId: string): Promise<void> {
+  const { error } = await supabase
+    .from('travel_book_items')
+    .delete()
+    .eq('travel_book_id', bookId)
+    .eq('visit_id', visitId);
   if (error) throw error;
 }

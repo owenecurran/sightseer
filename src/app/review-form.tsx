@@ -15,7 +15,8 @@ import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
 import { RatingSlider } from '@/components/ui/rating-slider';
 import { TextField } from '@/components/ui/text-field';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
@@ -47,6 +48,7 @@ function todayIsoDate(): string {
 
 export default function ReviewFormScreen() {
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
   const [error, setError] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
@@ -316,7 +318,7 @@ export default function ReviewFormScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAwareScroll
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
@@ -460,7 +462,7 @@ export default function ReviewFormScreen() {
                   />
                 )}
 
-                <SaveToBoard visitId={savedVisitId} />
+                <SaveToBoard visitId={savedVisitId} isOwnerOrTagged />
               </ThemedView>
             )}
           </ThemedView>
@@ -473,6 +475,7 @@ export default function ReviewFormScreen() {
           uri={cropSource?.uri ?? null}
           onCancel={handleCropCancel}
           onConfirm={handleCropConfirm}
+          allowRatioSelection
         />
         <LocationSearchModal
           visible={isPickerOpen}
@@ -498,7 +501,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
   suggestionRow: {

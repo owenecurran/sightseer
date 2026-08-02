@@ -33,6 +33,8 @@ type ProfileMapModalProps = {
   defaultLayers?: string[];
   defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
+  // See the matching comment in profile-map-modal.native.tsx.
+  onCameraLocked?: () => void;
 };
 
 const DEFAULT_ZOOM = 2;
@@ -68,6 +70,7 @@ export function ProfileMapModal({
   defaultLayers,
   defaultCamera,
   isOwnProfile,
+  onCameraLocked,
 }: ProfileMapModalProps) {
   const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(defaultLayers));
   const [isSavingDefault, setIsSavingDefault] = useState(false);
@@ -227,6 +230,7 @@ export function ProfileMapModal({
     setIsLockingView(true);
     try {
       await saveDefaultMapCamera(userId, { lat: center.lat, lng: center.lng }, map.getZoom());
+      onCameraLocked?.();
     } finally {
       setIsLockingView(false);
     }

@@ -12,11 +12,13 @@ export type VisitDetail = {
   authorName: string;
   placeName: string;
   photoIds: string[];
+  photoAspectRatios: (number | null)[];
   likeCount: number;
   isLikedByMe: boolean;
   taggedUserNames: string[];
   taggedPlaces: { name: string; category: PlaceCategory }[];
   commentCount: number;
+  isViewerTagged: boolean;
 };
 
 type RawVisitDetail = {
@@ -27,9 +29,9 @@ type RawVisitDetail = {
   user_id: string;
   users: { handle: string | null; name: string | null } | null;
   places: { name: string } | null;
-  photos: { id: string; position: number }[];
+  photos: { id: string; position: number; width: number | null; height: number | null }[];
   likes: { user_id: string }[];
-  visit_tagged_users: { users: { handle: string | null; name: string | null } | null }[];
+  visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
   visit_tagged_places: { places: { name: string; category: PlaceCategory } | null }[];
   comments: { id: string }[];
 };
@@ -42,7 +44,7 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, user_id, users!user_id(handle, name), places!place_id(name), photos(id, position), likes(user_id), visit_tagged_users(users(handle, name)), visit_tagged_places(places(name, category)), comments(id)'
+      'id, rating, note, visited_on, user_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)'
     )
     .eq('id', visitId)
     .maybeSingle();
@@ -59,6 +61,9 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
     authorName: v.users?.name ?? v.users?.handle ?? 'Someone',
     placeName: v.places?.name ?? 'Unknown place',
     photoIds: [...v.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
+    photoAspectRatios: [...v.photos]
+      .sort((a, b) => a.position - b.position)
+      .map((p) => (p.width && p.height ? p.width / p.height : null)),
     likeCount: v.likes.length,
     isLikedByMe: v.likes.some((like) => like.user_id === myUserId),
     taggedUserNames: v.visit_tagged_users
@@ -68,5 +73,6 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
       .map((t) => t.places)
       .filter((place): place is { name: string; category: PlaceCategory } => place != null),
     commentCount: v.comments.length,
+    isViewerTagged: v.visit_tagged_users.some((t) => t.user_id === myUserId),
   };
 }

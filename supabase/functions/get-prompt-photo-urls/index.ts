@@ -12,6 +12,10 @@ const s3 = new S3Client({
     accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!,
     secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!,
   },
+  // See get-photo-urls for why — newer AWS SDK versions add checksum
+  // params to presigned GET URLs by default, which R2 doesn't support.
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
 });
 
 export default {

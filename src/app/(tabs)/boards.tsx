@@ -11,35 +11,45 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
 import { createBoard, getLatestReviewPhotoIds, listMyBoards } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
 import { getPhotoViewUrls } from '@/lib/photo-view';
+import { listMyTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
+type CollectionMode = 'boards' | 'travel_books';
 
 export default function BoardsScreen() {
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
+  const [mode, setMode] = useState<CollectionMode>('boards');
   const [boards, setBoards] = useState<BoardRow[]>([]);
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
   const [newBoardName, setNewBoardName] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [travelBooks, setTravelBooks] = useState<TravelBookListItem[]>([]);
+  const [coverUrls, setCoverUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
+  // Both datasets load together regardless of which mode is active, so
+  // switching between Boards and Travel Books is instant with no reload —
+  // the whole point of merging these into one tabbed screen.
   useTabFocusEffect(
     3,
     useCallback(() => {
       if (!session) return;
       setIsLoading(true);
       setError(null);
-      listMyBoards(session.user.id)
-        .then(async (myBoards) => {
+      Promise.all([
+        listMyBoards(session.user.id).then(async (myBoards) => {
           setBoards(myBoards);
           // Explicit cover_photo_id wins when set; boards without one fall
           // back to the most-recently-added item's photo.
@@ -58,8 +68,21 @@ export default function BoardsScreen() {
                 .filter(([, url]) => url != null)
             )
           );
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load boards.'))
+        }),
+        listMyTravelBooks(session.user.id).then(async (myBooks) => {
+          setTravelBooks(myBooks);
+          const coverPhotoIds = myBooks.map((b) => b.cover_photo_id).filter((id): id is string => id != null);
+          const urls = coverPhotoIds.length > 0 ? await getPhotoViewUrls(coverPhotoIds) : {};
+          setCoverUrls(
+            Object.fromEntries(
+              myBooks
+                .filter((b) => b.cover_photo_id && urls[b.cover_photo_id])
+                .map((b) => [b.id, urls[b.cover_photo_id!]])
+            )
+          );
+        }),
+      ])
+        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your collections.'))
         .finally(() => {
           setIsLoading(false);
           setHasLoadedOnce(true);
@@ -67,7 +90,7 @@ export default function BoardsScreen() {
     }, [session])
   );
 
-  async function handleCreate() {
+  async function handleCreateBoard() {
     if (!session || !newBoardName.trim()) return;
     setIsCreating(true);
     setError(null);
@@ -87,24 +110,28 @@ export default function BoardsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="displaySerif">Your boards</ThemedText>
+        <ThemedText type="displaySerif">{mode === 'boards' ? 'Your boards' : 'Your travel books'}</ThemedText>
 
-        <CollectionsSwitcher active="boards" />
+        <CollectionsSwitcher active={mode} onChange={setMode} />
 
-        <ThemedView style={styles.newBoardRow}>
-          <TextField
-            placeholder="New board name"
-            value={newBoardName}
-            onChangeText={setNewBoardName}
-            style={styles.newBoardInput}
-          />
-          <Button
-            label="Create"
-            onPress={handleCreate}
-            loading={isCreating}
-            disabled={!newBoardName.trim()}
-          />
-        </ThemedView>
+        {mode === 'boards' ? (
+          <ThemedView style={styles.newBoardRow}>
+            <TextField
+              placeholder="New board name"
+              value={newBoardName}
+              onChangeText={setNewBoardName}
+              style={styles.newBoardInput}
+            />
+            <Button
+              label="Create"
+              onPress={handleCreateBoard}
+              loading={isCreating}
+              disabled={!newBoardName.trim()}
+            />
+          </ThemedView>
+        ) : (
+          <Button label="New travel book" onPress={() => router.push('/travel-book/new')} />
+        )}
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
@@ -112,42 +139,80 @@ export default function BoardsScreen() {
           </ThemedText>
         )}
 
-        {!isLoading && boards.length === 0 && (
+        {mode === 'boards' && !isLoading && boards.length === 0 && (
           <ThemedText type="small" themeColor="textSecondary">
             No boards yet. Create one above, or save a visit to a board from the Search tab.
           </ThemedText>
         )}
+        {mode === 'travel_books' && !isLoading && travelBooks.length === 0 && (
+          <ThemedText type="small" themeColor="textSecondary">
+            No travel books yet. Start one to keep a chronological log of a trip.
+          </ThemedText>
+        )}
 
-        <Animated.FlatList
-          data={boards}
-          keyExtractor={(item: BoardRow) => item.id}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          onScroll={scrollHandler}
-          scrollEventThrottle={16}
-          renderItem={({ item }: { item: BoardRow }) => (
-            <Pressable
-              onPress={() => router.push({ pathname: '/board/[id]', params: { id: item.id } })}
-              style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.boardRow}>
-                <View style={styles.boardRowLeading}>
-                  <ThemedText type="headline">{item.name}</ThemedText>
-                  {item.is_private && (
-                    <ThemedText type="sectionLabel" themeColor="textSecondary">
-                      Private
-                    </ThemedText>
-                  )}
-                </View>
-                <View style={styles.boardRowTrailing}>
-                  {thumbnailUrls[item.id] && (
-                    <Image source={{ uri: thumbnailUrls[item.id] }} style={styles.thumbnail} />
-                  )}
-                  <ThemedText type="headline">›</ThemedText>
-                </View>
-              </ThemedView>
-            </Pressable>
-          )}
-        />
+        {mode === 'boards' ? (
+          <Animated.FlatList
+            data={boards}
+            keyExtractor={(item: BoardRow) => item.id}
+            contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
+            showsVerticalScrollIndicator={false}
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+            renderItem={({ item }: { item: BoardRow }) => (
+              <Pressable
+                onPress={() => router.push({ pathname: '/board/[id]', params: { id: item.id } })}
+                style={({ pressed }) => pressed && styles.pressed}>
+                <ThemedView type="backgroundElement" style={styles.boardRow}>
+                  <View style={styles.boardRowLeading}>
+                    <ThemedText type="headline">{item.name}</ThemedText>
+                    {item.is_private && (
+                      <ThemedText type="sectionLabel" themeColor="textSecondary">
+                        Private
+                      </ThemedText>
+                    )}
+                  </View>
+                  <View style={styles.boardRowTrailing}>
+                    {thumbnailUrls[item.id] && (
+                      <Image source={{ uri: thumbnailUrls[item.id] }} style={styles.thumbnail} />
+                    )}
+                    <ThemedText type="headline">›</ThemedText>
+                  </View>
+                </ThemedView>
+              </Pressable>
+            )}
+          />
+        ) : (
+          <Animated.FlatList
+            data={travelBooks}
+            keyExtractor={(item: TravelBookListItem) => item.id}
+            contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
+            showsVerticalScrollIndicator={false}
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+            renderItem={({ item }: { item: TravelBookListItem }) => (
+              <Pressable
+                onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: item.id } })}
+                style={({ pressed }) => pressed && styles.pressed}>
+                <ThemedView type="backgroundElement" style={styles.boardRow}>
+                  <View style={styles.boardRowLeading}>
+                    <ThemedText type="headline">{item.title}</ThemedText>
+                    {item.locationName && (
+                      <ThemedText type="small" themeColor="sage">
+                        {item.locationName}
+                      </ThemedText>
+                    )}
+                    {item.description && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {item.description}
+                      </ThemedText>
+                    )}
+                  </View>
+                  {coverUrls[item.id] && <Image source={{ uri: coverUrls[item.id] }} style={styles.thumbnail} />}
+                </ThemedView>
+              </Pressable>
+            )}
+          />
+        )}
       </SafeAreaView>
     </ThemedView>
   );
@@ -178,7 +243,6 @@ const styles = StyleSheet.create({
   // non-scrolling safeArea wrapper — see index.tsx's identical fix/comment.
   list: {
     gap: Spacing.two,
-    paddingBottom: BottomTabInset,
   },
   boardRow: {
     flexDirection: 'row',

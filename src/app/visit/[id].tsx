@@ -4,20 +4,22 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { CommentsSection } from '@/components/comments-section';
+import { CommentsThread } from '@/components/comments-section';
 import { PhotoGrid } from '@/components/photo-grid';
-import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { PageLoader } from '@/components/ui/page-loader';
+import { VisitActionsRow } from '@/components/visit-actions-row';
 import { VisitMenu } from '@/components/visit-menu';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { likeVisit, unlikeVisit, type TaggedPlace } from '@/lib/feed';
 import { getPhotoViewUrls } from '@/lib/photo-view';
+import { shareText } from '@/lib/share';
 import { getVisitDetail, type VisitDetail } from '@/lib/visit-detail';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -40,11 +42,15 @@ function formatAuthorLine(authorName: string, taggedUserNames: string[]): string
 export default function VisitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
   const theme = useTheme();
   const [visit, setVisit] = useState<VisitDetail | null | undefined>(undefined);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [commentCount, setCommentCount] = useState(0);
+  const [isCopied, setIsCopied] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
   useEffect(() => {
@@ -53,6 +59,7 @@ export default function VisitDetailScreen() {
       .then(async (result) => {
         setVisit(result);
         if (!result) return;
+        setCommentCount(result.commentCount);
         const [photos, avatars] = await Promise.all([
           result.photoIds.length > 0 ? getPhotoViewUrls(result.photoIds) : Promise.resolve({}),
           getAvatarViewUrls([result.user_id]),
@@ -82,13 +89,34 @@ export default function VisitDetailScreen() {
     }
   }
 
+  async function handleShare() {
+    if (!visit) return;
+    const message = `${visit.authorName} rated ${visit.placeName} ${visit.rating.toFixed(1)}/10${
+      visit.note ? `: "${visit.note}"` : ''
+    } on Alien App.`;
+    const result = await shareText(message);
+
+    if (result === 'unsupported') {
+      setError('Sharing is not supported in this browser.');
+      return;
+    }
+    if (result === 'error') {
+      setError('Could not copy that visit — please try again.');
+      return;
+    }
+    if (result === 'copied') {
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  }
+
   if (visit === undefined) return <PageLoader />;
 
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
@@ -140,17 +168,29 @@ export default function VisitDetailScreen() {
               {visit.rating.toFixed(1)} ★{visit.note ? ` · ${visit.note}` : ''}
             </ThemedText>
 
-            <PhotoGrid urls={visit.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
+            {(() => {
+              const photos = visit.photoIds
+                .map((id, i) => ({ url: photoUrls[id], ratio: visit.photoAspectRatios[i] }))
+                .filter((p): p is { url: string; ratio: number | null } => p.url != null);
+              return <PhotoGrid urls={photos.map((p) => p.url)} aspectRatios={photos.map((p) => p.ratio)} />;
+            })()}
 
-            <Pressable onPress={handleToggleLike}>
-              <ThemedText type="small" themeColor={visit.isLikedByMe ? 'text' : 'textSecondary'}>
-                {visit.isLikedByMe ? '♥' : '♡'} {visit.likeCount}
-              </ThemedText>
-            </Pressable>
+            <VisitActionsRow
+              visitId={visit.id}
+              isLiked={visit.isLikedByMe}
+              likeCount={visit.likeCount}
+              onToggleLike={handleToggleLike}
+              onShare={handleShare}
+              isCopied={isCopied}
+              isOwnerOrTagged={session?.user.id === visit.user_id || visit.isViewerTagged}
+              commentCount={commentCount}
+              isCommentsOpen={isCommentsOpen}
+              onToggleComments={() => setIsCommentsOpen((prev) => !prev)}
+            />
 
-            <CommentsSection visitId={visit.id} visitOwnerId={visit.user_id} initialCount={visit.commentCount} />
-
-            <SaveToBoard visitId={visit.id} />
+            {isCommentsOpen && (
+              <CommentsThread visitId={visit.id} visitOwnerId={visit.user_id} onCountChange={setCommentCount} />
+            )}
           </ThemedView>
         )}
         </Animated.ScrollView>
@@ -173,7 +213,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
   card: {

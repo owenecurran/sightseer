@@ -12,6 +12,15 @@ const s3 = new S3Client({
     accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!,
     secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!,
   },
+  // Newer AWS SDK v3 versions default to adding flexible-checksum params
+  // (x-amz-checksum-mode) to presigned GET URLs via response-checksum
+  // validation, which R2 doesn't support — it causes R2 to error the
+  // request in a way that also drops CORS headers from the response,
+  // which browsers then just report as a CORS block. requestChecksumCalculation
+  // covers PUT/write; responseChecksumValidation is the one that actually
+  // controls this GET-side param.
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
 });
 
 export default {

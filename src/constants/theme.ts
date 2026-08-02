@@ -88,12 +88,14 @@ export const Spacing = {
 // component floating over every screen on every platform now (not native
 // per-platform tab chrome) — so every screen needs the same bottom
 // clearance, cross-platform, to keep content from sitting underneath it.
-// Recomputed from the bar's real size: icon (28) + iconButton padding
+// The bar's real content height: icon (28) + iconButton padding
 // (Spacing.two * 2 = 16) + bar's own paddingVertical (Spacing.three * 2 = 32)
-// = 76px bar height, plus its bottom offset (Spacing.three = 16) plus a real
-// device's home-indicator safe-area inset (~34 on iPhones with one) = ~126,
-// plus a safety margin so content never sits flush against the bar.
-export const BottomTabInset = 144;
+// = 76px. Screens should use `useBottomTabInset()` (src/hooks/use-bottom-tab-inset.ts)
+// instead of a flat constant — it adds the bar's own bottom offset
+// (Spacing.three) plus this on top of the device's *real* safe-area inset
+// (via useSafeAreaInsets(), the same value the bar itself is positioned
+// with), rather than a fixed guess that over/under-shoots per device.
+export const NavBarHeight = 76;
 // No longer needed now that the nav bar is bottom-anchored everywhere (it
 // used to offset web screens for a top-floating web-only tab pill) — kept
 // as a zero-value export rather than touched at every one of its many call

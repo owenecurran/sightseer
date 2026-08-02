@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,7 +13,8 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
@@ -26,15 +28,19 @@ import {
 } from '@/lib/follows';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { parseDefaultCamera } from '@/lib/map-layers';
-import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
+import { getPhotoViewUrls } from '@/lib/photo-view';
+import { parseSectionOrder, type ProfileSectionKey } from '@/lib/profile-sections';
+import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
 
 export default function ProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
+  const bottomInset = useBottomTabInset();
   const [requests, setRequests] = useState<IncomingFollowRequest[]>([]);
   const [totalVisits, setTotalVisits] = useState(0);
   const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
   const [latestTagged, setLatestTagged] = useState<TaggedVisit | null>(null);
+  const [teaserPhotoUrls, setTeaserPhotoUrls] = useState<Record<string, string>>({});
   const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -60,6 +66,11 @@ export default function ProfileScreen() {
           setTotalVisits(showcase.totalVisits);
           setLatestVisit(showcase.latestVisit);
           setLatestTagged(taggedShowcase.latestTagged);
+
+          const teaserPhotoIds = [firstPhotoId(showcase.latestVisit), taggedShowcase.latestTagged?.photoIds?.[0]].filter(
+            (id): id is string => id != null
+          );
+          setTeaserPhotoUrls(teaserPhotoIds.length > 0 ? await getPhotoViewUrls(teaserPhotoIds) : {});
 
           if (profile?.avatar_r2_key) {
             const urls = await getAvatarViewUrls([session.user.id]);
@@ -121,11 +132,60 @@ export default function ProfileScreen() {
 
   if (!hasLoadedOnce) return <PageLoader />;
 
+  const sectionMap: Record<ProfileSectionKey, ReactNode> = {
+    latest_reviews: (
+      <Pressable key="latest_reviews" onPress={() => router.push('/reviews')} style={styles.borderedBox}>
+        <ThemedText type="sectionLabel">Latest reviews</ThemedText>
+        <View style={styles.latestReviewRow}>
+          {(() => {
+            const photoId = firstPhotoId(latestVisit);
+            return (
+              photoId &&
+              teaserPhotoUrls[photoId] && <Image source={{ uri: teaserPhotoUrls[photoId] }} style={styles.teaserThumbnail} />
+            );
+          })()}
+          <View style={styles.latestReviewText}>
+            <StretchText type="headline">{latestVisit?.places?.name ?? 'No reviews yet'}</StretchText>
+          </View>
+          <ThemedText type="headline">›</ThemedText>
+        </View>
+      </Pressable>
+    ),
+    tagged_in: (
+      <Pressable key="tagged_in" onPress={() => router.push('/tagged-in')} style={styles.borderedBox}>
+        <ThemedText type="sectionLabel">Tagged in</ThemedText>
+        <View style={styles.latestReviewRow}>
+          {latestTagged?.photoIds?.[0] && teaserPhotoUrls[latestTagged.photoIds[0]] && (
+            <Image source={{ uri: teaserPhotoUrls[latestTagged.photoIds[0]] }} style={styles.teaserThumbnail} />
+          )}
+          <View style={styles.latestReviewText}>
+            <StretchText type="headline">{latestTagged?.placeName ?? 'Not tagged in anything yet'}</StretchText>
+          </View>
+          <ThemedText type="headline">›</ThemedText>
+        </View>
+      </Pressable>
+    ),
+    prompts: session ? <ProfilePromptsSection key="prompts" userId={session.user.id} /> : null,
+    map:
+      session && profile?.show_map ? (
+        <ThemedView key="map" type="backgroundElement" style={styles.neutralCard}>
+          <ProfileMap
+            userId={session.user.id}
+            defaultLayers={profile.map_default_layers}
+            defaultCamera={parseDefaultCamera(profile)}
+            isOwnProfile
+            onCameraLocked={refreshProfile}
+          />
+        </ThemedView>
+      ) : null,
+  };
+  const sectionOrder = parseSectionOrder(profile?.profile_section_order);
+
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + Spacing.four }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
@@ -153,26 +213,6 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
 
-            <Pressable onPress={() => router.push('/reviews')} style={styles.borderedBox}>
-              <ThemedText type="sectionLabel">Latest reviews</ThemedText>
-              <View style={styles.latestReviewRow}>
-                <View style={styles.latestReviewText}>
-                  <StretchText type="headline">{latestVisit?.places?.name ?? 'No reviews yet'}</StretchText>
-                </View>
-                <ThemedText type="headline">›</ThemedText>
-              </View>
-            </Pressable>
-
-            <Pressable onPress={() => router.push('/tagged-in')} style={styles.borderedBox}>
-              <ThemedText type="sectionLabel">Tagged in</ThemedText>
-              <View style={styles.latestReviewRow}>
-                <View style={styles.latestReviewText}>
-                  <StretchText type="headline">{latestTagged?.placeName ?? 'Not tagged in anything yet'}</StretchText>
-                </View>
-                <ThemedText type="headline">›</ThemedText>
-              </View>
-            </Pressable>
-
             <Pressable onPress={() => router.push('/edit-profile')}>
               <ThemedText type="small" themeColor="sage">
                 Edit profile
@@ -181,18 +221,7 @@ export default function ProfileScreen() {
 
             {error && <ThemedText type="small">{error}</ThemedText>}
 
-            {session && <ProfilePromptsSection userId={session.user.id} />}
-
-            {session && profile?.show_map && (
-              <ThemedView type="backgroundElement" style={styles.neutralCard}>
-                <ProfileMap
-                  userId={session.user.id}
-                  defaultLayers={profile.map_default_layers}
-                  defaultCamera={parseDefaultCamera(profile)}
-                  isOwnProfile
-                />
-              </ThemedView>
-            )}
+            {sectionOrder.map((key) => sectionMap[key])}
 
             {requests.length > 0 && (
               <View style={styles.section}>
@@ -243,7 +272,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset + Spacing.four,
   },
   contentWrap: {
     width: '100%',
@@ -280,9 +308,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.two,
   },
   latestReviewText: {
     flex: 1,
+  },
+  teaserThumbnail: {
+    width: 48,
+    height: 48,
+    borderRadius: Spacing.one,
   },
   neutralCard: {
     borderRadius: Spacing.three,

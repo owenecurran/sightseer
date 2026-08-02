@@ -53,6 +53,13 @@ function findComponent(components: PlaceDetails['addressComponents'], type: stri
   return components.find((c) => c.types.includes(type));
 }
 
+// Shared with the location-search modal's candidate rows, which show a
+// locality sub-line using the same addressComponents findNearbyPlaces
+// already populates — no extra API call needed.
+export function getLocalityName(details: PlaceDetails): string | null {
+  return findComponent(details.addressComponents, 'locality')?.longText ?? null;
+}
+
 async function getOrCreatePlace(params: {
   level: PlaceLevel;
   name: string;

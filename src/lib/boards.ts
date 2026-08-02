@@ -109,6 +109,7 @@ export type BoardVisitItem = {
   placeLat: number | null;
   placeLng: number | null;
   photoIds: string[];
+  photoAspectRatios: (number | null)[];
 };
 
 type BoardItemRow = {
@@ -122,9 +123,15 @@ type BoardItemRow = {
     user_id: string;
     users: { handle: string | null; name: string | null } | null;
     places: { name: string; lat: number | null; lng: number | null } | null;
-    photos: { id: string; position: number }[];
+    photos: { id: string; position: number; width: number | null; height: number | null }[];
   } | null;
 };
+
+function sortedPhotoAspectRatios(photos: { position: number; width: number | null; height: number | null }[]) {
+  return [...photos]
+    .sort((a, b) => a.position - b.position)
+    .map((p) => (p.width && p.height ? p.width / p.height : null));
+}
 
 // Feeds all 4 board-detail view modes — replaces the inline query that used
 // to live directly in board/[id].tsx.
@@ -132,7 +139,7 @@ export async function getBoardItems(boardId: string): Promise<BoardVisitItem[]> 
   const { data, error } = await supabase
     .from('board_items')
     .select(
-      'id, visit_id, added_at, visits(rating, note, visited_on, user_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position))'
+      'id, visit_id, added_at, visits(rating, note, visited_on, user_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height))'
     )
     .eq('board_id', boardId)
     .eq('item_type', 'visit')
@@ -155,6 +162,7 @@ export async function getBoardItems(boardId: string): Promise<BoardVisitItem[]> 
       placeLat: row.visits.places?.lat ?? null,
       placeLng: row.visits.places?.lng ?? null,
       photoIds: [...row.visits.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
+      photoAspectRatios: sortedPhotoAspectRatios(row.visits.photos),
     }));
 }
 
@@ -167,7 +175,7 @@ type OwnVisitRow = {
   user_id: string;
   users: { handle: string | null; name: string | null } | null;
   places: { name: string; lat: number | null; lng: number | null } | null;
-  photos: { id: string; position: number }[];
+  photos: { id: string; position: number; width: number | null; height: number | null }[];
 };
 
 // Same BoardVisitItem shape as getBoardItems, so reviews.tsx can reuse the
@@ -178,7 +186,7 @@ export async function getMyVisitItems(userId: string): Promise<BoardVisitItem[]>
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, created_at, user_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position)'
+      'id, rating, note, visited_on, created_at, user_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height)'
     )
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
@@ -198,5 +206,6 @@ export async function getMyVisitItems(userId: string): Promise<BoardVisitItem[]>
     placeLat: row.places?.lat ?? null,
     placeLng: row.places?.lng ?? null,
     photoIds: [...row.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
+    photoAspectRatios: sortedPhotoAspectRatios(row.photos),
   }));
 }

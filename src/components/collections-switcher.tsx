@@ -1,29 +1,30 @@
-import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 
+export type CollectionMode = 'boards' | 'travel_books';
+
 type CollectionsSwitcherProps = {
-  active: 'boards' | 'travel_books';
+  active: CollectionMode;
+  onChange: (mode: CollectionMode) => void;
 };
 
-// A clear, mutual switcher between Boards and Travel Books — replaces the
-// old one-way "Travel books ›" text link (boards.tsx had no way back other
-// than the generic "← Back"). Copies board/[id].tsx's modeRow/modeChip
-// styling verbatim, the app's established pill-switcher pattern.
-export function CollectionsSwitcher({ active }: CollectionsSwitcherProps) {
+// A clear, mutual switcher between Boards and Travel Books — both live on
+// the same tabbed screen (boards.tsx), so this is a plain controlled toggle,
+// not a navigation link between two routes.
+export function CollectionsSwitcher({ active, onChange }: CollectionsSwitcherProps) {
   return (
     <View style={styles.row}>
-      <Pressable onPress={() => router.replace('/boards')}>
+      <Pressable onPress={() => onChange('boards')}>
         <ThemedView type={active === 'boards' ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
           <ThemedText type="small" themeColor={active === 'boards' ? 'text' : 'textSecondary'}>
             Boards
           </ThemedText>
         </ThemedView>
       </Pressable>
-      <Pressable onPress={() => router.replace('/travel-books')}>
+      <Pressable onPress={() => onChange('travel_books')}>
         <ThemedView type={active === 'travel_books' ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
           <ThemedText type="small" themeColor={active === 'travel_books' ? 'text' : 'textSecondary'}>
             Travel books

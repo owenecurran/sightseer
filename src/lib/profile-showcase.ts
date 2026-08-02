@@ -13,6 +13,14 @@ export type ProfileShowcase = {
   latestVisit: ShowcaseVisit | null;
 };
 
+// `photos` isn't guaranteed sorted by the query's own embedded-resource
+// ordering — sort by position before taking the first one, same convention
+// feed.ts already sorts by for photoIds.
+export function firstPhotoId(visit: ShowcaseVisit | null): string | null {
+  if (!visit || visit.photos.length === 0) return null;
+  return [...visit.photos].sort((a, b) => a.position - b.position)[0].id;
+}
+
 // Powers the profile's "N sights seen" stat and "Latest reviews" teaser —
 // "Favorite trip review" used to live here too, back when it was a fixed
 // user-picked column instead of a regular selectable prompt.

@@ -8,7 +8,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
 import { UserRow } from '@/components/user-row';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
@@ -21,6 +22,7 @@ export default function FollowListScreen() {
     name?: string;
   }>();
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
   const [entries, setEntries] = useState<FollowListEntry[]>([]);
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export default function FollowListScreen() {
         <Animated.FlatList
           data={entries}
           keyExtractor={(item: FollowListEntry) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
@@ -137,7 +139,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
     gap: Spacing.three,
   },
   list: {

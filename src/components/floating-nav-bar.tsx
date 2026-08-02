@@ -89,9 +89,9 @@ const styles = StyleSheet.create({
   },
   // Bigger and more rectangular than the original full pill: borderRadius
   // dropped from 999 (capsule) to a visibly-rounded-rectangle value, and both
-  // paddings increased — see BottomTabInset in constants/theme.ts for the
-  // matching recomputed bottom clearance every screen needs now that this is
-  // taller.
+  // paddings increased — see useBottomTabInset() in
+  // hooks/use-bottom-tab-inset.ts for the matching bottom clearance every
+  // screen needs now that this is taller.
   bar: {
     flexDirection: 'row',
     alignItems: 'center',

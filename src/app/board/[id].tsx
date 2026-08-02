@@ -11,7 +11,8 @@ import { ListView } from '@/components/board-views/list-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getBoardItems, setBoardCoverPhoto, type BoardVisitItem } from '@/lib/boards';
@@ -33,6 +34,7 @@ const VIEW_MODES: { key: ViewMode; label: string }[] = [
 export default function BoardDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
   const [board, setBoard] = useState<BoardRow | null>(null);
   const [items, setItems] = useState<BoardVisitItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
@@ -137,7 +139,7 @@ export default function BoardDetailScreen() {
           <BoardMapView items={items} />
         ) : (
           <Animated.ScrollView
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
             showsVerticalScrollIndicator={false}
             onScroll={scrollHandler}
             scrollEventThrottle={16}>
@@ -150,7 +152,13 @@ export default function BoardDetailScreen() {
                 onSetCover={handleSetCover}
               />
             ) : (
-              <ListView items={items} photoUrls={photoUrls} isOwner={isOwner} onRemove={handleRemove} />
+              <ListView
+                items={items}
+                photoUrls={photoUrls}
+                isOwner={isOwner}
+                onRemove={handleRemove}
+                removeMessage="Remove this from the board?"
+              />
             )}
           </Animated.ScrollView>
         )}
@@ -198,6 +206,5 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
-    paddingBottom: BottomTabInset,
   },
 });

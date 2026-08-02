@@ -24,6 +24,7 @@ type ProfileMapProps = {
   defaultLayers?: string[];
   defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
+  onCameraLocked?: () => void;
 };
 
 const MAP_HEIGHT = 220;
@@ -53,7 +54,7 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): FeatureCollection
 // `users.map_default_layers`, set via ProfileMapModal's "Set as default")
 // says to show, same layer set/rendering as the full-screen modal, just at
 // preview size. Tap still expands into `ProfileMapModal` for ad hoc toggling.
-export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile }: ProfileMapProps) {
+export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile, onCameraLocked }: ProfileMapProps) {
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>> | null>(null);
   const [regions, setRegions] = useState<VisitedRegion[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -88,7 +89,18 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile 
         📍 {places.length} place{places.length === 1 ? '' : 's'} visited — tap to explore
       </ThemedText>
       <Pressable onPress={() => setIsExpanded(true)}>
-        <MapView style={styles.map} styleURL={MAPBOX_STYLE_URL} scaleBarEnabled={false} scrollEnabled={false} zoomEnabled={false}>
+        {/* Keyed on whether a locked camera is resolved yet — Camera's
+            defaultSettings only ever applies once per mount, so if this
+            mounted before defaultCamera arrived it would otherwise be stuck
+            on the auto-centroid forever; a key change forces a fresh mount
+            once the real value is known. */}
+        <MapView
+          key={defaultCamera ? 'locked' : 'auto'}
+          style={styles.map}
+          styleURL={MAPBOX_STYLE_URL}
+          scaleBarEnabled={false}
+          scrollEnabled={false}
+          zoomEnabled={false}>
           <Camera
             defaultSettings={{
               centerCoordinate: defaultCamera ? [defaultCamera.lng, defaultCamera.lat] : centroid(places),
@@ -128,6 +140,7 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile 
         defaultLayers={defaultLayers}
         defaultCamera={defaultCamera}
         isOwnProfile={isOwnProfile}
+        onCameraLocked={onCameraLocked}
       />
     </View>
   );

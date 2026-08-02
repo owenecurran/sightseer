@@ -1,27 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { CommentsSection } from '@/components/comments-section';
+import { CommentsThread } from '@/components/comments-section';
 import { PhotoGrid } from '@/components/photo-grid';
-import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
+import { VisitActionsRow } from '@/components/visit-actions-row';
 import { VisitMenu } from '@/components/visit-menu';
-import { BrandColors, BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
@@ -62,6 +56,7 @@ function ordinal(n: number): string {
 export default function HomeScreen() {
   const { session } = useAuth();
   const theme = useTheme();
+  const bottomInset = useBottomTabInset();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
@@ -182,7 +177,7 @@ export default function HomeScreen() {
         <Animated.FlatList
           data={items}
           keyExtractor={(item: FeedItem) => (item.type === 'visit' ? `visit-${item.visit.id}` : `recap-${item.recap.id}`)}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
@@ -222,6 +217,18 @@ type VisitCardProps = {
 };
 
 function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLike, onShare, onDeleted, theme }: VisitCardProps) {
+  const { width: windowWidth } = useWindowDimensions();
+  // Pulls the photo out past the centered content column and the safeArea's
+  // own horizontal padding so it reaches the literal screen edges — the
+  // header/actions stay in their own padded, rounded card segments above and
+  // below it. On typical phone widths (windowWidth <= MaxContentWidth) this
+  // is just Spacing.four; on wide viewports it also cancels the column's own
+  // centering offset.
+  const photoBreakout = (windowWidth - Math.min(windowWidth, MaxContentWidth)) / 2 + Spacing.four;
+
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [commentCount, setCommentCount] = useState(visit.commentCount);
+
   const heartScale = useSharedValue(0);
   const heartOpacity = useSharedValue(0);
 
@@ -242,15 +249,10 @@ function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLik
     heartOpacity.value = withSequence(withTiming(1, { duration: 100 }), withTiming(0, { duration: 400 }));
   }
 
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      'worklet';
-      runOnJS(handleDoubleTap)();
-    });
+  const hasPhotos = visit.photoIds.length > 0;
 
-  return (
-    <ThemedView type="backgroundElement" style={styles.card}>
+  const header = (
+    <>
       <View style={styles.headerRow}>
         <Pressable
           style={styles.headerAuthor}
@@ -280,39 +282,71 @@ function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLik
           {visit.note ? ` · ${visit.note}` : ''}
         </ThemedText>
       </Pressable>
+    </>
+  );
 
-      <GestureDetector gesture={doubleTap}>
-        <View>
-          <PhotoGrid urls={visit.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
-          <Animated.View style={[styles.heartBurst, heartStyle]} pointerEvents="none">
-            <Ionicons name="heart" size={72} color={BrandColors.cream} />
-          </Animated.View>
-        </View>
-      </GestureDetector>
+  const footer = (
+    <>
+      <VisitActionsRow
+        visitId={visit.id}
+        isLiked={visit.isLikedByMe}
+        likeCount={visit.likeCount}
+        onToggleLike={onToggleLike}
+        onShare={onShare}
+        isCopied={isCopied}
+        isOwnerOrTagged={isOwner || visit.isViewerTagged}
+        commentCount={commentCount}
+        isCommentsOpen={isCommentsOpen}
+        onToggleComments={() => setIsCommentsOpen((prev) => !prev)}
+      />
 
-      <View style={styles.actionsRow}>
-        <Pressable onPress={onToggleLike} hitSlop={8} style={styles.actionButton}>
-          <Ionicons
-            name={visit.isLikedByMe ? 'heart' : 'heart-outline'}
-            size={24}
-            color={visit.isLikedByMe ? theme.text : theme.textSecondary}
-          />
-          <ThemedText type="small" themeColor={visit.isLikedByMe ? 'text' : 'textSecondary'}>
-            {visit.likeCount}
-          </ThemedText>
-        </Pressable>
-        <Pressable onPress={onShare} hitSlop={8} style={styles.actionButton}>
-          <Ionicons name="arrow-redo-outline" size={24} color={theme.textSecondary} />
-          <ThemedText type="small" themeColor="textSecondary">
-            {isCopied ? 'Copied ✓' : 'Share'}
-          </ThemedText>
-        </Pressable>
+      {isCommentsOpen && (
+        <CommentsThread visitId={visit.id} visitOwnerId={visit.user_id} onCountChange={setCommentCount} />
+      )}
+    </>
+  );
+
+  // No photo to bleed to the screen edges — keep the old single rounded card
+  // wrapping everything. With a photo, the card splits into a top/bottom
+  // pair so the photo between them can reach past the card's own rounded
+  // edges (see photoBreakout above).
+  if (!hasPhotos) {
+    return (
+      <ThemedView type="backgroundElement" style={styles.card}>
+        {header}
+        {footer}
+      </ThemedView>
+    );
+  }
+
+  return (
+    <View style={styles.cardWrap}>
+      <ThemedView type="backgroundElement" style={styles.cardTop}>
+        {header}
+      </ThemedView>
+
+      <View style={{ marginHorizontal: -photoBreakout }}>
+        {(() => {
+          const photos = visit.photoIds
+            .map((id, i) => ({ url: photoUrls[id], ratio: visit.photoAspectRatios[i] }))
+            .filter((p): p is { url: string; ratio: number | null } => p.url != null);
+          return (
+            <PhotoGrid
+              urls={photos.map((p) => p.url)}
+              aspectRatios={photos.map((p) => p.ratio)}
+              onDoubleTap={handleDoubleTap}
+            />
+          );
+        })()}
+        <Animated.View style={[styles.heartBurst, heartStyle]} pointerEvents="none">
+          <Ionicons name="heart" size={72} color={BrandColors.cream} />
+        </Animated.View>
       </View>
 
-      <CommentsSection visitId={visit.id} visitOwnerId={visit.user_id} initialCount={visit.commentCount} />
-
-      <SaveToBoard visitId={visit.id} />
-    </ThemedView>
+      <ThemedView type="backgroundElement" style={styles.cardBottom}>
+        {footer}
+      </ThemedView>
+    </View>
   );
 }
 
@@ -366,12 +400,34 @@ const styles = StyleSheet.create({
   // floating nav bar once you scrolled all the way down.
   list: {
     gap: Spacing.three,
-    paddingBottom: BottomTabInset,
   },
   card: {
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
+    gap: Spacing.two,
+  },
+  cardWrap: {
+    gap: Spacing.two,
+  },
+  // Split top/bottom instead of one wrapping card so the photo between them
+  // can bleed past the rounded card edges all the way to the screen edges —
+  // a single rounded box can't do that without either clipping the photo or
+  // showing background peeking out around its corners.
+  cardTop: {
+    paddingTop: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.two,
+    borderTopLeftRadius: Spacing.three,
+    borderTopRightRadius: Spacing.three,
+    gap: Spacing.two,
+  },
+  cardBottom: {
+    paddingTop: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.three,
+    borderBottomLeftRadius: Spacing.three,
+    borderBottomRightRadius: Spacing.three,
     gap: Spacing.two,
   },
   headerRow: {
@@ -388,15 +444,6 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: Spacing.four,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.one,
   },
   heartBurst: {
     ...StyleSheet.absoluteFill,

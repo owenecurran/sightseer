@@ -12,13 +12,14 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { blockUser, isBlocking, unblockUser } from '@/lib/blocks';
 import type { Database } from '@/lib/database.types';
 import { followUser, getFollowCounts, getFollowStatus, unfollowOrCancelRequest } from '@/lib/follows';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { parseDefaultCamera } from '@/lib/map-layers';
 import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { supabase } from '@/lib/supabase';
@@ -35,6 +36,7 @@ function followLabel(status: FollowStatus | null): string {
 export default function UserProfileScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
   const [user, setUser] = useState<UserRow | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [followStatus, setFollowStatus] = useState<FollowStatus | null>(null);
@@ -149,7 +151,7 @@ export default function UserProfileScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Animated.ScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
@@ -284,7 +286,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    paddingBottom: BottomTabInset,
   },
   contentWrap: {
     width: '100%',

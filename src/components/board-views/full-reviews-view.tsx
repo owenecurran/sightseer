@@ -1,9 +1,12 @@
 import { router } from 'expo-router';
-import { FlatList, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import type { BoardVisitItem } from '@/lib/boards';
 
 type FullReviewsViewProps = {
@@ -11,42 +14,61 @@ type FullReviewsViewProps = {
   photoUrls: Record<string, string>;
 };
 
-// "One review shown on a majority of the screen, scroll through them" —
-// horizontal paging carousel, one full review per page (each page scrolls
-// vertically on its own if the note/photos run long).
+// One full review per row, normal vertical scroll — matching every other
+// list in the app (reviews.tsx, index.tsx). Previously a horizontal paging
+// carousel (one review per swipe); only the scroll axis changed, card
+// content (place name, author+rating, note, full-bleed photo) is unchanged.
 export function FullReviewsView({ items, photoUrls }: FullReviewsViewProps) {
-  const { width } = useWindowDimensions();
+  const bottomInset = useBottomTabInset();
+  const scrollHandler = useHideOnScrollHandler();
 
   return (
-    <FlatList
+    <Animated.FlatList
       data={items}
-      keyExtractor={(item) => item.id}
-      horizontal
-      pagingEnabled
-      showsHorizontalScrollIndicator={false}
-      renderItem={({ item }) => (
-        <ScrollView style={{ width }} contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
-          <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })}>
-            <View style={styles.header}>
-              <ThemedText type="displaySerif">{item.placeName}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {item.authorName} · {item.rating.toFixed(1)} ★
-              </ThemedText>
-            </View>
-            {item.note && <ThemedText type="default">{item.note}</ThemedText>}
-          </Pressable>
-          <PhotoGrid urls={item.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />
-        </ScrollView>
+      keyExtractor={(item: BoardVisitItem) => item.id}
+      style={styles.flex}
+      contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
+      showsVerticalScrollIndicator={false}
+      onScroll={scrollHandler}
+      scrollEventThrottle={16}
+      renderItem={({ item }: { item: BoardVisitItem }) => (
+        <View style={styles.card}>
+          <View style={styles.textWrap}>
+            <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })}>
+              <View style={styles.header}>
+                <ThemedText type="displaySerif">{item.placeName}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {item.authorName} · {item.rating.toFixed(1)} ★
+                </ThemedText>
+              </View>
+              {item.note && <ThemedText type="default">{item.note}</ThemedText>}
+            </Pressable>
+          </View>
+          {(() => {
+            const photos = item.photoIds
+              .map((id, i) => ({ url: photoUrls[id], ratio: item.photoAspectRatios[i] }))
+              .filter((p): p is { url: string; ratio: number | null } => p.url != null);
+            return <PhotoGrid urls={photos.map((p) => p.url)} aspectRatios={photos.map((p) => p.ratio)} />;
+          })()}
+        </View>
       )}
     />
   );
 }
 
 const styles = StyleSheet.create({
-  page: {
+  flex: {
+    flex: 1,
+  },
+  list: {
+    gap: Spacing.four,
+    paddingTop: Spacing.three,
+  },
+  card: {
     gap: Spacing.three,
+  },
+  textWrap: {
     paddingHorizontal: Spacing.four,
-    paddingBottom: Spacing.four,
   },
   header: {
     gap: Spacing.half,

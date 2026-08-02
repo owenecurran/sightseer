@@ -22,7 +22,7 @@ import {
   type PlaceDetails,
 } from '@/lib/google-places';
 import { getNearbyReviewedPlaces, getPlacePreviewReview, type NearbyPlace, type PlacePreview } from '@/lib/nearby-places';
-import { cachePlaceHierarchy } from '@/lib/places-cache';
+import { cachePlaceHierarchy, getLocalityName } from '@/lib/places-cache';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -382,6 +382,12 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
             />
           </View>
 
+          {suggestions.length === 0 && !selectedDetails && !selectedCenterPlace && !previewPlaceId && (
+            <ThemedText type="small" themeColor="text" style={styles.hintText}>
+              Drag the map to find nearby places
+            </ThemedText>
+          )}
+
           {error && (
             <ThemedView type="backgroundElement" style={styles.messageBox}>
               <ThemedText type="small">{error}</ThemedText>
@@ -431,6 +437,11 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
                     onPress={() => handleCenterCandidatePress(place)}
                     style={styles.suggestionRow}>
                     <ThemedText type="small">{place.displayName}</ThemedText>
+                    {getLocalityName(place) && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {getLocalityName(place)}
+                      </ThemedText>
+                    )}
                   </Pressable>
                 ))}
               </ScrollView>
@@ -479,6 +490,11 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
                     onPress={() => handleCenterCandidatePress(place)}
                     style={styles.suggestionRow}>
                     <ThemedText type="small">{place.displayName}</ThemedText>
+                    {getLocalityName(place) && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {getLocalityName(place)}
+                      </ThemedText>
+                    )}
                   </Pressable>
                 ))}
               </ScrollView>
@@ -537,6 +553,13 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
     borderRadius: Spacing.two,
     padding: Spacing.two,
+  },
+  hintText: {
+    marginTop: Spacing.two,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   // maxHeight bounds it so the inner ScrollView is actually scrollable (and
   // so keyboardDismissMode="on-drag" has something to drag) instead of just

@@ -778,6 +778,7 @@ export type Database = {
           notify_comments: boolean
           notify_follows: boolean
           notify_likes: boolean
+          profile_section_order: string[] | null
           show_map: boolean
         }
         Insert: {
@@ -801,6 +802,7 @@ export type Database = {
           notify_comments?: boolean
           notify_follows?: boolean
           notify_likes?: boolean
+          profile_section_order?: string[] | null
           show_map?: boolean
         }
         Update: {
@@ -824,6 +826,7 @@ export type Database = {
           notify_comments?: boolean
           notify_follows?: boolean
           notify_likes?: boolean
+          profile_section_order?: string[] | null
           show_map?: boolean
         }
         Relationships: []

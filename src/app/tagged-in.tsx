@@ -9,7 +9,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { PageLoader } from '@/components/ui/page-loader';
-import { BottomTabInset, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
@@ -24,6 +25,7 @@ function formatAuthorLine(authorName: string, taggedUserNames: string[]): string
 
 export default function TaggedInScreen() {
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
   const [visits, setVisits] = useState<TaggedVisit[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
@@ -80,7 +82,7 @@ export default function TaggedInScreen() {
         <Animated.FlatList
           data={visits}
           keyExtractor={(item: TaggedVisit) => item.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
@@ -154,7 +156,6 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: Spacing.two,
-    paddingBottom: BottomTabInset,
   },
   visitCard: {
     paddingVertical: Spacing.three,

@@ -1,10 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
+import { StretchText } from '@/components/ui/stretch-text';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import type { BoardVisitItem } from '@/lib/boards';
 
 type ListViewProps = {
@@ -12,12 +17,16 @@ type ListViewProps = {
   photoUrls: Record<string, string>;
   isOwner: boolean;
   onRemove: (itemId: string) => void;
+  removeMessage?: string;
 };
 
 // Today's only-ever-shipped board-detail layout, restyled from a full-width
 // cover photo down to a compact row (small thumbnail + place + snippet) per
 // the "list view" requirement — same data, denser presentation.
-export function ListView({ items, photoUrls, isOwner, onRemove }: ListViewProps) {
+export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }: ListViewProps) {
+  const theme = useTheme();
+  const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
+
   return (
     <View style={styles.list}>
       {items.map((item) => {
@@ -33,24 +42,34 @@ export function ListView({ items, photoUrls, isOwner, onRemove }: ListViewProps)
                 <View style={styles.thumbnailPlaceholder} />
               )}
               <View style={styles.info}>
-                <ThemedText type="headline" numberOfLines={1}>
-                  {item.placeName}
-                </ThemedText>
+                <StretchText type="headline">{item.placeName}</StretchText>
                 <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
                   {item.rating.toFixed(1)} ★{item.note ? ` · ${item.note}` : ''}
                 </ThemedText>
               </View>
               {isOwner && (
-                <Pressable onPress={() => onRemove(item.id)} hitSlop={8}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Remove
-                  </ThemedText>
+                <Pressable
+                  onPress={() => setConfirmingItemId(item.id)}
+                  hitSlop={12}
+                  style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
+                  <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
                 </Pressable>
               )}
             </ThemedView>
           </Pressable>
         );
       })}
+
+      <ConfirmDeleteModal
+        visible={confirmingItemId != null}
+        message={removeMessage ?? 'Remove this?'}
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (confirmingItemId) onRemove(confirmingItemId);
+          setConfirmingItemId(null);
+        }}
+        onCancel={() => setConfirmingItemId(null)}
+      />
     </View>
   );
 }
@@ -81,5 +100,11 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
     gap: Spacing.half,
+  },
+  menuButton: {
+    padding: Spacing.two,
+  },
+  pressed: {
+    opacity: 0.5,
   },
 });

@@ -19,16 +19,22 @@ export type FeedVisit = {
   authorName: string;
   placeName: string;
   photoIds: string[];
+  // Parallel to photoIds (position-sorted, one entry per photo) — width/height
+  // ratio, or null when either dimension is missing. Only meaningful for the
+  // single-photo display case (see photo-grid.tsx); multi-photo grids stay
+  // fixed square/tall regardless.
+  photoAspectRatios: (number | null)[];
   likeCount: number;
   isLikedByMe: boolean;
   taggedUserNames: string[];
   taggedPlaces: TaggedPlace[];
   commentCount: number;
   visitNumber: number;
+  isViewerTagged: boolean;
 };
 
 export const FEED_VISIT_SELECT =
-  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position), likes(user_id), visit_tagged_users(users(handle, name)), visit_tagged_places(places(name, category)), comments(id)';
+  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)';
 
 export type RawFeedVisit = {
   id: string;
@@ -40,9 +46,9 @@ export type RawFeedVisit = {
   place_id: string;
   users: { handle: string | null; name: string | null } | null;
   places: { name: string } | null;
-  photos: { id: string; position: number }[];
+  photos: { id: string; position: number; width: number | null; height: number | null }[];
   likes: { user_id: string }[];
-  visit_tagged_users: { users: { handle: string | null; name: string | null } | null }[];
+  visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
   visit_tagged_places: { places: { name: string; category: PlaceCategory } | null }[];
   comments: { id: string }[];
 };
@@ -61,6 +67,9 @@ export function mapRawFeedVisit(visit: RawFeedVisit, myUserId: string): Omit<Fee
     authorName: visit.users?.name ?? visit.users?.handle ?? 'Someone',
     placeName: visit.places?.name ?? 'Unknown place',
     photoIds: [...visit.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
+    photoAspectRatios: [...visit.photos]
+      .sort((a, b) => a.position - b.position)
+      .map((p) => (p.width && p.height ? p.width / p.height : null)),
     likeCount: visit.likes.length,
     isLikedByMe: visit.likes.some((like) => like.user_id === myUserId),
     taggedUserNames: visit.visit_tagged_users
@@ -70,6 +79,7 @@ export function mapRawFeedVisit(visit: RawFeedVisit, myUserId: string): Omit<Fee
       .map((t) => t.places)
       .filter((place): place is { name: string; category: PlaceCategory } => place != null),
     commentCount: visit.comments.length,
+    isViewerTagged: visit.visit_tagged_users.some((t) => t.user_id === myUserId),
   };
 }
 
