@@ -249,7 +249,7 @@ export default function UserProfileScreen() {
                 <ThemedText type="sectionLabel">Latest reviews</ThemedText>
                 <View style={styles.latestReviewRow}>
                   <View style={styles.latestReviewText}>
-                    <StretchText type="headline">{latestVisit.places?.name ?? 'Unknown place'}</StretchText>
+                    <StretchText type="headline" fill>{latestVisit.places?.name ?? 'Unknown place'}</StretchText>
                   </View>
                   <ThemedText type="headline">›</ThemedText>
                 </View>

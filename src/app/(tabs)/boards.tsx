@@ -10,13 +10,13 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
-import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
-import { createBoard, getLatestReviewPhotoIds, listMyBoards } from '@/lib/boards';
+import { getLatestReviewPhotoIds, listMyBoards } from '@/lib/boards';
+import { getCoverViewUrls } from '@/lib/covers';
 import type { Database } from '@/lib/database.types';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { listMyTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
@@ -30,8 +30,6 @@ export default function BoardsScreen() {
   const [mode, setMode] = useState<CollectionMode>('boards');
   const [boards, setBoards] = useState<BoardRow[]>([]);
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
-  const [newBoardName, setNewBoardName] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
   const [travelBooks, setTravelBooks] = useState<TravelBookListItem[]>([]);
   const [coverUrls, setCoverUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +49,8 @@ export default function BoardsScreen() {
       Promise.all([
         listMyBoards(session.user.id).then(async (myBoards) => {
           setBoards(myBoards);
-          // Explicit cover_photo_id wins when set; boards without one fall
-          // back to the most-recently-added item's photo.
+          // Precedence: custom cover_photo_r2_key > explicit cover_photo_id
+          // > most-recently-added item's photo.
           const boardsWithoutCover = myBoards.filter((b) => !b.cover_photo_id);
           const latestPhotoIdByBoard = await getLatestReviewPhotoIds(boardsWithoutCover.map((b) => b.id));
           const photoIdByBoard: Record<string, string> = { ...latestPhotoIdByBoard };
@@ -60,26 +58,40 @@ export default function BoardsScreen() {
             if (b.cover_photo_id) photoIdByBoard[b.id] = b.cover_photo_id;
           }
           const photoIds = Object.values(photoIdByBoard);
-          const photoUrls = photoIds.length > 0 ? await getPhotoViewUrls(photoIds) : {};
-          setThumbnailUrls(
-            Object.fromEntries(
+          const [photoUrls, customCoverUrls] = await Promise.all([
+            photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({} as Record<string, string>),
+            getCoverViewUrls(
+              'boards',
+              myBoards.filter((b) => b.cover_photo_r2_key).map((b) => b.id)
+            ),
+          ]);
+          setThumbnailUrls({
+            ...Object.fromEntries(
               Object.entries(photoIdByBoard)
                 .map(([boardId, photoId]) => [boardId, photoUrls[photoId]])
                 .filter(([, url]) => url != null)
-            )
-          );
+            ),
+            ...customCoverUrls,
+          });
         }),
         listMyTravelBooks(session.user.id).then(async (myBooks) => {
           setTravelBooks(myBooks);
           const coverPhotoIds = myBooks.map((b) => b.cover_photo_id).filter((id): id is string => id != null);
-          const urls = coverPhotoIds.length > 0 ? await getPhotoViewUrls(coverPhotoIds) : {};
-          setCoverUrls(
-            Object.fromEntries(
+          const [urls, customCoverUrls] = await Promise.all([
+            coverPhotoIds.length > 0 ? getPhotoViewUrls(coverPhotoIds) : Promise.resolve({} as Record<string, string>),
+            getCoverViewUrls(
+              'travel_books',
+              myBooks.filter((b) => b.cover_photo_r2_key).map((b) => b.id)
+            ),
+          ]);
+          setCoverUrls({
+            ...Object.fromEntries(
               myBooks
                 .filter((b) => b.cover_photo_id && urls[b.cover_photo_id])
                 .map((b) => [b.id, urls[b.cover_photo_id!]])
-            )
-          );
+            ),
+            ...customCoverUrls,
+          });
         }),
       ])
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your collections.'))
@@ -90,21 +102,6 @@ export default function BoardsScreen() {
     }, [session])
   );
 
-  async function handleCreateBoard() {
-    if (!session || !newBoardName.trim()) return;
-    setIsCreating(true);
-    setError(null);
-    try {
-      const board = await createBoard({ userId: session.user.id, name: newBoardName.trim() });
-      setBoards((prev) => [board, ...prev]);
-      setNewBoardName('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create that board.');
-    } finally {
-      setIsCreating(false);
-    }
-  }
-
   if (!hasLoadedOnce) return <PageLoader />;
 
   return (
@@ -114,24 +111,10 @@ export default function BoardsScreen() {
 
         <CollectionsSwitcher active={mode} onChange={setMode} />
 
-        {mode === 'boards' ? (
-          <ThemedView style={styles.newBoardRow}>
-            <TextField
-              placeholder="New board name"
-              value={newBoardName}
-              onChangeText={setNewBoardName}
-              style={styles.newBoardInput}
-            />
-            <Button
-              label="Create"
-              onPress={handleCreateBoard}
-              loading={isCreating}
-              disabled={!newBoardName.trim()}
-            />
-          </ThemedView>
-        ) : (
-          <Button label="New travel book" onPress={() => router.push('/travel-book/new')} />
-        )}
+        <Button
+          label={mode === 'boards' ? 'New board' : 'New travel book'}
+          onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
+        />
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
@@ -230,14 +213,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
-  },
-  newBoardRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    alignItems: 'center',
-  },
-  newBoardInput: {
-    flex: 1,
   },
   // paddingBottom belongs on the FlatList's own scrollable content, not the
   // non-scrolling safeArea wrapper — see index.tsx's identical fix/comment.

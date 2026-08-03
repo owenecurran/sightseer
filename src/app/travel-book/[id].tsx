@@ -11,13 +11,17 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
+import { StretchText } from '@/components/ui/stretch-text';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
+import { getCoverViewUrls, uploadCoverPhoto } from '@/lib/covers';
+import { pickImageFromLibrary } from '@/lib/image-picker';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { getRecap, type TravelBookRecapRow } from '@/lib/travel-book-recaps';
 import {
@@ -44,6 +48,8 @@ export default function TravelBookDetailScreen() {
   const [recap, setRecap] = useState<TravelBookRecapRow | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
+  const [customCoverUrl, setCustomCoverUrl] = useState<string | undefined>();
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
@@ -88,6 +94,10 @@ export default function TravelBookDetailScreen() {
           ]);
           setPhotoUrls(photos);
           setAvatarUrls(avatars);
+          if (detail.book.cover_photo_r2_key) {
+            const urls = await getCoverViewUrls('travel_books', [detail.book.id]);
+            setCustomCoverUrl(urls[detail.book.id]);
+          }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load this travel book.');
         } finally {
@@ -143,6 +153,33 @@ export default function TravelBookDetailScreen() {
     }
   }
 
+  async function handleUploadCover() {
+    if (!book) return;
+    const result = await pickImageFromLibrary();
+    if (result === 'denied') {
+      setError('Photo library permission is required.');
+      return;
+    }
+    if (!result) return;
+    setError(null);
+    setIsUploadingCover(true);
+    try {
+      const r2Key = await uploadCoverPhoto({
+        table: 'travel_books',
+        id: book.id,
+        uri: result.uri,
+        mimeType: result.mimeType,
+      });
+      setBook({ ...book, cover_photo_r2_key: r2Key });
+      const urls = await getCoverViewUrls('travel_books', [book.id]);
+      setCustomCoverUrl(urls[book.id]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload that cover photo.');
+    } finally {
+      setIsUploadingCover(false);
+    }
+  }
+
   if (!hasLoadedOnce) return <PageLoader />;
 
   const members = book ? [{ userId: book.user_id, name: '' }, ...collaborators] : [];
@@ -159,6 +196,12 @@ export default function TravelBookDetailScreen() {
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
 
+          {customCoverUrl && (
+            <View style={styles.coverWrap}>
+              <LoadableImage source={{ uri: customCoverUrl }} style={styles.cover} />
+            </View>
+          )}
+
           <ThemedText type="displaySerif">{book?.title ?? 'Travel book'}</ThemedText>
           {locationName && (
             <ThemedText type="small" themeColor="sage">
@@ -169,6 +212,14 @@ export default function TravelBookDetailScreen() {
             <ThemedText type="small" themeColor="textSecondary">
               {book.description}
             </ThemedText>
+          )}
+
+          {session && book?.user_id === session.user.id && (
+            <Pressable onPress={handleUploadCover} disabled={isUploadingCover}>
+              <ThemedText type="small" themeColor="sage">
+                {isUploadingCover ? 'Uploading…' : customCoverUrl ? 'Change cover photo' : 'Add a cover photo'}
+              </ThemedText>
+            </Pressable>
           )}
 
           {collaborators.length > 0 && (
@@ -198,7 +249,7 @@ export default function TravelBookDetailScreen() {
                     <ThemedText type="small" themeColor="textSecondary">
                       {item.visited_on} · {item.authorName}
                     </ThemedText>
-                    <ThemedText type="headline">{item.placeName}</ThemedText>
+                    <StretchText type="headline" fill>{item.placeName}</StretchText>
                     <ThemedText type="small" themeColor="textSecondary">
                       {item.rating.toFixed(1)} ★{item.note ? ` · ${item.note}` : ''}
                     </ThemedText>
@@ -306,6 +357,16 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+  },
+  coverWrap: {
+    width: '100%',
+    height: 160,
+    borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  cover: {
+    width: '100%',
+    height: '100%',
   },
   membersRow: {
     flexDirection: 'row',

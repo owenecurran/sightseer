@@ -7,65 +7,59 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Button } from '@/components/ui/button';
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
+import { StretchText } from '@/components/ui/stretch-text';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
+import { useAuth } from '@/lib/auth-context';
+import { getVisitsForPlace, type FeedVisit } from '@/lib/feed';
 import type { Database } from '@/lib/database.types';
 import { getPlaceBreadcrumb } from '@/lib/places-cache';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
-
-type PlaceVisit = {
-  id: string;
-  rating: number;
-  note: string | null;
-  users: { handle: string | null; name: string | null } | null;
-  photos: { id: string; position: number }[];
-};
+type SortMode = 'recent' | 'popular';
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [place, setPlace] = useState<PlaceRow | null>(null);
   const [breadcrumb, setBreadcrumb] = useState('');
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
-  const [visits, setVisits] = useState<PlaceVisit[]>([]);
+  const [visits, setVisits] = useState<FeedVisit[]>([]);
+  const [sortMode, setSortMode] = useState<SortMode>('recent');
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !session) return;
     (async () => {
       setError(null);
       try {
-        const [{ data: placeData, error: placeError }, { data: aggregate, error: aggregateError }, { data: visitsData, error: visitsError }] =
+        const [{ data: placeData, error: placeError }, { data: aggregate, error: aggregateError }, visitsData] =
           await Promise.all([
             supabase.from('places').select('*').eq('id', id).single(),
             supabase.rpc('get_place_aggregate_rating', { target_place_id: id }).single(),
-            supabase
-              .from('visits')
-              .select('id, rating, note, users!user_id(handle, name), photos(id, position)')
-              .eq('place_id', id)
-              .order('created_at', { ascending: false }),
+            getVisitsForPlace(id, session.user.id),
           ]);
         if (placeError) throw placeError;
         if (aggregateError) throw aggregateError;
-        if (visitsError) throw visitsError;
 
         setPlace(placeData);
         setBreadcrumb(await getPlaceBreadcrumb(placeData));
         setAvgRating(aggregate?.avg_rating ? Number(aggregate.avg_rating) : null);
         setReviewCount(aggregate?.review_count ? Number(aggregate.review_count) : 0);
+        setVisits(visitsData);
 
-        const typedVisits = visitsData as unknown as PlaceVisit[];
-        setVisits(typedVisits);
-        const photoIds = typedVisits.flatMap((v) => v.photos.map((p) => p.id));
+        const photoIds = visitsData.flatMap((v) => v.photoIds);
         if (photoIds.length > 0) {
           setPhotoUrls(await getPhotoViewUrls(photoIds));
         }
@@ -75,9 +69,19 @@ export default function PlaceDetailScreen() {
         setHasLoadedOnce(true);
       }
     })();
-  }, [id]);
+  }, [id, session]);
 
   if (!hasLoadedOnce) return <PageLoader />;
+
+  // Not a real "photo of the place" — no such source exists (places has no
+  // photo column, Google Places field mask never requests one). Standing in
+  // with the first photo of the most-recent review, the same fallback
+  // already used for the map's preview card (nearby-places.ts).
+  const heroPhotoId = visits[0]?.photoIds[0];
+  const heroPhotoUrl = heroPhotoId ? photoUrls[heroPhotoId] : undefined;
+
+  const sortedVisits =
+    sortMode === 'popular' ? [...visits].sort((a, b) => b.likeCount - a.likeCount) : visits;
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -86,7 +90,13 @@ export default function PlaceDetailScreen() {
           <ThemedText type="link">← Back</ThemedText>
         </Pressable>
 
-        <ThemedText type="headline">{place?.name ?? 'Place'}</ThemedText>
+        {heroPhotoUrl && (
+          <View style={styles.heroWrap}>
+            <LoadableImage source={{ uri: heroPhotoUrl }} style={styles.hero} />
+          </View>
+        )}
+
+        <StretchText type="headline">{place?.name ?? 'Place'}</StretchText>
         {breadcrumb.length > 0 && (
           <ThemedText type="small" themeColor="textSecondary">
             {breadcrumb}
@@ -96,37 +106,53 @@ export default function PlaceDetailScreen() {
           {avgRating !== null ? `${avgRating.toFixed(1)} ★ · ${reviewCount} review${reviewCount === 1 ? '' : 's'}` : 'No reviews yet'}
         </ThemedText>
 
+        <Button
+          label="Add your review"
+          onPress={() => router.push({ pathname: '/review-form', params: { placeId: id } })}
+        />
+
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
             {error}
           </ThemedText>
         )}
 
+        {visits.length > 0 && (
+          <View style={styles.sortRow}>
+            {(['recent', 'popular'] as const).map((mode) => (
+              <Pressable key={mode} onPress={() => setSortMode(mode)}>
+                <ThemedView type={sortMode === mode ? 'backgroundSelected' : 'backgroundElement'} style={styles.sortChip}>
+                  <ThemedText type="small" themeColor={sortMode === mode ? 'text' : 'textSecondary'}>
+                    {mode === 'recent' ? 'Most recent' : 'Popular'}
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
         <Animated.FlatList
-          data={visits}
-          keyExtractor={(item: PlaceVisit) => item.id}
+          data={sortedVisits}
+          keyExtractor={(item: FeedVisit) => item.id}
           contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
-          renderItem={({ item }: { item: PlaceVisit }) => {
-            const visitPhotoUrls = [...item.photos]
-              .sort((a, b) => a.position - b.position)
-              .map((p) => photoUrls[p.id])
-              .filter((url) => url != null);
+          renderItem={({ item }: { item: FeedVisit }) => {
+            const visitPhotoUrls = item.photoIds.map((photoId) => photoUrls[photoId]).filter((url) => url != null);
             return (
-              <ThemedView type="backgroundElement" style={styles.visitCard}>
-                <PhotoGrid urls={visitPhotoUrls} />
-                <View style={styles.visitInfo}>
-                  <ThemedText type="smallBold">
-                    {item.users?.name ?? item.users?.handle ?? 'Someone'}
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {item.rating.toFixed(1)} ★
-                    {item.note ? ` · ${item.note}` : ''}
-                  </ThemedText>
-                </View>
-              </ThemedView>
+              <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}>
+                <ThemedView type="backgroundElement" style={styles.visitCard}>
+                  <PhotoGrid urls={visitPhotoUrls} aspectRatios={item.photoAspectRatios} />
+                  <View style={styles.visitInfo}>
+                    <ThemedText type="smallBold">{item.authorName}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {item.rating.toFixed(1)} ★{item.note ? ` · ${item.note}` : ''}
+                      {item.likeCount > 0 ? ` · ${item.likeCount} like${item.likeCount === 1 ? '' : 's'}` : ''}
+                    </ThemedText>
+                  </View>
+                </ThemedView>
+              </Pressable>
             );
           }}
         />
@@ -147,6 +173,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
+  },
+  heroWrap: {
+    width: '100%',
+    height: 180,
+    borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  hero: {
+    width: '100%',
+    height: '100%',
+  },
+  sortRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  sortChip: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.five,
   },
   list: {
     gap: Spacing.two,

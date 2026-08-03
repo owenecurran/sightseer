@@ -117,6 +117,28 @@ export async function getFeedVisits(myUserId: string): Promise<FeedVisit[]> {
   return getFeedVisitsForFollowed(followedIds, myUserId);
 }
 
+// Every review of one specific place, across all authors — used by the
+// place-detail screen. Same select/mapping as the follow-feed, just filtered
+// by place_id instead of user_id; likeCount comes along for free, so
+// "popular" is just a client-side sort by it, same convention this file
+// already uses everywhere else (no DB view/RPC for popularity).
+export async function getVisitsForPlace(placeId: string, myUserId: string): Promise<FeedVisit[]> {
+  const { data, error } = await supabase
+    .from('visits')
+    .select(FEED_VISIT_SELECT)
+    .eq('place_id', placeId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const rawVisits = data as unknown as RawFeedVisit[];
+  const visitNumbers = await computeVisitNumbers(rawVisits);
+
+  return rawVisits.map((visit) => ({
+    ...mapRawFeedVisit(visit, myUserId),
+    visitNumber: visitNumbers.get(visit.id) ?? 1,
+  }));
+}
+
 export type FeedItem =
   | { type: 'visit'; sortKey: string; visit: FeedVisit }
   | { type: 'recap'; sortKey: string; recap: FeedRecap };

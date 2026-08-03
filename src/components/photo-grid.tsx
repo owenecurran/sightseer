@@ -200,7 +200,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   singleInner: {
-    borderRadius: Spacing.two,
     overflow: 'hidden',
   },
   row: {
@@ -215,14 +214,12 @@ const styles = StyleSheet.create({
     flex: 1,
     aspectRatio: 1,
     maxHeight: MAX_PHOTO_HEIGHT,
-    borderRadius: Spacing.two,
     overflow: 'hidden',
   },
   tall: {
     flex: 1,
     aspectRatio: 0.5,
     maxHeight: MAX_PHOTO_HEIGHT,
-    borderRadius: Spacing.two,
     overflow: 'hidden',
   },
   fill: {

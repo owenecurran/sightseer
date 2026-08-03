@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -8,7 +9,12 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
-import { PROFILE_PROMPTS } from '@/constants/profile-prompts';
+import {
+  PROFILE_PROMPT_CATEGORY_LABELS,
+  PROFILE_PROMPTS,
+  type ProfilePromptCategory,
+} from '@/constants/profile-prompts';
+import { useTheme } from '@/hooks/use-theme';
 import type { Database } from '@/lib/database.types';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import {
@@ -69,8 +75,9 @@ type PromptEditorProps = {
   ownVisits: OwnVisitOption[];
   ownBoards: OwnBoardOption[];
   onChanged: () => void;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
+  // Long-press handle to start a drag-reorder — omitted for the trailing
+  // "+ Add a prompt" slot, which isn't a real reorderable row.
+  onDragStart?: () => void;
 };
 
 export function PromptEditor({
@@ -81,11 +88,17 @@ export function PromptEditor({
   ownVisits,
   ownBoards,
   onChanged,
-  onMoveUp,
-  onMoveDown,
+  onDragStart,
 }: PromptEditorProps) {
+  const theme = useTheme();
   const [isEditing, setIsEditing] = useState(false);
   const [promptSlug, setPromptSlug] = useState(existing?.promptSlug ?? '');
+  // Defaults to whichever category the existing prompt belongs to (so
+  // reopening one for edit doesn't look "reset"); starts unselected for a
+  // brand-new slot so no prompts show until a category is picked.
+  const [selectedCategory, setSelectedCategory] = useState<ProfilePromptCategory | null>(
+    () => PROFILE_PROMPTS.find((p) => p.slug === existing?.promptSlug)?.category ?? null
+  );
   const [attachments, setAttachments] = useState<LocalAttachment[]>(() =>
     existing && existing.attachments.length > 0
       ? existing.attachments.map((a) => ({
@@ -107,6 +120,10 @@ export function PromptEditor({
   const availablePrompts = PROFILE_PROMPTS.filter(
     (p) => p.slug === existing?.promptSlug || !usedSlugs.includes(p.slug)
   );
+  const categories = Object.keys(PROFILE_PROMPT_CATEGORY_LABELS) as ProfilePromptCategory[];
+  const promptsInSelectedCategory = selectedCategory
+    ? availablePrompts.filter((p) => p.category === selectedCategory)
+    : [];
 
   function handleOpen() {
     setIsEditing(true);
@@ -245,18 +262,9 @@ export function PromptEditor({
                 Remove
               </ThemedText>
             </Pressable>
-            {onMoveUp && (
-              <Pressable onPress={onMoveUp}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  ↑
-                </ThemedText>
-              </Pressable>
-            )}
-            {onMoveDown && (
-              <Pressable onPress={onMoveDown}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  ↓
-                </ThemedText>
+            {onDragStart && (
+              <Pressable onLongPress={onDragStart} delayLongPress={150} hitSlop={8} style={styles.dragHandle}>
+                <Ionicons name="reorder-three-outline" size={20} color={theme.textSecondary} />
               </Pressable>
             )}
           </View>
@@ -283,17 +291,43 @@ export function PromptEditor({
       )}
 
       <ThemedText type="small" themeColor="textSecondary">
-        Prompt
+        Category
       </ThemedText>
       <View style={styles.chipRow}>
-        {availablePrompts.map((p) => (
-          <Pressable key={p.slug} onPress={() => setPromptSlug(p.slug)}>
-            <ThemedView type={promptSlug === p.slug ? 'backgroundSelected' : 'background'} style={styles.chip}>
-              <ThemedText type="small">{p.label}</ThemedText>
+        {categories.map((category) => (
+          <Pressable
+            key={category}
+            onPress={() => setSelectedCategory((prev) => (prev === category ? null : category))}>
+            <ThemedView
+              type={selectedCategory === category ? 'backgroundSelected' : 'background'}
+              style={styles.chip}>
+              <ThemedText type="small">{PROFILE_PROMPT_CATEGORY_LABELS[category]}</ThemedText>
             </ThemedView>
           </Pressable>
         ))}
       </View>
+
+      {selectedCategory && (
+        <>
+          <ThemedText type="small" themeColor="textSecondary">
+            Prompt
+          </ThemedText>
+          <View style={styles.chipRow}>
+            {promptsInSelectedCategory.length === 0 && (
+              <ThemedText type="small" themeColor="textSecondary">
+                No prompts left in this category.
+              </ThemedText>
+            )}
+            {promptsInSelectedCategory.map((p) => (
+              <Pressable key={p.slug} onPress={() => setPromptSlug(p.slug)}>
+                <ThemedView type={promptSlug === p.slug ? 'backgroundSelected' : 'background'} style={styles.chip}>
+                  <ThemedText type="small">{p.label}</ThemedText>
+                </ThemedView>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      )}
 
       {attachments.map((attachment, index) => (
         <View key={index} style={styles.attachmentBlock}>
@@ -462,5 +496,8 @@ const styles = StyleSheet.create({
   placePicker: {
     gap: Spacing.two,
     alignItems: 'flex-start',
+  },
+  dragHandle: {
+    marginLeft: 'auto',
   },
 });

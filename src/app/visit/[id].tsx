@@ -10,6 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { PageLoader } from '@/components/ui/page-loader';
+import { StretchText } from '@/components/ui/stretch-text';
 import { VisitActionsRow } from '@/components/visit-actions-row';
 import { VisitMenu } from '@/components/visit-menu';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -93,7 +94,7 @@ export default function VisitDetailScreen() {
     if (!visit) return;
     const message = `${visit.authorName} rated ${visit.placeName} ${visit.rating.toFixed(1)}/10${
       visit.note ? `: "${visit.note}"` : ''
-    } on Alien App.`;
+    } on Sightseer.`;
     const result = await shareText(message);
 
     if (result === 'unsupported') {
@@ -150,7 +151,7 @@ export default function VisitDetailScreen() {
               />
             </View>
 
-            <ThemedText type="headline">{visit.placeName}</ThemedText>
+            <StretchText type="headline" fill>{visit.placeName}</StretchText>
             {visit.taggedPlaces.length > 0 && (
               <ThemedText type="small">
                 {visit.taggedPlaces.map((place, index) => (

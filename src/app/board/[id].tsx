@@ -10,13 +10,17 @@ import { ImagesGridView } from '@/components/board-views/images-grid-view';
 import { ListView } from '@/components/board-views/list-view';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
+import { StretchText } from '@/components/ui/stretch-text';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getBoardItems, setBoardCoverPhoto, type BoardVisitItem } from '@/lib/boards';
+import { getCoverViewUrls, uploadCoverPhoto } from '@/lib/covers';
 import type { Database } from '@/lib/database.types';
+import { pickImageFromLibrary } from '@/lib/image-picker';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
 
@@ -38,6 +42,8 @@ export default function BoardDetailScreen() {
   const [board, setBoard] = useState<BoardRow | null>(null);
   const [items, setItems] = useState<BoardVisitItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [customCoverUrl, setCustomCoverUrl] = useState<string | undefined>();
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -59,6 +65,10 @@ export default function BoardDetailScreen() {
         const photoIds = boardItems.flatMap((item) => item.photoIds);
         if (photoIds.length > 0) {
           setPhotoUrls(await getPhotoViewUrls(photoIds));
+        }
+        if (boardData.cover_photo_r2_key) {
+          const urls = await getCoverViewUrls('boards', [boardData.id]);
+          setCustomCoverUrl(urls[boardData.id]);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load this board.');
@@ -89,6 +99,28 @@ export default function BoardDetailScreen() {
     }
   }
 
+  async function handleUploadCover() {
+    if (!board) return;
+    const result = await pickImageFromLibrary();
+    if (result === 'denied') {
+      setError('Photo library permission is required.');
+      return;
+    }
+    if (!result) return;
+    setError(null);
+    setIsUploadingCover(true);
+    try {
+      const r2Key = await uploadCoverPhoto({ table: 'boards', id: board.id, uri: result.uri, mimeType: result.mimeType });
+      setBoard({ ...board, cover_photo_r2_key: r2Key });
+      const urls = await getCoverViewUrls('boards', [board.id]);
+      setCustomCoverUrl(urls[board.id]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload that cover photo.');
+    } finally {
+      setIsUploadingCover(false);
+    }
+  }
+
   const isOwner = Boolean(session && board && session.user.id === board.user_id);
 
   if (!hasLoadedOnce) return <PageLoader />;
@@ -101,11 +133,25 @@ export default function BoardDetailScreen() {
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
 
-          <ThemedText type="headline">{board?.name ?? 'Board'}</ThemedText>
+          {customCoverUrl && (
+            <View style={styles.coverWrap}>
+              <LoadableImage source={{ uri: customCoverUrl }} style={styles.cover} />
+            </View>
+          )}
+
+          <StretchText type="headline">{board?.name ?? 'Board'}</StretchText>
           {board?.description && (
             <ThemedText type="small" themeColor="textSecondary">
               {board.description}
             </ThemedText>
+          )}
+
+          {isOwner && (
+            <Pressable onPress={handleUploadCover} disabled={isUploadingCover}>
+              <ThemedText type="small" themeColor="sage">
+                {isUploadingCover ? 'Uploading…' : customCoverUrl ? 'Change cover photo' : 'Add a cover photo'}
+              </ThemedText>
+            </Pressable>
           )}
 
           {error && (
@@ -182,6 +228,16 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: Spacing.four,
     gap: Spacing.two,
+  },
+  coverWrap: {
+    width: '100%',
+    height: 160,
+    borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  cover: {
+    width: '100%',
+    height: '100%',
   },
   modeRow: {
     flexDirection: 'row',

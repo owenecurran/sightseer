@@ -16,9 +16,10 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
+import { pickImageFromLibrary } from '@/lib/image-picker';
 import { listMyBoards } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
-import { listPrompts, swapPromptPositions, type ProfilePrompt } from '@/lib/profile-prompts';
+import { listPrompts, reorderPrompts, type ProfilePrompt } from '@/lib/profile-prompts';
 import {
   parseSectionOrder,
   PROFILE_SECTION_LABELS,
@@ -26,21 +27,28 @@ import {
   type ProfileSectionKey,
 } from '@/lib/profile-sections';
 import { supabase } from '@/lib/supabase';
+import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
+import { Avatar } from '@/components/ui/avatar';
 
 const BIO_MAX_LENGTH = 160;
 const PROMPT_SLOT_COUNT = 6;
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 type OwnVisitOption = { id: string; placeName: string; rating: number };
-type EditMode = 'info' | 'layout';
 
+// Prompts and profile-section order used to live behind an Info/Layout tab
+// toggle, with prompts reordered via up/down arrows and sections via
+// drag-and-drop — two different interaction models for adjacent concepts,
+// split behind a tab click. Now one continuous page, both reorderable the
+// same way (press-and-hold drag). Both DraggableFlatLists run with
+// scrollEnabled={false} — the standard pattern for embedding a draggable
+// list inside a larger scrolling page — so the outer KeyboardAwareScroll
+// owns the actual scroll and there's no nested-VirtualizedList conflict.
 export default function EditProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
   const theme = useTheme();
   const bottomInset = useBottomTabInset();
-  const [mode, setMode] = useState<EditMode>('info');
 
-  // "Info" mode state.
   const [name, setName] = useState(profile?.name ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
   const [showMap, setShowMap] = useState(profile?.show_map ?? false);
@@ -49,9 +57,10 @@ export default function EditProfileScreen() {
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
   const [ownVisits, setOwnVisits] = useState<OwnVisitOption[]>([]);
   const [ownBoards, setOwnBoards] = useState<BoardRow[]>([]);
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
-  // "Layout" mode state (formerly customize-profile.tsx).
   const [order, setOrder] = useState<ProfileSectionKey[]>(() => parseSectionOrder(profile?.profile_section_order));
   const [layoutError, setLayoutError] = useState<string | null>(null);
 
@@ -80,6 +89,33 @@ export default function EditProfileScreen() {
       });
   }, [session, loadPrompts]);
 
+  useEffect(() => {
+    if (!session || !profile?.avatar_r2_key) return;
+    getAvatarViewUrls([session.user.id]).then((urls) => setAvatarUrl(urls[session.user.id]));
+  }, [session, profile?.avatar_r2_key]);
+
+  async function handleChangeAvatar() {
+    if (!session) return;
+    const result = await pickImageFromLibrary();
+    if (result === 'denied') {
+      setError('Photo library permission is required.');
+      return;
+    }
+    if (!result) return;
+    setError(null);
+    setIsUploadingAvatar(true);
+    try {
+      await uploadAvatar({ userId: session.user.id, uri: result.uri, mimeType: result.mimeType });
+      await refreshProfile();
+      const urls = await getAvatarViewUrls([session.user.id]);
+      setAvatarUrl(urls[session.user.id]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update your photo.');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  }
+
   async function handleSave() {
     if (!session) return;
     if (!name.trim()) {
@@ -106,23 +142,16 @@ export default function EditProfileScreen() {
     router.back();
   }
 
-  async function handleMove(index: number, direction: -1 | 1) {
-    const other = prompts[index + direction];
-    const current = prompts[index];
-    if (!other) return;
-    setError(null);
+  async function handleReorderPrompts(next: ProfilePrompt[]) {
+    setPrompts(next);
     try {
-      await swapPromptPositions(
-        { id: current.id, position: current.position },
-        { id: other.id, position: other.position }
-      );
-      await loadPrompts();
+      await reorderPrompts(next.map((p) => p.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reorder that prompt.');
+      setError(err instanceof Error ? err.message : 'Could not reorder your prompts.');
     }
   }
 
-  async function persistOrder(next: ProfileSectionKey[]) {
+  async function persistSectionOrder(next: ProfileSectionKey[]) {
     if (!session) return;
     setLayoutError(null);
     try {
@@ -132,6 +161,24 @@ export default function EditProfileScreen() {
       setLayoutError(err instanceof Error ? err.message : 'Could not save that order.');
     }
   }
+
+  const renderPrompt = useCallback(
+    ({ item, drag }: RenderItemParams<ProfilePrompt>) => (
+      <ScaleDecorator>
+        <PromptEditor
+          userId={session?.user.id ?? ''}
+          position={item.position}
+          existing={item}
+          usedSlugs={prompts.filter((p) => p.id !== item.id).map((p) => p.promptSlug)}
+          ownVisits={ownVisits}
+          ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
+          onChanged={loadPrompts}
+          onDragStart={drag}
+        />
+      </ScaleDecorator>
+    ),
+    [session, prompts, ownVisits, ownBoards, loadPrompts]
+  );
 
   const renderSectionItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<ProfileSectionKey>) => (
@@ -157,116 +204,95 @@ export default function EditProfileScreen() {
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
           <ThemedText type="displaySerif">Edit profile</ThemedText>
-
-          <View style={styles.modeRow}>
-            <Pressable onPress={() => setMode('info')}>
-              <ThemedView type={mode === 'info' ? 'backgroundSelected' : 'backgroundElement'} style={styles.modeChip}>
-                <ThemedText type="small" themeColor={mode === 'info' ? 'text' : 'textSecondary'}>
-                  Profile info
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
-            <Pressable onPress={() => setMode('layout')}>
-              <ThemedView type={mode === 'layout' ? 'backgroundSelected' : 'backgroundElement'} style={styles.modeChip}>
-                <ThemedText type="small" themeColor={mode === 'layout' ? 'text' : 'textSecondary'}>
-                  Layout
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
-          </View>
         </View>
 
-        {mode === 'info' ? (
-          <KeyboardAwareScroll
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
-            showsVerticalScrollIndicator={false}
-            onScroll={scrollHandler}
-            scrollEventThrottle={16}>
-            <ThemedText type="sectionLabel">Name</ThemedText>
-            <TextField placeholder="Your name" value={name} onChangeText={setName} autoCapitalize="words" />
-
-            <ThemedText type="sectionLabel">Bio</ThemedText>
-            <TextField
-              placeholder="Tell people a bit about yourself"
-              value={bio}
-              onChangeText={(text) => setBio(text.slice(0, BIO_MAX_LENGTH))}
-              multiline
-            />
-            <ThemedText type="small" themeColor="textSecondary">
-              {bio.length}/{BIO_MAX_LENGTH}
+        <KeyboardAwareScroll
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
+          showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}>
+          <Pressable onPress={handleChangeAvatar} disabled={isUploadingAvatar} style={styles.avatarRow}>
+            <Avatar uri={avatarUrl} name={profile?.name} size={64} />
+            <ThemedText type="small" themeColor="sage">
+              {isUploadingAvatar ? 'Uploading…' : 'Change photo'}
             </ThemedText>
+          </Pressable>
 
-            <Pressable onPress={() => setShowMap((prev) => !prev)} style={styles.mapToggleRow}>
-              <ThemedView type={showMap ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                {showMap && <ThemedText type="smallBold">✓</ThemedText>}
-              </ThemedView>
-              <ThemedText type="small">Show a map of places I’ve visited on my profile</ThemedText>
-            </Pressable>
+          <ThemedText type="sectionLabel">Name</ThemedText>
+          <TextField placeholder="Your name" value={name} onChangeText={setName} autoCapitalize="words" />
 
-            {error && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {error}
-              </ThemedText>
-            )}
+          <ThemedText type="sectionLabel">Bio</ThemedText>
+          <TextField
+            placeholder="Tell people a bit about yourself"
+            value={bio}
+            onChangeText={(text) => setBio(text.slice(0, BIO_MAX_LENGTH))}
+            multiline
+          />
+          <ThemedText type="small" themeColor="textSecondary">
+            {bio.length}/{BIO_MAX_LENGTH}
+          </ThemedText>
 
-            <Button label="Save" onPress={handleSave} loading={isSaving} />
+          <Pressable onPress={() => setShowMap((prev) => !prev)} style={styles.mapToggleRow}>
+            <ThemedView type={showMap ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
+              {showMap && <ThemedText type="smallBold">✓</ThemedText>}
+            </ThemedView>
+            <ThemedText type="small">Show a map of places I’ve visited on my profile</ThemedText>
+          </Pressable>
 
-            <ThemedText type="sectionLabel">Prompts</ThemedText>
-            <View style={styles.promptsList}>
-              {prompts.map((existing, index) => (
-                <PromptEditor
-                  key={existing.id}
-                  userId={session?.user.id ?? ''}
-                  position={existing.position}
-                  existing={existing}
-                  usedSlugs={prompts.filter((p) => p.id !== existing.id).map((p) => p.promptSlug)}
-                  ownVisits={ownVisits}
-                  ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
-                  onChanged={loadPrompts}
-                  onMoveUp={index > 0 ? () => handleMove(index, -1) : undefined}
-                  onMoveDown={index < prompts.length - 1 ? () => handleMove(index, 1) : undefined}
-                />
-              ))}
+          {error && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
+          )}
 
-              {prompts.length < PROMPT_SLOT_COUNT && (
-                <PromptEditor
-                  key="new"
-                  userId={session?.user.id ?? ''}
-                  position={nextPosition}
-                  existing={undefined}
-                  usedSlugs={prompts.map((p) => p.promptSlug)}
-                  ownVisits={ownVisits}
-                  ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
-                  onChanged={loadPrompts}
-                />
-              )}
-            </View>
-          </KeyboardAwareScroll>
-        ) : (
-          <>
-            <View style={styles.layoutHintWrap}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Press and hold a section to drag it into a new order.
-              </ThemedText>
-              {layoutError && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  {layoutError}
-                </ThemedText>
-              )}
-            </View>
+          <Button label="Save" onPress={handleSave} loading={isSaving} />
 
-            <DraggableFlatList
-              data={order}
-              keyExtractor={(item) => item}
-              renderItem={renderSectionItem}
-              onDragEnd={({ data }) => {
-                setOrder(data);
-                persistOrder(data);
-              }}
-              contentContainerStyle={[styles.sectionList, { paddingBottom: bottomInset }]}
+          <ThemedText type="sectionLabel">Prompts</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Press and hold a prompt to drag it into a new order.
+          </ThemedText>
+          <DraggableFlatList
+            data={prompts}
+            keyExtractor={(item) => item.id}
+            renderItem={renderPrompt}
+            onDragEnd={({ data }) => handleReorderPrompts(data)}
+            scrollEnabled={false}
+            contentContainerStyle={styles.promptsList}
+          />
+          {prompts.length < PROMPT_SLOT_COUNT && (
+            <PromptEditor
+              key="new"
+              userId={session?.user.id ?? ''}
+              position={nextPosition}
+              existing={undefined}
+              usedSlugs={prompts.map((p) => p.promptSlug)}
+              ownVisits={ownVisits}
+              ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
+              onChanged={loadPrompts}
             />
-          </>
-        )}
+          )}
+
+          <ThemedText type="sectionLabel">Layout</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Press and hold a section to drag it into a new order.
+          </ThemedText>
+          {layoutError && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {layoutError}
+            </ThemedText>
+          )}
+          <DraggableFlatList
+            data={order}
+            keyExtractor={(item) => item}
+            renderItem={renderSectionItem}
+            onDragEnd={({ data }) => {
+              setOrder(data);
+              persistSectionOrder(data);
+            }}
+            scrollEnabled={false}
+            contentContainerStyle={styles.sectionList}
+          />
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );
@@ -288,15 +314,9 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.two,
   },
-  modeRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  modeChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
+  avatarRow: {
+    alignItems: 'center',
+    gap: Spacing.one,
   },
   // The ScrollView itself stays full width (so its scrollbar sits at the
   // true browser edge on web) — centering happens on its content instead.
@@ -323,20 +343,7 @@ const styles = StyleSheet.create({
   promptsList: {
     gap: Spacing.two,
   },
-  layoutHintWrap: {
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-    gap: Spacing.one,
-  },
   sectionList: {
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    alignSelf: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
     gap: Spacing.two,
   },
   sectionRow: {

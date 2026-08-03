@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,6 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
+import { StretchText } from '@/components/ui/stretch-text';
 import { VisitActionsRow } from '@/components/visit-actions-row';
 import { VisitMenu } from '@/components/visit-menu';
 import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -63,9 +64,33 @@ export default function HomeScreen() {
   const [recapCoverUrls, setRecapCoverUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [copiedVisitId, setCopiedVisitId] = useState<string | null>(null);
   const scrollHandler = useHideOnScrollHandler();
+
+  const loadFeed = useCallback(async () => {
+    if (!session) return;
+    setError(null);
+    try {
+      const feedItems = await getFeedItems(session.user.id);
+      setItems(feedItems);
+      const feedVisits = feedItems.flatMap((item) => (item.type === 'visit' ? [item.visit] : []));
+      const feedRecaps = feedItems.flatMap((item) => (item.type === 'recap' ? [item.recap] : []));
+      const photoIds = feedVisits.flatMap((v) => v.photoIds);
+      const authorIds = [...new Set([...feedVisits.map((v) => v.user_id), ...feedRecaps.map((r) => r.authorId)])];
+      const [photos, avatars, recapCovers] = await Promise.all([
+        photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
+        authorIds.length > 0 ? getAvatarViewUrls(authorIds) : Promise.resolve({}),
+        feedRecaps.length > 0 ? getRecapCoverUrls(feedRecaps.map((r) => r.id)) : Promise.resolve({}),
+      ]);
+      setPhotoUrls(photos);
+      setAvatarUrls(avatars);
+      setRecapCoverUrls(recapCovers);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load your feed.');
+    }
+  }, [session]);
 
   // Refetch on every focus, not just on mount — tab navigators (native: a
   // PagerView, all 5 tabs mounted at once; web: a real Stack) keep sibling
@@ -75,32 +100,19 @@ export default function HomeScreen() {
   useTabFocusEffect(
     0,
     useCallback(() => {
-      if (!session) return;
       setIsLoading(true);
-      setError(null);
-      getFeedItems(session.user.id)
-        .then(async (feedItems) => {
-          setItems(feedItems);
-          const feedVisits = feedItems.flatMap((item) => (item.type === 'visit' ? [item.visit] : []));
-          const feedRecaps = feedItems.flatMap((item) => (item.type === 'recap' ? [item.recap] : []));
-          const photoIds = feedVisits.flatMap((v) => v.photoIds);
-          const authorIds = [...new Set([...feedVisits.map((v) => v.user_id), ...feedRecaps.map((r) => r.authorId)])];
-          const [photos, avatars, recapCovers] = await Promise.all([
-            photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
-            authorIds.length > 0 ? getAvatarViewUrls(authorIds) : Promise.resolve({}),
-            feedRecaps.length > 0 ? getRecapCoverUrls(feedRecaps.map((r) => r.id)) : Promise.resolve({}),
-          ]);
-          setPhotoUrls(photos);
-          setAvatarUrls(avatars);
-          setRecapCoverUrls(recapCovers);
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your feed.'))
-        .finally(() => {
-          setIsLoading(false);
-          setHasLoadedOnce(true);
-        });
-    }, [session])
+      loadFeed().finally(() => {
+        setIsLoading(false);
+        setHasLoadedOnce(true);
+      });
+    }, [loadFeed])
   );
+
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await loadFeed();
+    setIsRefreshing(false);
+  }
 
   async function handleToggleLike(visit: FeedVisit) {
     if (!session) return;
@@ -137,7 +149,7 @@ export default function HomeScreen() {
   async function handleShareVisit(visit: FeedVisit) {
     const message = `${visit.authorName} rated ${visit.placeName} ${visit.rating.toFixed(1)}/10${
       visit.note ? `: "${visit.note}"` : ''
-    } on Alien App.`;
+    } on Sightseer.`;
     const result = await shareText(message);
 
     if (result === 'unsupported') {
@@ -181,6 +193,9 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={theme.sage} />
+          }
           renderItem={({ item }: { item: FeedItem }) =>
             item.type === 'recap' ? (
               <RecapCard recap={item.recap} avatarUrl={avatarUrls[item.recap.authorId]} coverUrl={recapCoverUrls[item.recap.id]} />
@@ -265,7 +280,7 @@ function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLik
         <VisitMenu visitId={visit.id} isOwner={isOwner} onDeleted={onDeleted} />
       </View>
       <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: visit.id } })}>
-        <ThemedText type="headline">{visit.placeName}</ThemedText>
+        <StretchText type="headline" fill>{visit.placeName}</StretchText>
         {visit.taggedPlaces.length > 0 && (
           <ThemedText type="small">
             {visit.taggedPlaces.map((place, index) => (

@@ -17,6 +17,16 @@ import { OutlinedText } from "@/components/ui/outlined-text";
 type StretchTextProps = ThemedTextProps & {
   children: string;
   outline?: boolean;
+  // Like `outline`, always compresses to a single line instead of falling
+  // back to the "grow the box and wrap" path below MIN_SCALE — but keeps
+  // plain ThemedText rendering (no stroke, no vertical stretch, no
+  // bottom-anchored transform-origin). For list-row/card headline text in a
+  // fixed-width cell (place names in review lists, "recent reviews" boxes)
+  // where MIN_SCALE/MAX_SCALE's narrow window means the wrap fallback was
+  // effectively the common case, not the exception, leaving text far short
+  // of the row's actual available width instead of the intended edge-to-edge
+  // fit.
+  fill?: boolean;
 };
 
 // Measures the text's true single-line intrinsic width, then scales it
@@ -101,6 +111,44 @@ const MAX_SCALE = 1.3;
 // the box was actually narrow enough, and the box's own overflow:'hidden'
 // safety net silently clipped the last few characters instead.
 const OUTLINE_MIN_SCALE = 0.05;
+// `fill` mode's floor (see StretchTextProps.fill above). Originally set
+// higher than OUTLINE_MIN_SCALE (0.5, as a legibility safety net) — that was
+// wrong: a `Math.max` floor larger than the scale actually needed to fit
+// means the applied scale can exceed what fits, and since CSS/RN transforms
+// don't affect layout (siblings position off the pre-transform box, not the
+// visually-scaled one), the result is real visual overflow past the
+// container into neighboring row content, confirmed live (a long place name
+// in a narrow row spilling past its box into a sibling chevron icon). Fitting
+// the box is the actual point of this mode, so the floor has to stay well
+// below any realistic needed scale; no clipping backstop on the container
+// (deliberately not added — see containerHeightOverride below, which grows
+// the box to fit instead of cropping it).
+const FILL_MIN_SCALE = 0.15;
+// Outline mode's scaleX is computed to land the text's *layout box* exactly
+// on the band's edge — confirmed via live DOM measurement (getBoundingClientRect
+// on both the rendered text and its containing photo) that this box math is
+// already exact, down to the pixel, against the band's true edge. The
+// remaining visible gap past the last glyph is normal font right-side-bearing
+// (real ink stops a bit before the box's own edge for most letterforms,
+// worse for a word ending in a narrow/round letter) — not a scale bug. A
+// small deliberate overshoot compensates for that so the visible ink reads
+// flush with the edge instead of the invisible box.
+const OUTLINE_OVERSHOOT = 1.02;
+// `fill` mode's aspect-ratio compensation: heavy horizontal-only compression
+// (a long name in a narrow row, scaleX well under 1) leaves letterforms
+// visibly thin/tall relative to their compressed width. Growing the text
+// vertically too, by the inverse square root of how much it's compressed
+// horizontally, balances the two axes back toward the font's natural
+// proportions instead of squashing width alone. Uncapped, matching `fill`'s
+// own uncapped scaleX — a cap here would reintroduce the same shape of bug
+// FILL_MIN_SCALE's floor caused above (an artificial ceiling fighting what
+// the text actually needs). The container's own height grows to match (see
+// containerHeightOverride below) since transforms don't affect layout —
+// there's no clipping backstop on this box (see FILL_MIN_SCALE above), so
+// the taller text needs real layout space, not just visual overflow room.
+function fillScaleY(scaleX: number): number {
+  return scaleX < 1 ? 1 / Math.sqrt(scaleX) : 1;
+}
 // Unlike horizontal compression, vertical stretching breaks letterform
 // legibility fast — a small base font size stretched to fill a much taller
 // band (a tall portrait-ish band relative to that font, or simply the full
@@ -162,6 +210,7 @@ const WEB_WIDTH_SAFETY_MARGIN = 2;
 export function StretchText({
   children,
   outline,
+  fill,
   style,
   ...rest
 }: StretchTextProps) {
@@ -171,17 +220,36 @@ export function StretchText({
   const [contentHeight, setContentHeight] = useState(0);
   const rawScale =
     containerWidth > 0 && contentWidth > 0 ? containerWidth / contentWidth : 1;
-  // outline mode never wraps — see comment above — so it always takes the
-  // single-line/scaleX path, just with its own much lower floor than the
-  // regular grow-or-stretch boxes.
+  // outline and fill both never wrap — see comments above — so they always
+  // take the single-line/scaleX path, just with their own floors (each
+  // lower than MIN_SCALE below) instead of the regular grow-or-stretch box's
+  // narrower window.
+  const alwaysFit = outline || fill;
   const withinRange =
-    outline || (rawScale >= MIN_SCALE && rawScale <= MAX_SCALE);
-  const scaleX = outline ? Math.max(rawScale, OUTLINE_MIN_SCALE) : 1;
+    alwaysFit || (rawScale >= MIN_SCALE && rawScale <= MAX_SCALE);
+  const scaleX = alwaysFit
+    ? Math.max(rawScale, outline ? OUTLINE_MIN_SCALE : FILL_MIN_SCALE) *
+      (outline ? OUTLINE_OVERSHOOT : 1)
+    : 1;
   const rawScaleY =
     containerHeight > 0 && contentHeight > 0
       ? containerHeight / contentHeight
       : 1;
-  const scaleY = outline ? Math.max(rawScaleY, OUTLINE_MIN_SCALE) : 1;
+  const scaleY = outline
+    ? Math.max(rawScaleY, OUTLINE_MIN_SCALE)
+    : fill
+      ? fillScaleY(scaleX)
+      : 1;
+  // fill's vertical compensation grows the *visible* text past its natural
+  // single-line height via transform, which (unlike outline's band, sized by
+  // its own layout already) doesn't itself resize this container — without
+  // this, the container stays at the pre-compensation height and the taller
+  // text either gets clipped by a container that clips, or (this container
+  // doesn't) visually overlaps whatever sits below it in the surrounding
+  // layout. Reserving the real scaled height here keeps sibling spacing
+  // (row gaps, etc.) correct instead of just hoping it doesn't collide.
+  const containerHeightOverride =
+    fill && contentHeight > 0 && scaleY > 1 ? contentHeight * scaleY : undefined;
   // See OUTLINE_STROKE_RADIUS above: shrink the pre-transform radius as the
   // applied scale grows, so the outline's *rendered* size stays constant
   // instead of growing right along with the text and swallowing thin
@@ -204,7 +272,19 @@ export function StretchText({
         setContainerWidth(e.nativeEvent.layout.width);
         setContainerHeight(e.nativeEvent.layout.height);
       }}
-      style={[styles.container, outline ? styles.fillHeight : null]}
+      style={[
+        styles.container,
+        outline ? styles.fillHeight : null,
+        // fill's vertical compensation (containerHeightOverride above) grows
+        // this box past the text's natural height — bottom-anchoring it here
+        // means that extra room accumulates *above* the text instead of
+        // being split above/below by the base style's centering, so
+        // whatever sits right after this box in the surrounding layout
+        // (e.g. the location line under a feed card's title) stays flush
+        // against the text instead of getting pushed down by empty space.
+        fill && containerHeightOverride ? styles.fillBottom : null,
+        containerHeightOverride ? { height: containerHeightOverride } : null,
+      ]}
     >
       {/* The measuring copy must share every font-affecting style (size,
           weight, etc.) with the visible copy — otherwise its measured width
@@ -233,7 +313,7 @@ export function StretchText({
               setContentWidth(e.nativeEvent.layout.width);
               setContentHeight(e.nativeEvent.layout.height);
             }}
-            style={[styles.nowrap, style]}
+            style={[styles.nowrap, styles.tightFont, style]}
           >
             {children}
           </Text>
@@ -242,7 +322,7 @@ export function StretchText({
             {...rest}
             numberOfLines={1}
             onTextLayout={handleMeasureTextLayout}
-            style={[styles.nowrap, style, styles.measureText]}
+            style={[styles.nowrap, styles.tightFont, style, styles.measureText]}
           >
             {children}
           </Text>
@@ -251,6 +331,7 @@ export function StretchText({
       {(() => {
         const visibleStyle: StyleProp<TextStyle> = [
           withinRange ? styles.nowrap : styles.wrap,
+          styles.tightFont,
           style,
           withinRange ? styles.noMaxWidth : null,
           withinRange ? noEllipsisStyle : null,
@@ -306,8 +387,39 @@ export function StretchText({
 }
 
 const styles = StyleSheet.create({
+  // Android-only, no-op elsewhere: `includeFontPadding` (RN default: true on
+  // Android) adds extra vertical space above ascenders/below descenders
+  // beyond the font's own glyph bounds, sized off the font's design metrics
+  // rather than this specific text — often much more generous than the
+  // equivalent web/iOS box. Both `fill` and `outline` scale that *whole* box
+  // (glyphs and this built-in padding together) via transform, so the padding
+  // grows right along with the text instead of staying fixed — the more
+  // compensation applied, the more visibly empty the box looks above/below
+  // the actual letterforms. Turning it off tightens the measured box (and
+  // therefore what gets scaled) to the glyphs themselves on Android; applied
+  // to both the measuring and visible copies so measurement matches what's
+  // actually rendered.
+  tightFont: {
+    includeFontPadding: false,
+  },
   container: {
     width: "100%",
+    // Matters when containerHeightOverride (fill's vertical compensation)
+    // makes this box taller than the text's own pre-transform layout height:
+    // without this, the text (an ordinary top-anchored flow child) sits at
+    // the container's top edge, then grows from there via transform — which
+    // pushes it out the *top*, past the container's boundary, instead of the
+    // taller box actually containing it. Centering the pre-transform child
+    // first means the transform's own vertical growth (from that centered
+    // position) fills the taller box symmetrically instead.
+    justifyContent: "center",
+  },
+  // fill-mode-only, see call site above: overrides container's centering so
+  // the compensated extra height collects above the text instead of being
+  // split, keeping this box's bottom edge flush against whatever sits below
+  // it in the surrounding layout.
+  fillBottom: {
+    justifyContent: "flex-end",
   },
   // outline-mode-only: without an explicit height, this View's own onLayout
   // just reports its natural content-driven height (close to the text's own
@@ -380,6 +492,5 @@ const styles = StyleSheet.create({
 // screen-specific font/DPI combination this session's testing didn't hit) —
 // 'clip' silently drops whatever doesn't fit instead of showing
 // react-native-web's default "…", matching the same prefer-silent-clipping
-// precedent `noMaxWidth` and the card's own `overflow:'hidden'` already
-// establish for this component.
+// precedent `noMaxWidth` establishes for this component.
 const noEllipsisStyle = { textOverflow: "clip" } as unknown as TextStyle;

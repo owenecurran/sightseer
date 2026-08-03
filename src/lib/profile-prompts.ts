@@ -158,17 +158,15 @@ export async function deletePrompt(promptId: string): Promise<void> {
   if (error) throw error;
 }
 
-// Two independent updates, not a single atomic swap — position has no
-// uniqueness constraint (see the migration), so a momentary shared value
-// between these two calls is harmless for a table only its owner writes.
-export async function swapPromptPositions(
-  a: { id: string; position: number },
-  b: { id: string; position: number }
-): Promise<void> {
-  const { error: errorA } = await supabase.from('profile_prompts').update({ position: b.position }).eq('id', a.id);
-  if (errorA) throw errorA;
-  const { error: errorB } = await supabase.from('profile_prompts').update({ position: a.position }).eq('id', b.id);
-  if (errorB) throw errorB;
+// Called after a drag-and-drop reorder with the prompts' full new order —
+// position has no uniqueness constraint (see the migration), so writing
+// every row's index independently (not a single atomic statement) is
+// harmless for a table only its owner ever writes.
+export async function reorderPrompts(orderedIds: string[]): Promise<void> {
+  for (let position = 0; position < orderedIds.length; position++) {
+    const { error } = await supabase.from('profile_prompts').update({ position }).eq('id', orderedIds[position]);
+    if (error) throw error;
+  }
 }
 
 const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];

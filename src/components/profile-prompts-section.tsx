@@ -56,7 +56,7 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
               return (
                 <View key={attachment.id} style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <StretchText type="headline">{attachment.textValue}</StretchText>
+                  <StretchText type="headline" fill>{attachment.textValue}</StretchText>
                 </View>
               );
             }
@@ -95,7 +95,7 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   onPress={() => router.push({ pathname: '/board/[id]', params: { id: attachment.boardId! } })}
                   style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <StretchText type="headline">{attachment.boardName ?? 'Board'}</StretchText>
+                  <StretchText type="headline" fill>{attachment.boardName ?? 'Board'}</StretchText>
                 </Pressable>
               );
             }
@@ -107,7 +107,7 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   onPress={() => router.push({ pathname: '/place/[id]', params: { id: attachment.placeId! } })}
                   style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <StretchText type="headline">{attachment.placeName ?? 'Unknown place'}</StretchText>
+                  <StretchText type="headline" fill>{attachment.placeName ?? 'Unknown place'}</StretchText>
                 </Pressable>
               );
             }

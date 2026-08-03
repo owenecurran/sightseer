@@ -177,15 +177,19 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
         zoomLevel: SELECTED_ZOOM,
         animationDuration: 600,
       });
-      // 'browse' mode: search is just a way to jump the camera to an area
-      // (matching a searched suggestion to a confirm-bar pick doesn't apply
-      // here — there's nothing to "confirm", the map is read-only). 'pick'
-      // mode keeps today's behavior: show a pin + confirm bar for this
-      // specific result.
       if (mode === 'pick') {
         setSelectedDetails(details);
         setCenterCandidates([]);
         setSelectedCenterPlace(null);
+      }
+      // 'browse' mode: go straight to that place's page instead of just
+      // recentering and waiting for the user to also tap a resulting
+      // nearby-candidate chip — same navigation handleCenterCandidatePress
+      // below already does for the candidate-tap path.
+      if (mode === 'browse') {
+        const cached = await cachePlaceHierarchy(details);
+        onCancel();
+        router.push({ pathname: '/place/[id]', params: { id: cached.id } });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');

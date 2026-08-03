@@ -140,6 +140,7 @@ export type Database = {
       boards: {
         Row: {
           cover_photo_id: string | null
+          cover_photo_r2_key: string | null
           cover_r2_key: string | null
           created_at: string
           description: string | null
@@ -150,6 +151,7 @@ export type Database = {
         }
         Insert: {
           cover_photo_id?: string | null
+          cover_photo_r2_key?: string | null
           cover_r2_key?: string | null
           created_at?: string
           description?: string | null
@@ -160,6 +162,7 @@ export type Database = {
         }
         Update: {
           cover_photo_id?: string | null
+          cover_photo_r2_key?: string | null
           cover_r2_key?: string | null
           created_at?: string
           description?: string | null
@@ -701,6 +704,7 @@ export type Database = {
       travel_books: {
         Row: {
           cover_photo_id: string | null
+          cover_photo_r2_key: string | null
           cover_r2_key: string | null
           created_at: string
           description: string | null
@@ -712,6 +716,7 @@ export type Database = {
         }
         Insert: {
           cover_photo_id?: string | null
+          cover_photo_r2_key?: string | null
           cover_r2_key?: string | null
           created_at?: string
           description?: string | null
@@ -723,6 +728,7 @@ export type Database = {
         }
         Update: {
           cover_photo_id?: string | null
+          cover_photo_r2_key?: string | null
           cover_r2_key?: string | null
           created_at?: string
           description?: string | null
@@ -1923,6 +1929,36 @@ export type Database = {
           table_name: string
         }
         Returns: string
+      }
+      upgrade_place_details: {
+        Args: {
+          p_category: string
+          p_google_place_id: string
+          p_lat: number
+          p_lng: number
+          place_id: string
+        }
+        Returns: {
+          boundary_geometry: unknown
+          cached_at: string
+          category: string | null
+          geog: unknown
+          google_place_id: string | null
+          id: string
+          lat: number | null
+          level: string
+          lng: number | null
+          name: string
+          osm_id: string | null
+          parent_id: string | null
+          source: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "places"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {

@@ -279,9 +279,6 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       if (map) {
         isProgrammaticMoveRef.current = true;
         map.flyTo({ center: [details.lng, details.lat], zoom: SELECTED_ZOOM });
-        // 'browse' mode: search only recenters the camera (nothing to
-        // "confirm" — see the matching comment in
-        // location-search-modal.native.tsx's handleSuggestionSelect).
         if (mode === 'pick') {
           setSelectedDetails(details);
           setCenterCandidates([]);
@@ -291,6 +288,15 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
             .setLngLat([details.lng, details.lat])
             .addTo(map);
         }
+      }
+      // 'browse' mode: go straight to that place's page instead of just
+      // recentering and waiting for the user to also tap a resulting
+      // nearby-candidate chip — same navigation handleCenterCandidatePress
+      // below already does for the candidate-tap path.
+      if (mode === 'browse') {
+        const cached = await cachePlaceHierarchy(details);
+        onCancel();
+        router.push({ pathname: '/place/[id]', params: { id: cached.id } });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');

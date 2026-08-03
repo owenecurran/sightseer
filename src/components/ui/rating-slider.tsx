@@ -2,31 +2,46 @@ import * as Haptics from 'expo-haptics';
 import { useEffect, useState } from 'react';
 import { LayoutChangeEvent, Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  Easing,
-  interpolateColor,
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { Easing, runOnJS, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
+import { LiquidGlassTrackGated } from '@/components/ui/liquid-glass-track-gated';
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 
 const MAX_VALUE = 10;
-const TRACK_HEIGHT = 12;
 const THUMB_SIZE = 32;
-// The tappable/draggable area is taller than the visual line — 12px is too
-// thin a target to comfortably hit on a touchscreen.
-const TOUCH_TARGET_HEIGHT = 44;
-const MAX_SHAKE_PX = 4;
-// Value-space stops (0-10), converted to 0-1 progress below.
-const GRADIENT_STOPS = [0, 0.1, 0.5, 0.9, 1];
-const GRADIENT_COLORS = ['#40013a', '#d40404', '#f7da1e', '#04b02f', '#05e8b7'];
+// The canvas itself is the touch target here (unlike the old thin-line
+// design) — chunky enough to comfortably drag, same height as the thumb so
+// the glass droplet fills it edge to edge.
+const TRACK_HEIGHT = THUMB_SIZE;
+// The logo icon reads as a liquid-glass droplet sitting *on* the gradient
+// track, not embedded flush inside it — needs to actually be taller than the
+// track to read that way. The canvas itself grows to fit it (see
+// CANVAS_HEIGHT below); the track's own gradient stays pill-shaped at
+// TRACK_HEIGHT via a mask drawn directly in the shader (see `trackHeight`
+// uniform in liquid-glass-track.tsx), so only the icon pokes out above/below
+// it, not the whole gradient bar.
+const ICON_SIZE = TRACK_HEIGHT * 2.625;
+const CANVAS_HEIGHT = ICON_SIZE;
+const MAX_SHAKE_PX = 1;
+// Value-space stops (0-10), converted to 0-1 progress below. More stops,
+// irregular spacing, and a couple of deliberately "off" hues (burnt orange,
+// chartreuse) rather than a clean spectral sweep — a plain 5-stop
+// red-yellow-green-teal ramp read as a generated rainbow, not a designed one.
+// Sampled directly inside the liquid-glass shader now (see
+// liquid-glass-track.tsx's track() function) — this is the one place these
+// are defined, not duplicated.
+const GRADIENT_STOPS = [0, 0.08, 0.22, 0.4, 0.55, 0.7, 0.85, 1];
+const GRADIENT_COLORS = [
+  '#3a0142',
+  '#8c0d2f',
+  '#d4491f',
+  '#e8a71c',
+  '#c9d41c',
+  '#4a9c3f',
+  '#0f8a72',
+  '#05e8b7',
+];
 
 function clamp(n: number, min: number, max: number) {
   'worklet';
@@ -56,7 +71,6 @@ type RatingSliderProps = {
 };
 
 export function RatingSlider({ value, onChange }: RatingSliderProps) {
-  const theme = useTheme();
   const [trackWidth, setTrackWidth] = useState(0);
   const progress = useSharedValue(value / MAX_VALUE);
   // Continuous background wobble, always running; its amplitude (shakeIntensity)
@@ -66,11 +80,7 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
   const lastHapticValue = useSharedValue(value);
 
   useEffect(() => {
-    shakePhase.value = withRepeat(
-      withTiming(1, { duration: 70, easing: Easing.linear }),
-      -1,
-      true
-    );
+    shakePhase.value = withRepeat(withTiming(1, { duration: 70, easing: Easing.linear }), -1, true);
   }, [shakePhase]);
 
   // Keep in sync if the value is reset from outside (e.g. selecting a new
@@ -119,21 +129,6 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
       shakeIntensity.value = withTiming(0, { duration: 150 });
     });
 
-  const fillStyle = useAnimatedStyle(() => ({
-    width: `${progress.value * 100}%`,
-    backgroundColor: interpolateColor(progress.value, GRADIENT_STOPS, GRADIENT_COLORS),
-  }));
-
-  const thumbStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateX:
-          progress.value * usableWidth + shakePhase.value * shakeIntensity.value * MAX_SHAKE_PX,
-      },
-    ],
-    backgroundColor: interpolateColor(progress.value, GRADIENT_STOPS, GRADIENT_COLORS),
-  }));
-
   return (
     <View style={styles.container}>
       <ThemedText type="title" style={styles.valueText}>
@@ -142,12 +137,21 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
 
       <GestureDetector gesture={pan}>
         <View style={styles.track} onLayout={handleLayout}>
-          <View style={[styles.trackBackground, { backgroundColor: theme.backgroundElement }]} />
           {trackWidth > 0 && (
-            <>
-              <Animated.View style={[styles.fill, fillStyle]} />
-              <Animated.View style={[styles.thumb, thumbStyle, { borderColor: theme.background }]} />
-            </>
+            <LiquidGlassTrackGated
+              width={trackWidth}
+              height={CANVAS_HEIGHT}
+              trackHeight={TRACK_HEIGHT}
+              thumbSize={THUMB_SIZE}
+              iconSize={ICON_SIZE}
+              progress={progress}
+              usableWidth={usableWidth}
+              shakePhase={shakePhase}
+              shakeIntensity={shakeIntensity}
+              maxShakePx={MAX_SHAKE_PX}
+              gradientStops={GRADIENT_STOPS}
+              gradientColors={GRADIENT_COLORS}
+            />
           )}
         </View>
       </GestureDetector>
@@ -165,27 +169,7 @@ const styles = StyleSheet.create({
   },
   track: {
     width: '100%',
-    height: TOUCH_TARGET_HEIGHT,
-  },
-  trackBackground: {
-    position: 'absolute',
-    top: (TOUCH_TARGET_HEIGHT - TRACK_HEIGHT) / 2,
-    width: '100%',
-    height: TRACK_HEIGHT,
-    borderRadius: TRACK_HEIGHT / 2,
-  },
-  fill: {
-    position: 'absolute',
-    top: (TOUCH_TARGET_HEIGHT - TRACK_HEIGHT) / 2,
-    height: TRACK_HEIGHT,
-    borderRadius: TRACK_HEIGHT / 2,
-  },
-  thumb: {
-    position: 'absolute',
-    top: (TOUCH_TARGET_HEIGHT - THUMB_SIZE) / 2,
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: THUMB_SIZE / 2,
-    borderWidth: 2,
+    height: CANVAS_HEIGHT,
+    justifyContent: 'center',
   },
 });

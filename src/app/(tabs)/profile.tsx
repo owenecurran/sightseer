@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -17,6 +17,7 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
+import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
 import {
@@ -35,6 +36,7 @@ import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
 
 export default function ProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
+  const theme = useTheme();
   const bottomInset = useBottomTabInset();
   const [requests, setRequests] = useState<IncomingFollowRequest[]>([]);
   const [totalVisits, setTotalVisits] = useState(0);
@@ -46,46 +48,53 @@ export default function ProfileScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
+
+  const loadProfile = useCallback(async () => {
+    if (!session) return;
+    setError(null);
+    try {
+      const [incoming, counts, showcase, taggedShowcase] = await Promise.all([
+        listIncomingFollowRequests(session.user.id),
+        getFollowCounts(session.user.id),
+        getProfileShowcase(session.user.id),
+        getTaggedInShowcase(session.user.id),
+      ]);
+      setRequests(incoming);
+      setFollowCounts(counts);
+      setTotalVisits(showcase.totalVisits);
+      setLatestVisit(showcase.latestVisit);
+      setLatestTagged(taggedShowcase.latestTagged);
+
+      const teaserPhotoIds = [firstPhotoId(showcase.latestVisit), taggedShowcase.latestTagged?.photoIds?.[0]].filter(
+        (id): id is string => id != null
+      );
+      setTeaserPhotoUrls(teaserPhotoIds.length > 0 ? await getPhotoViewUrls(teaserPhotoIds) : {});
+
+      if (profile?.avatar_r2_key) {
+        const urls = await getAvatarViewUrls([session.user.id]);
+        setAvatarUrl(urls[session.user.id] ?? null);
+      } else {
+        setAvatarUrl(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load your profile.');
+    }
+  }, [session, profile?.avatar_r2_key]);
 
   useTabFocusEffect(
     4,
     useCallback(() => {
-      if (!session) return;
-      setError(null);
-      (async () => {
-        try {
-          const [incoming, counts, showcase, taggedShowcase] = await Promise.all([
-            listIncomingFollowRequests(session.user.id),
-            getFollowCounts(session.user.id),
-            getProfileShowcase(session.user.id),
-            getTaggedInShowcase(session.user.id),
-          ]);
-          setRequests(incoming);
-          setFollowCounts(counts);
-          setTotalVisits(showcase.totalVisits);
-          setLatestVisit(showcase.latestVisit);
-          setLatestTagged(taggedShowcase.latestTagged);
-
-          const teaserPhotoIds = [firstPhotoId(showcase.latestVisit), taggedShowcase.latestTagged?.photoIds?.[0]].filter(
-            (id): id is string => id != null
-          );
-          setTeaserPhotoUrls(teaserPhotoIds.length > 0 ? await getPhotoViewUrls(teaserPhotoIds) : {});
-
-          if (profile?.avatar_r2_key) {
-            const urls = await getAvatarViewUrls([session.user.id]);
-            setAvatarUrl(urls[session.user.id] ?? null);
-          } else {
-            setAvatarUrl(null);
-          }
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load your profile.');
-        } finally {
-          setHasLoadedOnce(true);
-        }
-      })();
-    }, [session, profile?.avatar_r2_key])
+      loadProfile().finally(() => setHasLoadedOnce(true));
+    }, [loadProfile])
   );
+
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    await loadProfile();
+    setIsRefreshing(false);
+  }
 
   async function handleAccept(followerId: string) {
     if (!session) return;
@@ -145,7 +154,7 @@ export default function ProfileScreen() {
             );
           })()}
           <View style={styles.latestReviewText}>
-            <StretchText type="headline">{latestVisit?.places?.name ?? 'No reviews yet'}</StretchText>
+            <StretchText type="headline" fill>{latestVisit?.places?.name ?? 'No reviews yet'}</StretchText>
           </View>
           <ThemedText type="headline">›</ThemedText>
         </View>
@@ -159,7 +168,7 @@ export default function ProfileScreen() {
             <Image source={{ uri: teaserPhotoUrls[latestTagged.photoIds[0]] }} style={styles.teaserThumbnail} />
           )}
           <View style={styles.latestReviewText}>
-            <StretchText type="headline">{latestTagged?.placeName ?? 'Not tagged in anything yet'}</StretchText>
+            <StretchText type="headline" fill>{latestTagged?.placeName ?? 'Not tagged in anything yet'}</StretchText>
           </View>
           <ThemedText type="headline">›</ThemedText>
         </View>
@@ -188,7 +197,10 @@ export default function ProfileScreen() {
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + Spacing.four }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
-          scrollEventThrottle={16}>
+          scrollEventThrottle={16}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={theme.sage} />
+          }>
           <View style={styles.contentWrap}>
             <View style={styles.headerRow}>
               <Pressable onPress={handlePickAvatar} disabled={isUploadingAvatar}>

@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { PageLoader } from '@/components/ui/page-loader';
+import { StretchText } from '@/components/ui/stretch-text';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -115,7 +116,7 @@ export default function TaggedInScreen() {
                     {formatAuthorLine(item.authorName, item.taggedUserNames)}
                   </ThemedText>
                 </View>
-                <ThemedText type="headline">{item.placeName}</ThemedText>
+                <StretchText type="headline" fill>{item.placeName}</StretchText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {item.rating.toFixed(1)} ★
                   {item.note ? ` · ${item.note}` : ''}

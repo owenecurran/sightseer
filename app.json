@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "alien-app",
-    "slug": "alien-app",
-    "version": "1.0.1",
+    "name": "sightseer",
+    "slug": "sightseer",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "alienapp",
@@ -45,7 +45,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Alien App uses your location to center the map on where you are."
+          "locationWhenInUsePermission": "Sightseer uses your location to center the map on where you are."
         }
       ],
       "@react-native-google-signin/google-signin",

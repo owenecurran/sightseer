@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,6 +49,7 @@ function todayIsoDate(): string {
 
 export default function ReviewFormScreen() {
   const { session } = useAuth();
+  const { placeId } = useLocalSearchParams<{ placeId?: string }>();
   const bottomInset = useBottomTabInset();
   const [error, setError] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -159,6 +161,23 @@ export default function ReviewFormScreen() {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
     }
   }
+
+  // Arriving from place/[id]'s "Add your review" button — the place is
+  // already in our DB (no Google Places round-trip needed), so this skips
+  // straight past LocationSearchModal into the same reset handlePlaceSelected
+  // already does for a normal search-picked place.
+  useEffect(() => {
+    if (!placeId) return;
+    (async () => {
+      const { data, error: fetchError } = await supabase.from('places').select('*').eq('id', placeId).single();
+      if (fetchError) {
+        setError(fetchError.message);
+        return;
+      }
+      await handlePlaceSelected(data);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [placeId]);
 
   async function handleSelectTag(suggestion: PlaceAutocompleteSuggestion) {
     setError(null);

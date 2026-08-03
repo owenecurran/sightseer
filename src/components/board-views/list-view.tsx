@@ -1,15 +1,14 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { StretchText } from '@/components/ui/stretch-text';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 import type { BoardVisitItem } from '@/lib/boards';
 
 type ListViewProps = {
@@ -22,16 +21,19 @@ type ListViewProps = {
 
 // Today's only-ever-shipped board-detail layout, restyled from a full-width
 // cover photo down to a compact row (small thumbnail + place + snippet) per
-// the "list view" requirement — same data, denser presentation.
+// the "list view" requirement — same data, denser presentation. Removal used
+// to be a persistent three-dot button in this row, but its fixed width was
+// squeezing the title's available space, forcing StretchText to compress it
+// more aggressively than necessary. Swipe-left-to-reveal instead: same
+// capability, no permanently-reserved row space.
 export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }: ListViewProps) {
-  const theme = useTheme();
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
 
   return (
     <View style={styles.list}>
       {items.map((item) => {
         const thumbnailUrl = item.photoIds[0] ? photoUrls[item.photoIds[0]] : undefined;
-        return (
+        const row = (
           <Pressable
             key={item.id}
             onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })}>
@@ -42,21 +44,30 @@ export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }:
                 <View style={styles.thumbnailPlaceholder} />
               )}
               <View style={styles.info}>
-                <StretchText type="headline">{item.placeName}</StretchText>
+                <StretchText type="headline" fill>{item.placeName}</StretchText>
                 <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
                   {item.rating.toFixed(1)} ★{item.note ? ` · ${item.note}` : ''}
                 </ThemedText>
               </View>
-              {isOwner && (
-                <Pressable
-                  onPress={() => setConfirmingItemId(item.id)}
-                  hitSlop={12}
-                  style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
-                  <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
-                </Pressable>
-              )}
             </ThemedView>
           </Pressable>
+        );
+
+        if (!isOwner) return row;
+
+        return (
+          <Swipeable
+            key={item.id}
+            renderRightActions={() => (
+              <Pressable onPress={() => setConfirmingItemId(item.id)} style={styles.removeAction}>
+                <ThemedText type="smallBold" themeColor="background">
+                  Remove
+                </ThemedText>
+              </Pressable>
+            )}
+            overshootRight={false}>
+            {row}
+          </Swipeable>
         );
       })}
 
@@ -101,10 +112,12 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.half,
   },
-  menuButton: {
-    padding: Spacing.two,
-  },
-  pressed: {
-    opacity: 0.5,
+  removeAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.four,
+    backgroundColor: '#c0392b',
+    borderRadius: Spacing.three,
+    marginLeft: Spacing.two,
   },
 });

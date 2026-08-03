@@ -35,6 +35,15 @@ export default function CreateChooserScreen() {
             </ThemedText>
           </ThemedView>
         </Pressable>
+
+        <Pressable onPress={() => router.push('/board/new')}>
+          <ThemedView type="backgroundElement" style={styles.optionCard}>
+            <ThemedText type="headline">New board</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Start a collection to save your own or anyone else's reviews to.
+            </ThemedText>
+          </ThemedView>
+        </Pressable>
       </SafeAreaView>
     </ThemedView>
   );

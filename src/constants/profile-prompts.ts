@@ -6,11 +6,23 @@ export type ProfilePromptOption = {
   category: ProfilePromptCategory;
 };
 
+export const PROFILE_PROMPT_CATEGORY_LABELS: Record<ProfilePromptCategory, string> = {
+  discovery: 'Discovery',
+  food: 'Food',
+  planning: 'Planning',
+  reflection: 'Reflection',
+};
+
 // A fixed, app-defined list — not DB-driven — same pattern as REPORT_REASONS
-// in visit-menu.tsx. Users pick from these when filling a prompt slot.
-// `category` isn't surfaced in the UI yet (grouping/filtering the picker by
-// category is a later addition) but is added now while the list is small,
-// rather than needing a data migration once real prompts exist.
+// in visit-menu.tsx. Users pick from these when filling a prompt slot,
+// grouped by category in prompt-editor.tsx's picker.
+//
+// To add, remove, or reword a prompt: edit this array directly. `label` is
+// the question text shown to users; `slug` must stay unique (kebab-case) and
+// is what's actually stored per-user once answered, so renaming a slug on an
+// already-used prompt orphans existing answers — change `label` instead of
+// `slug` to just reword one. No migration/deploy step beyond a normal app
+// release; this is plain bundled app code, not database content.
 export const PROFILE_PROMPTS: ProfilePromptOption[] = [
   { slug: 'next-trip-destination', label: 'Next trip destination', category: 'planning' },
   { slug: 'favorite-trip-review', label: 'Favorite trip review', category: 'reflection' },

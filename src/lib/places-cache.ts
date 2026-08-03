@@ -77,18 +77,12 @@ async function getOrCreatePlace(params: {
       .select('*')
       .eq('google_place_id', googlePlaceId)
       .maybeSingle();
-    // NOTE: intentionally does NOT attempt to "upgrade" a stale row's
-    // category here (a place cached before national_park classification
-    // existed keeps reporting category: null via this path) — `places` is
-    // deliberately client-append-only, RLS has no update policy at all
-    // ("corrections happen server-side (service role) only", per
-    // supabase/migrations/20260721120100_rls_policies.sql's own comment).
-    // Confirmed live: attempting a client update here throws a real 406,
-    // it doesn't silently no-op. The *other* lookup path below (match by
-    // level/name/parent) has an existing update call with this same
-    // problem — not touched here since it wasn't part of this change, but
-    // it's the same latent issue and would fail the same way if actually
-    // exercised.
+    // Doesn't upgrade a stale row's category here even if one is now known
+    // (a place cached before national_park classification existed keeps
+    // reporting category: null via this path) — this lookup only ever
+    // matches a row that already HAS a google_place_id, so there's nothing
+    // to upgrade about the id itself; only the below (bare chain-inferred
+    // rows, no google_place_id yet) needs the upgrade path.
     if (byGoogleId) return byGoogleId;
   }
 
@@ -99,17 +93,23 @@ async function getOrCreatePlace(params: {
   if (existing) {
     // Upgrade a chain-inferred row (no google_place_id/category yet) once we
     // have the authoritative details from looking the place up directly.
+    // `places` is deliberately client-append-only (RLS has no UPDATE policy
+    // — "corrections happen server-side only") so this can't be a plain
+    // .update() call; upgrade_place_details is a security-definer RPC for
+    // exactly this, same pattern as store_place_boundary.
     if ((googlePlaceId && !existing.google_place_id) || (category && !existing.category)) {
+      // The RPC's generated Args type is non-nullable, but the underlying SQL
+      // params are plain (nullable) columns — Postgres/PostgREST accept a
+      // JSON null for any of these just fine, the generated type is just
+      // stricter than the actual function signature.
       const { data: updated, error } = await supabase
-        .from('places')
-        .update({
-          google_place_id: googlePlaceId ?? existing.google_place_id,
-          category: category ?? existing.category,
-          lat,
-          lng,
+        .rpc('upgrade_place_details', {
+          place_id: existing.id,
+          p_google_place_id: (googlePlaceId ?? existing.google_place_id) as string,
+          p_category: (category ?? existing.category) as string,
+          p_lat: (lat ?? existing.lat) as number,
+          p_lng: (lng ?? existing.lng) as number,
         })
-        .eq('id', existing.id)
-        .select()
         .single();
       if (error) throw error;
       return updated;
