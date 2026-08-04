@@ -18,16 +18,83 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
 }
 
-function LightboxPage({ uri, width }: { uri: string; width: number }) {
+function LightboxPage({ uri, width, height }: { uri: string; width: number; height: number }) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedTranslateX = useSharedValue(0);
+  const savedTranslateY = useSharedValue(0);
+  // Focal point at pinch-start, in view coordinates — used to keep whatever
+  // point is under the fingers visually fixed as scale changes, instead of
+  // always expanding from the image's center regardless of where the pinch
+  // actually happened.
+  const focalX = useSharedValue(0);
+  const focalY = useSharedValue(0);
+
+  // Keeps translateX/Y from drifting the zoomed image past its own edges —
+  // at scale S, the image is (S-1)*width/2 wider than the view on each
+  // side, so that's the max translate in either direction; at scale 1
+  // (not zoomed) this collapses to 0, correctly forbidding any pan at all.
+  function clampTranslate(value: number, dimension: number, currentScale: number) {
+    'worklet';
+    const max = (Math.max(currentScale, 1) - 1) * (dimension / 2);
+    return clamp(value, -max, max);
+  }
 
   const pinch = Gesture.Pinch()
+    .onStart((event) => {
+      focalX.value = event.focalX - width / 2;
+      focalY.value = event.focalY - height / 2;
+    })
     .onChange((event) => {
-      scale.value = clamp(savedScale.value * event.scale, 1, MAX_ZOOM);
+      const nextScale = clamp(savedScale.value * event.scale, 1, MAX_ZOOM);
+      // Standard focal-point-anchored zoom approximation: as the content
+      // scales by event.scale (cumulative since gesture start) the point
+      // originally under the fingers drifts away from them by
+      // offset * (event.scale - 1); translating by the negative of that
+      // keeps it visually pinned under the fingers instead of the zoom
+      // always radiating from the image's fixed center.
+      scale.value = nextScale;
+      translateX.value = clampTranslate(
+        savedTranslateX.value - focalX.value * (event.scale - 1),
+        width,
+        nextScale
+      );
+      translateY.value = clampTranslate(
+        savedTranslateY.value - focalY.value * (event.scale - 1),
+        height,
+        nextScale
+      );
     })
     .onEnd(() => {
       savedScale.value = scale.value;
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
+    });
+
+  // Reposition-while-zoomed — manual activation so it only actually claims
+  // the gesture once scale > 1 (checked as a worklet condition against the
+  // live shared value, not a one-time prop, since RNGH resolves activation
+  // per-touch not per-render). Below that threshold it fails immediately,
+  // letting the untouched single-finger drag fall through to the outer
+  // FlatList's own paging swipe and the lightbox's swipe-to-dismiss, exactly
+  // as before this change — this was the earlier, deliberate scope cut
+  // ("would fight the FlatList's horizontal swipe") that adding a pan
+  // gesture needs to actually respect, not just add alongside.
+  const pan = Gesture.Pan()
+    .manualActivation(true)
+    .onTouchesDown((_event, state) => {
+      if (scale.value > 1) state.activate();
+      else state.fail();
+    })
+    .onChange((event) => {
+      translateX.value = clampTranslate(translateX.value + event.changeX, width, scale.value);
+      translateY.value = clampTranslate(translateY.value + event.changeY, height, scale.value);
+    })
+    .onEnd(() => {
+      savedTranslateX.value = translateX.value;
+      savedTranslateY.value = translateY.value;
     });
 
   const doubleTap = Gesture.Tap()
@@ -36,12 +103,16 @@ function LightboxPage({ uri, width }: { uri: string; width: number }) {
       'worklet';
       scale.value = withTiming(1);
       savedScale.value = 1;
+      translateX.value = withTiming(0);
+      translateY.value = withTiming(0);
+      savedTranslateX.value = 0;
+      savedTranslateY.value = 0;
     });
 
-  const composed = Gesture.Simultaneous(pinch, doubleTap);
+  const composed = Gesture.Simultaneous(Gesture.Race(pan, pinch), doubleTap);
 
   const imageStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }, { scale: scale.value }],
   }));
 
   return (
@@ -62,13 +133,16 @@ type PhotoLightboxProps = {
   onClose: () => void;
 };
 
-// Full-screen tap-to-focus viewer — pinch to zoom (double-tap to reset),
-// swipe between photos when there's more than one via the outer FlatList's
-// own native paging scroll (deliberately no pan-to-reposition-while-zoomed:
-// that would fight the FlatList's horizontal swipe for single-finger drags,
-// a known gesture-interop pitfall not worth chasing for this scope).
+// Full-screen tap-to-focus viewer — pinch to zoom anchored at the actual
+// pinch focal point (not always the image's center), double-tap to reset,
+// pan to reposition once zoomed in (LightboxPage's `pan` gesture, manually
+// activated only above scale 1 so an un-zoomed single-finger drag still
+// falls through untouched to the outer FlatList's own paging swipe and this
+// component's own swipe-to-dismiss below — the previous version deliberately
+// skipped pan-to-reposition entirely to avoid exactly that conflict; manual
+// activation is what resolves it instead of avoiding it).
 export function PhotoLightbox({ visible, urls, initialIndex, onClose }: PhotoLightboxProps) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const translateY = useSharedValue(0);
@@ -145,7 +219,7 @@ export function PhotoLightbox({ visible, urls, initialIndex, onClose }: PhotoLig
                 initialScrollIndex={initialIndex}
                 getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
                 onMomentumScrollEnd={handleMomentumEnd}
-                renderItem={({ item }) => <LightboxPage uri={item} width={width} />}
+                renderItem={({ item }) => <LightboxPage uri={item} width={width} height={height} />}
               />
             </Animated.View>
           </GestureDetector>

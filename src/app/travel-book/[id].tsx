@@ -1,18 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
+import { LocationSearchModal } from '@/components/location-search-modal';
 import { PhotoGrid } from '@/components/photo-grid';
+import { SaveCollectionButton } from '@/components/save-collection-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
+import { RatingSlider } from '@/components/ui/rating-slider';
 import { StretchText } from '@/components/ui/stretch-text';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -31,11 +34,22 @@ import {
   getTravelBookItems,
   removeVisitFromTravelBook,
   setTravelBookCoverPhoto,
+  setTravelBookLocation,
+  setTravelBookRating,
   type TravelBookCollaborator,
   type TravelBookItem,
   type TravelBookRow,
 } from '@/lib/travel-books';
+import {
+  getSavedTravelBookState,
+  saveTravelBookForUpdates,
+  setSavedTravelBookNotify,
+  unsaveTravelBookForUpdates,
+} from '@/lib/saved-collections';
+import type { Database } from '@/lib/database.types';
 import type { TaggedVisit } from '@/lib/tagged-visits';
+
+type PlaceRow = Database['public']['Tables']['places']['Row'];
 
 export default function TravelBookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -57,6 +71,10 @@ export default function TravelBookDetailScreen() {
   const [eligibleVisits, setEligibleVisits] = useState<TaggedVisit[]>([]);
   const [isLoadingEligible, setIsLoadingEligible] = useState(false);
   const [confirmingItem, setConfirmingItem] = useState<TravelBookItem | null>(null);
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
+  const ratingSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savedState, setSavedState] = useState<{ notifyOnNewItems: boolean } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const theme = useTheme();
   const scrollHandler = useHideOnScrollHandler();
@@ -82,11 +100,11 @@ export default function TravelBookDetailScreen() {
           setItems(bookItems);
           setRecap(bookRecap);
 
-          const photoIds = bookItems.flatMap((item) => item.photoIds);
+          const photoIds = bookItems.flatMap((item) => (item.kind === 'visit' ? item.photoIds : []));
           const authorIds = [
             detail.book.user_id,
             ...detail.collaborators.map((c) => c.userId),
-            ...bookItems.map((item) => item.user_id),
+            ...bookItems.filter((item) => item.kind === 'visit').map((item) => item.user_id),
           ];
           const [photos, avatars] = await Promise.all([
             photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
@@ -97,6 +115,9 @@ export default function TravelBookDetailScreen() {
           if (detail.book.cover_photo_r2_key) {
             const urls = await getCoverViewUrls('travel_books', [detail.book.id]);
             setCustomCoverUrl(urls[detail.book.id]);
+          }
+          if (session.user.id !== detail.book.user_id) {
+            setSavedState(await getSavedTravelBookState(session.user.id, detail.book.id));
           }
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load this travel book.');
@@ -180,8 +201,75 @@ export default function TravelBookDetailScreen() {
     }
   }
 
+  // Debounced rather than persisted on every onChange — RatingSlider fires
+  // on every tenth-of-a-point change during a drag, which would otherwise
+  // hammer the DB with an update per frame.
+  function handleRatingChange(rating: number) {
+    if (!book) return;
+    setBook({ ...book, rating });
+    if (ratingSaveTimeout.current) clearTimeout(ratingSaveTimeout.current);
+    ratingSaveTimeout.current = setTimeout(() => {
+      setTravelBookRating(book.id, rating).catch((err) =>
+        setError(err instanceof Error ? err.message : 'Could not save that rating.')
+      );
+    }, 400);
+  }
+
+  async function handleSelectLocation(place: PlaceRow) {
+    if (!book) return;
+    setIsLocationPickerOpen(false);
+    setError(null);
+    try {
+      await setTravelBookLocation(book.id, place.id);
+      setBook({ ...book, location_place_id: place.id });
+      setLocationName(place.name);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update that location.');
+    }
+  }
+
+  async function handleSaveBook() {
+    if (!session || !book) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await saveTravelBookForUpdates(session.user.id, book.id, false);
+      setSavedState({ notifyOnNewItems: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that travel book.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleUnsaveBook() {
+    if (!session || !book) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await unsaveTravelBookForUpdates(session.user.id, book.id);
+      setSavedState(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not unsave that travel book.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleToggleBookNotify() {
+    if (!session || !book || !savedState) return;
+    const next = !savedState.notifyOnNewItems;
+    setSavedState({ notifyOnNewItems: next });
+    try {
+      await setSavedTravelBookNotify(session.user.id, book.id, next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update notifications.');
+    }
+  }
+
   if (!hasLoadedOnce) return <PageLoader />;
 
+  const isOwner = Boolean(session && book?.user_id === session.user.id);
   const members = book ? [{ userId: book.user_id, name: '' }, ...collaborators] : [];
 
   return (
@@ -203,23 +291,54 @@ export default function TravelBookDetailScreen() {
           )}
 
           <ThemedText type="displaySerif">{book?.title ?? 'Travel book'}</ThemedText>
-          {locationName && (
-            <ThemedText type="small" themeColor="sage">
-              {locationName}
-            </ThemedText>
-          )}
+          <View style={styles.locationRow}>
+            {locationName && (
+              <ThemedText type="small" themeColor="sage">
+                {locationName}
+              </ThemedText>
+            )}
+            {isOwner && (
+              <Pressable onPress={() => setIsLocationPickerOpen(true)}>
+                <ThemedText type="small" themeColor="sage">
+                  {locationName ? 'Change location' : 'Add a location'}
+                </ThemedText>
+              </Pressable>
+            )}
+          </View>
           {book?.description && (
             <ThemedText type="small" themeColor="textSecondary">
               {book.description}
             </ThemedText>
           )}
 
-          {session && book?.user_id === session.user.id && (
+          {(isOwner || book?.rating != null) && (
+            <View style={styles.ratingSection}>
+              <ThemedText type="sectionLabel">Trip rating</ThemedText>
+              {isOwner ? (
+                <RatingSlider value={book?.rating ?? null} onChange={handleRatingChange} />
+              ) : (
+                <ThemedText type="default">{book?.rating?.toFixed(1)} ★</ThemedText>
+              )}
+            </View>
+          )}
+
+          {isOwner && (
             <Pressable onPress={handleUploadCover} disabled={isUploadingCover}>
               <ThemedText type="small" themeColor="sage">
                 {isUploadingCover ? 'Uploading…' : customCoverUrl ? 'Change cover photo' : 'Add a cover photo'}
               </ThemedText>
             </Pressable>
+          )}
+
+          {!isOwner && session && (
+            <SaveCollectionButton
+              isSaved={savedState != null}
+              notifyOnNewItems={savedState?.notifyOnNewItems ?? false}
+              isLoading={isSaving}
+              onSave={handleSaveBook}
+              onUnsave={handleUnsaveBook}
+              onToggleNotify={handleToggleBookNotify}
+            />
           )}
 
           {collaborators.length > 0 && (
@@ -243,23 +362,41 @@ export default function TravelBookDetailScreen() {
               </ThemedText>
             )}
             {items.map((item) => (
-              <Pressable key={item.itemId} onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}>
+              <Pressable
+                key={item.itemId}
+                onPress={() =>
+                  item.kind === 'visit'
+                    ? router.push({ pathname: '/visit/[id]', params: { id: item.id } })
+                    : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+                }>
                 <ThemedView type="backgroundElement" style={styles.itemRow}>
                   <View style={styles.itemInfo}>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {item.visited_on} · {item.authorName}
-                    </ThemedText>
-                    <StretchText type="headline" fill>{item.placeName}</StretchText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {item.rating.toFixed(1)} ★{item.note ? ` · ${item.note}` : ''}
-                    </ThemedText>
-                    <PhotoGrid urls={item.photoIds.map((pid) => photoUrls[pid]).filter((url) => url != null)} />
-                    {session && book?.user_id === session.user.id && item.photoIds[0] && (
-                      <Pressable onPress={() => handleSetCover(item.photoIds[0])} hitSlop={8}>
-                        <ThemedText type="small" themeColor="sage">
-                          {book.cover_photo_id === item.photoIds[0] ? 'Cover photo ✓' : 'Set as cover'}
+                    {item.kind === 'visit' ? (
+                      <>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {item.visited_on} · {item.authorName}
                         </ThemedText>
-                      </Pressable>
+                        <StretchText type="headline" fill>{item.placeName}</StretchText>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {item.rating != null ? `${item.rating.toFixed(1)} ★` : 'Visited'}
+                          {item.note ? ` · ${item.note}` : ''}
+                        </ThemedText>
+                        <PhotoGrid urls={item.photoIds.map((pid) => photoUrls[pid]).filter((url): url is string => url != null)} />
+                        {session && book?.user_id === session.user.id && item.photoIds[0] && (
+                          <Pressable onPress={() => handleSetCover(item.photoIds[0])} hitSlop={8}>
+                            <ThemedText type="small" themeColor="sage">
+                              {book.cover_photo_id === item.photoIds[0] ? 'Cover photo ✓' : 'Set as cover'}
+                            </ThemedText>
+                          </Pressable>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <StretchText type="headline" fill>{item.placeName}</StretchText>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {item.stateCountry ?? 'No review yet'}
+                        </ThemedText>
+                      </>
                     )}
                   </View>
                   {session && (item.addedBy === session.user.id || book?.user_id === session.user.id) && (
@@ -293,7 +430,7 @@ export default function TravelBookDetailScreen() {
                       <ThemedView type="backgroundSelected" style={styles.eligibleRow}>
                         <ThemedText type="small">{visit.placeName}</ThemedText>
                         <ThemedText type="small" themeColor="textSecondary">
-                          {visit.rating.toFixed(1)} ★
+                          {visit.rating != null ? `${visit.rating.toFixed(1)} ★` : 'Visited'}
                         </ThemedText>
                       </ThemedView>
                     </Pressable>
@@ -338,6 +475,12 @@ export default function TravelBookDetailScreen() {
         }}
         onCancel={() => setConfirmingItem(null)}
       />
+
+      <LocationSearchModal
+        visible={isLocationPickerOpen}
+        onCancel={() => setIsLocationPickerOpen(false)}
+        onSelect={handleSelectLocation}
+      />
     </ThemedView>
   );
 }
@@ -367,6 +510,14 @@ const styles = StyleSheet.create({
   cover: {
     width: '100%',
     height: '100%',
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  ratingSection: {
+    gap: Spacing.one,
   },
   membersRow: {
     flexDirection: 'row',

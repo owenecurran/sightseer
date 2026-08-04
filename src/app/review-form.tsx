@@ -57,7 +57,10 @@ export default function ReviewFormScreen() {
 
   const [selectedPlace, setSelectedPlace] = useState<PlaceRow | null>(null);
   const [breadcrumb, setBreadcrumb] = useState('');
-  const [rating, setRating] = useState(5);
+  // null = no score set yet — see rating-slider.tsx's own comment. Replaces
+  // the earlier separate "add without reviewing" button: saving with this
+  // still null just logs a plain visit with no rating attached.
+  const [rating, setRating] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [visitedOn, setVisitedOn] = useState(todayIsoDate());
   const [isSavingVisit, setIsSavingVisit] = useState(false);
@@ -145,7 +148,7 @@ export default function ReviewFormScreen() {
       const crumb = await getPlaceBreadcrumb(place);
       setSelectedPlace(place);
       setBreadcrumb(crumb);
-      setRating(5);
+      setRating(null);
       setNote('');
       setVisitedOn(todayIsoDate());
       setSavedVisitId(null);

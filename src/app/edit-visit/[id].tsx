@@ -38,7 +38,7 @@ export default function EditVisitScreen() {
   const scrollHandler = useHideOnScrollHandler();
 
   const [visit, setVisit] = useState<VisitForEdit | null | undefined>(undefined);
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [visitedOn, setVisitedOn] = useState('');
   const [photoSlots, setPhotoSlots] = useState<PhotoSlot[]>([]);

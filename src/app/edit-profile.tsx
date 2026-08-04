@@ -34,7 +34,7 @@ const BIO_MAX_LENGTH = 160;
 const PROMPT_SLOT_COUNT = 6;
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
-type OwnVisitOption = { id: string; placeName: string; rating: number };
+type OwnVisitOption = { id: string; placeName: string; rating: number | null };
 
 // Prompts and profile-section order used to live behind an Info/Layout tab
 // toggle, with prompts reordered via up/down arrows and sections via

@@ -8,6 +8,8 @@ import { BoardMapView } from '@/components/board-views/map-view';
 import { FullReviewsView } from '@/components/board-views/full-reviews-view';
 import { ImagesGridView } from '@/components/board-views/images-grid-view';
 import { ListView } from '@/components/board-views/list-view';
+import { RankedListView } from '@/components/board-views/ranked-list-view';
+import { SaveCollectionButton } from '@/components/save-collection-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadableImage } from '@/components/ui/loadable-image';
@@ -17,19 +19,26 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
-import { getBoardItems, setBoardCoverPhoto, type BoardVisitItem } from '@/lib/boards';
+import { getBoardItems, reorderBoardItems, setBoardCoverPhoto, type BoardItem, type BoardVisitItem } from '@/lib/boards';
 import { getCoverViewUrls, uploadCoverPhoto } from '@/lib/covers';
 import type { Database } from '@/lib/database.types';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { getPhotoViewUrls } from '@/lib/photo-view';
+import {
+  getSavedBoardState,
+  saveBoardForUpdates,
+  setSavedBoardNotify,
+  unsaveBoardForUpdates,
+} from '@/lib/saved-collections';
 import { supabase } from '@/lib/supabase';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
-type ViewMode = 'list' | 'full' | 'images' | 'map';
+type ViewMode = 'list' | 'ranked' | 'full' | 'images' | 'map';
 
 const VIEW_MODES: { key: ViewMode; label: string }[] = [
   { key: 'list', label: 'List' },
+  { key: 'ranked', label: 'Ranked' },
   { key: 'full', label: 'Full reviews' },
   { key: 'images', label: 'Images' },
   { key: 'map', label: 'Map' },
@@ -40,13 +49,15 @@ export default function BoardDetailScreen() {
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [board, setBoard] = useState<BoardRow | null>(null);
-  const [items, setItems] = useState<BoardVisitItem[]>([]);
+  const [items, setItems] = useState<BoardItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [customCoverUrl, setCustomCoverUrl] = useState<string | undefined>();
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [savedState, setSavedState] = useState<{ notifyOnNewItems: boolean } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
   useEffect(() => {
@@ -62,7 +73,7 @@ export default function BoardDetailScreen() {
         setBoard(boardData);
         setItems(boardItems);
 
-        const photoIds = boardItems.flatMap((item) => item.photoIds);
+        const photoIds = boardItems.flatMap((item) => (item.kind === 'visit' ? item.photoIds : []));
         if (photoIds.length > 0) {
           setPhotoUrls(await getPhotoViewUrls(photoIds));
         }
@@ -70,13 +81,16 @@ export default function BoardDetailScreen() {
           const urls = await getCoverViewUrls('boards', [boardData.id]);
           setCustomCoverUrl(urls[boardData.id]);
         }
+        if (session && session.user.id !== boardData.user_id) {
+          setSavedState(await getSavedBoardState(session.user.id, boardData.id));
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load this board.');
       } finally {
         setHasLoadedOnce(true);
       }
     })();
-  }, [id]);
+  }, [id, session]);
 
   async function handleRemove(itemId: string) {
     setError(null);
@@ -86,6 +100,58 @@ export default function BoardDetailScreen() {
       return;
     }
     setItems((prev) => prev.filter((item) => item.id !== itemId));
+  }
+
+  // Optimistic reorder — DraggableFlatList's own onDragEnd already gives the
+  // final order immediately, no need to wait on the round-trip before
+  // reflecting it.
+  async function handleReorder(orderedItems: BoardItem[]) {
+    setItems(orderedItems);
+    setError(null);
+    try {
+      await reorderBoardItems(orderedItems.map((item) => item.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that order.');
+    }
+  }
+
+  async function handleSave() {
+    if (!session || !board) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await saveBoardForUpdates(session.user.id, board.id, false);
+      setSavedState({ notifyOnNewItems: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that board.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleUnsave() {
+    if (!session || !board) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      await unsaveBoardForUpdates(session.user.id, board.id);
+      setSavedState(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not unsave that board.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function handleToggleNotify() {
+    if (!session || !board || !savedState) return;
+    const next = !savedState.notifyOnNewItems;
+    setSavedState({ notifyOnNewItems: next });
+    try {
+      await setSavedBoardNotify(session.user.id, board.id, next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update notifications.');
+    }
   }
 
   async function handleSetCover(photoId: string) {
@@ -122,6 +188,7 @@ export default function BoardDetailScreen() {
   }
 
   const isOwner = Boolean(session && board && session.user.id === board.user_id);
+  const visitItems = items.filter((item): item is BoardVisitItem => item.kind === 'visit');
 
   if (!hasLoadedOnce) return <PageLoader />;
 
@@ -154,6 +221,17 @@ export default function BoardDetailScreen() {
             </Pressable>
           )}
 
+          {!isOwner && session && (
+            <SaveCollectionButton
+              isSaved={savedState != null}
+              notifyOnNewItems={savedState?.notifyOnNewItems ?? false}
+              isLoading={isSaving}
+              onSave={handleSave}
+              onUnsave={handleUnsave}
+              onToggleNotify={handleToggleNotify}
+            />
+          )}
+
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
               {error}
@@ -180,9 +258,9 @@ export default function BoardDetailScreen() {
             </ThemedText>
           </View>
         ) : viewMode === 'full' ? (
-          <FullReviewsView items={items} photoUrls={photoUrls} />
+          <FullReviewsView items={visitItems} photoUrls={photoUrls} />
         ) : viewMode === 'map' ? (
-          <BoardMapView items={items} />
+          <BoardMapView items={visitItems} />
         ) : (
           <Animated.ScrollView
             contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
@@ -191,11 +269,19 @@ export default function BoardDetailScreen() {
             scrollEventThrottle={16}>
             {viewMode === 'images' ? (
               <ImagesGridView
-                items={items}
+                items={visitItems}
                 photoUrls={photoUrls}
                 isOwner={isOwner}
                 coverPhotoId={board?.cover_photo_id}
                 onSetCover={handleSetCover}
+              />
+            ) : viewMode === 'ranked' ? (
+              <RankedListView
+                items={items}
+                photoUrls={photoUrls}
+                onReorder={handleReorder}
+                onRemove={handleRemove}
+                isOwner={isOwner}
               />
             ) : (
               <ListView

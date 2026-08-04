@@ -64,7 +64,7 @@ function emptyAttachment(): LocalAttachment {
   };
 }
 
-type OwnVisitOption = { id: string; placeName: string; rating: number };
+type OwnVisitOption = { id: string; placeName: string; rating: number | null };
 type OwnBoardOption = { id: string; name: string };
 
 type PromptEditorProps = {
@@ -392,7 +392,8 @@ export function PromptEditor({
                     type={attachment.visitId === v.id ? 'backgroundSelected' : 'background'}
                     style={styles.chip}>
                     <ThemedText type="small">
-                      {v.placeName} · {v.rating.toFixed(1)} ★
+                      {v.placeName}
+                      {v.rating != null ? ` · ${v.rating.toFixed(1)} ★` : ''}
                     </ThemedText>
                   </ThemedView>
                 </Pressable>

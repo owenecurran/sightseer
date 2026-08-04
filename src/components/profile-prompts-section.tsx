@@ -81,7 +81,7 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   label={promptLabel(prompt.promptSlug)}
                   visitId={attachment.visitId}
                   placeName={attachment.visitPlaceName ?? 'Unknown place'}
-                  rating={attachment.visitRating ?? 0}
+                  rating={attachment.visitRating}
                   note={attachment.visitNote}
                   photoUrl={attachment.visitPhotoId ? visitPhotoUrls[attachment.visitPhotoId] : undefined}
                 />

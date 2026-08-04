@@ -66,27 +66,49 @@ function triggerHaptic(intensity: number) {
 }
 
 type RatingSliderProps = {
-  value: number;
+  // null = no score set yet — the review-form flow this was built to
+  // replace an "add without reviewing" button for (see rating-slider.tsx's
+  // callers): saving with a null rating logs a plain visit with no score
+  // attached, and the numeric readout above the track stays hidden until
+  // the very first drag/tap actually sets a real value. The track itself
+  // still needs *some* position to render at while unset — it visually
+  // starts at the midpoint (see `progress` below) without that implying a
+  // real 5.0 was chosen; only `onChange` firing (on first touch) turns this
+  // into an actual value.
+  value: number | null;
   onChange: (value: number) => void;
 };
 
 export function RatingSlider({ value, onChange }: RatingSliderProps) {
   const [trackWidth, setTrackWidth] = useState(0);
-  const progress = useSharedValue(value / MAX_VALUE);
+  const progress = useSharedValue((value ?? MAX_VALUE / 2) / MAX_VALUE);
   // Continuous background wobble, always running; its amplitude (shakeIntensity)
   // is what actually makes it visible or not, so this never needs restarting.
   const shakePhase = useSharedValue(-1);
   const shakeIntensity = useSharedValue(0);
-  const lastHapticValue = useSharedValue(value);
+  const lastHapticValue = useSharedValue(value ?? MAX_VALUE / 2);
+  // Guards against a real dead-zone bug: the track visually starts at the
+  // midpoint while unset (see `progress` above), which is exactly the value
+  // roundToTenth would compute for a first tap landing anywhere near that
+  // same spot — without this, `nextValue !== lastHapticValue.value` in
+  // updateFromTrackX would be false on that exact tap (both sides already
+  // equal the midpoint), so onChange would silently never fire and the
+  // slider would stay "unset" despite being touched. Tracks whether onChange
+  // has fired at all yet, independent of whether the computed value happens
+  // to match the starting point.
+  const hasInteracted = useSharedValue(value != null);
 
   useEffect(() => {
     shakePhase.value = withRepeat(withTiming(1, { duration: 70, easing: Easing.linear }), -1, true);
   }, [shakePhase]);
 
   // Keep in sync if the value is reset from outside (e.g. selecting a new
-  // place resets the form) rather than from this slider's own drag.
+  // place resets the form) rather than from this slider's own drag. A reset
+  // to null re-centers the track rather than leaving it at wherever it was
+  // last dragged.
   useEffect(() => {
-    progress.value = value / MAX_VALUE;
+    progress.value = (value ?? MAX_VALUE / 2) / MAX_VALUE;
+    hasInteracted.value = value != null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
@@ -110,7 +132,8 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
     // extreme, instead of growing the moment you leave dead center.
     shakeIntensity.value = rawIntensity ** 3;
 
-    if (nextValue !== lastHapticValue.value) {
+    if (nextValue !== lastHapticValue.value || !hasInteracted.value) {
+      hasInteracted.value = true;
       lastHapticValue.value = nextValue;
       runOnJS(triggerHaptic)(rawIntensity);
       runOnJS(onChange)(nextValue);
@@ -132,7 +155,7 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
   return (
     <View style={styles.container}>
       <ThemedText type="title" style={styles.valueText}>
-        {value.toFixed(1)}
+        {value != null ? value.toFixed(1) : 'Rate it'}
       </ThemedText>
 
       <GestureDetector gesture={pan}>

@@ -11,7 +11,7 @@ export type PendingReport = {
   // before an admin acted on the report — snapshot fields below still
   // describe what was reported, but there's nothing left to delete.
   visitId: string | null;
-  visitRating: number;
+  visitRating: number | null;
   visitNote: string | null;
   placeName: string;
   authorName: string;
@@ -28,7 +28,7 @@ type RawReport = {
   snapshot_rating: number | null;
   snapshot_note: string | null;
   visits: {
-    rating: number;
+    rating: number | null;
     note: string | null;
     places: { name: string } | null;
     users: { handle: string | null; name: string | null } | null;
@@ -62,7 +62,7 @@ export async function listPendingReports(): Promise<PendingReport[]> {
     reason: r.reason,
     createdAt: r.created_at,
     visitId: r.visit_id,
-    visitRating: r.visits?.rating ?? r.snapshot_rating ?? 0,
+    visitRating: r.visits?.rating ?? r.snapshot_rating,
     visitNote: r.visits?.note ?? r.snapshot_note,
     placeName: r.visits?.places?.name ?? r.snapshot_place_name ?? 'Unknown place',
     authorName:

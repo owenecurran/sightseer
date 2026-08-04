@@ -17,7 +17,7 @@ type ReviewPromptCardProps = {
   label: string;
   visitId: string;
   placeName: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   photoUrl?: string;
 };
@@ -111,24 +111,26 @@ export function ReviewPromptCard({
           </View>
         </View>
         <View style={styles.info}>
-          <View
-            style={[
-              styles.ratingBadge,
-              {
-                width: badgeSize,
-                height: badgeSize,
-                borderRadius: badgeSize / 2,
-              },
-            ]}
-          >
-            <ThemedText
-              type="roundedStat"
-              themeColor="background"
-              style={{ fontSize: clamp(badgeSize * 0.32, 14, 28) }}
+          {rating != null && (
+            <View
+              style={[
+                styles.ratingBadge,
+                {
+                  width: badgeSize,
+                  height: badgeSize,
+                  borderRadius: badgeSize / 2,
+                },
+              ]}
             >
-              {rating.toFixed(1)}
-            </ThemedText>
-          </View>
+              <ThemedText
+                type="roundedStat"
+                themeColor="background"
+                style={{ fontSize: clamp(badgeSize * 0.32, 14, 28) }}
+              >
+                {rating.toFixed(1)}
+              </ThemedText>
+            </View>
+          )}
           {note && (
             <ThemedText type="default" themeColor="background">
               {note}

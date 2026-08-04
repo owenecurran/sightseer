@@ -22,6 +22,7 @@ import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getFeedItems, likeVisit, unlikeVisit, type FeedItem, type FeedVisit, type TaggedPlace } from '@/lib/feed';
+import { getUnreadNotificationCount } from '@/lib/notifications';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { getRecapCoverUrls, type FeedRecap } from '@/lib/travel-book-recaps';
 import { shareText } from '@/lib/share';
@@ -67,6 +68,7 @@ export default function HomeScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [copiedVisitId, setCopiedVisitId] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const scrollHandler = useHideOnScrollHandler();
 
   const loadFeed = useCallback(async () => {
@@ -105,7 +107,12 @@ export default function HomeScreen() {
         setIsLoading(false);
         setHasLoadedOnce(true);
       });
-    }, [loadFeed])
+      if (session) {
+        getUnreadNotificationCount(session.user.id)
+          .then(setUnreadCount)
+          .catch(() => {});
+      }
+    }, [loadFeed, session])
   );
 
   async function handleRefresh() {
@@ -147,7 +154,7 @@ export default function HomeScreen() {
   }
 
   async function handleShareVisit(visit: FeedVisit) {
-    const message = `${visit.authorName} rated ${visit.placeName} ${visit.rating.toFixed(1)}/10${
+    const message = `${visit.authorName} ${visit.rating != null ? `rated ${visit.placeName} ${visit.rating.toFixed(1)}/10` : `visited ${visit.placeName}`}${
       visit.note ? `: "${visit.note}"` : ''
     } on Sightseer.`;
     const result = await shareText(message);
@@ -171,7 +178,19 @@ export default function HomeScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="displaySerif">Feed</ThemedText>
+        <View style={styles.screenHeaderRow}>
+          <ThemedText type="displaySerif">Feed</ThemedText>
+          <Pressable onPress={() => router.push('/notifications')} hitSlop={8} style={styles.bellButton}>
+            <Ionicons name="notifications-outline" size={24} color={theme.text} />
+            {unreadCount > 0 && (
+              <View style={styles.badge}>
+                <ThemedText type="small" themeColor="background" style={styles.badgeText}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </ThemedText>
+              </View>
+            )}
+          </Pressable>
+        </View>
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
@@ -281,6 +300,11 @@ function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLik
       </View>
       <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: visit.id } })}>
         <StretchText type="headline" fill>{visit.placeName}</StretchText>
+        {visit.stateCountry && (
+          <ThemedText type="small" themeColor="textSecondary">
+            {visit.stateCountry}
+          </ThemedText>
+        )}
         {visit.taggedPlaces.length > 0 && (
           <ThemedText type="small">
             {visit.taggedPlaces.map((place, index) => (
@@ -292,7 +316,7 @@ function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLik
           </ThemedText>
         )}
         <ThemedText type="small" themeColor="textSecondary">
-          {visit.rating.toFixed(1)} ★
+          {visit.rating != null ? `${visit.rating.toFixed(1)} ★` : 'Visited'}
           {visit.visitNumber > 1 ? ` · ${ordinal(visit.visitNumber)} visit` : ''}
           {visit.note ? ` · ${visit.note}` : ''}
         </ThemedText>
@@ -407,6 +431,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
+  },
+  screenHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  bellButton: {
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: BrandColors.sage,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   // paddingBottom belongs on the FlatList's own scrollable content, not
   // this non-scrolling wrapper — putting it here (as it used to be) only

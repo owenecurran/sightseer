@@ -118,7 +118,7 @@ export default function TaggedInScreen() {
                 </View>
                 <StretchText type="headline" fill>{item.placeName}</StretchText>
                 <ThemedText type="small" themeColor="textSecondary">
-                  {item.rating.toFixed(1)} ★
+                  {item.rating != null ? `${item.rating.toFixed(1)} ★` : 'Visited'}
                   {item.note ? ` · ${item.note}` : ''}
                 </ThemedText>
                 <PhotoGrid urls={item.photoIds.map((id) => photoUrls[id]).filter((url) => url != null)} />

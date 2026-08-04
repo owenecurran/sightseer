@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
-type PlaceLevel = PlaceRow['level'];
+export type PlaceLevel = PlaceRow['level'];
 type PlaceCategory = PlaceRow['category'];
 
 function levelFromTypes(types: string[]): PlaceLevel {
@@ -205,4 +205,33 @@ export async function getPlaceBreadcrumb(place: PlaceRow): Promise<string> {
   }
 
   return names.join(' > ');
+}
+
+// A single-line "state, country" (or just one of the two, or null if the
+// hierarchy is missing/incomplete) for compact display on list rows —
+// batched across a whole list's place ids in one round trip via the
+// resolve_state_countries RPC, so it's safe to use once per list load
+// without an N+1 fetch pattern.
+//
+// This used to be computed client-side by walking a PostgREST nested
+// self-embed (places!place_id(...parent:places!places_parent_id_fkey(...))),
+// which turned out not to work on this project: confirmed live that a plain
+// column-name hint (places!parent_id) resolves to the *children* direction
+// (reverse FK), not the parent one, and the constraint-name hint doesn't
+// resolve at all ("no matches found" in the schema cache, even after a
+// manual reload). The RPC (a recursive SQL function, see its migration)
+// sidesteps PostgREST's embedding resolution entirely.
+export async function resolveStateCountries(placeIds: string[]): Promise<Map<string, string | null>> {
+  const uniqueIds = [...new Set(placeIds)];
+  const result = new Map<string, string | null>();
+  if (uniqueIds.length === 0) return result;
+
+  const { data, error } = await supabase.rpc('resolve_state_countries', { place_ids: uniqueIds });
+  if (error) throw error;
+
+  for (const row of data) {
+    const parts = [row.state_name, row.country_name].filter((s): s is string => s != null);
+    result.set(row.place_id, parts.length > 0 ? parts.join(', ') : null);
+  }
+  return result;
 }

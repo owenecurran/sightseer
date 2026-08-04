@@ -9,7 +9,7 @@ export type EditablePhoto = {
 
 export type VisitForEdit = {
   id: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   visitedOn: string;
   placeName: string;
@@ -18,7 +18,7 @@ export type VisitForEdit = {
 
 type RawRow = {
   id: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   visited_on: string;
   places: { name: string } | null;
@@ -57,7 +57,7 @@ export async function getVisitForEdit(visitId: string, userId: string): Promise<
 
 export async function updateVisitFields(
   visitId: string,
-  fields: { rating: number; note: string | null; visitedOn: string }
+  fields: { rating: number | null; note: string | null; visitedOn: string }
 ): Promise<void> {
   const { error } = await supabase
     .from('visits')

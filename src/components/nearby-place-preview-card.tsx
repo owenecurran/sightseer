@@ -31,11 +31,13 @@ export function NearbyPlacePreviewCard({ preview, onPress }: NearbyPlacePreviewC
             <ThemedText type="smallBold" numberOfLines={1} style={styles.placeName}>
               {preview.placeName}
             </ThemedText>
-            <View style={styles.ratingBadge}>
-              <ThemedText type="small" themeColor="background">
-                {preview.rating.toFixed(1)}
-              </ThemedText>
-            </View>
+            {preview.rating != null && (
+              <View style={styles.ratingBadge}>
+                <ThemedText type="small" themeColor="background">
+                  {preview.rating.toFixed(1)}
+                </ThemedText>
+              </View>
+            )}
           </View>
           <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
             {preview.authorName}

@@ -100,7 +100,8 @@ export default function ModerationScreen() {
             <ThemedView key={report.id} type="backgroundElement" style={styles.card}>
               <ThemedText type="smallBold">{report.placeName}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
-                {report.authorName} · {report.visitRating.toFixed(1)} ★
+                {report.authorName}
+                {report.visitRating != null ? ` · ${report.visitRating.toFixed(1)} ★` : ''}
                 {report.visitNote ? ` · ${report.visitNote}` : ''}
               </ThemedText>
               <ThemedText type="small">

@@ -45,14 +45,14 @@ export async function getNearbyReviewedPlaces(bounds: MapBounds): Promise<Nearby
 
 export type PlacePreview = {
   placeName: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   authorName: string;
   photoUrl: string | null;
 };
 
 type RawPreviewVisit = {
-  rating: number;
+  rating: number | null;
   note: string | null;
   users: { handle: string | null; name: string | null } | null;
   places: { name: string } | null;

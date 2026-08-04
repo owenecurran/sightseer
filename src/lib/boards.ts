@@ -1,7 +1,10 @@
+import { resolveStateCountries } from '@/lib/places-cache';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
+
+type PlaceWithLatLng = { name: string; lat: number | null; lng: number | null };
 
 export async function listMyBoards(userId: string): Promise<BoardRow[]> {
   const { data, error } = await supabase
@@ -51,6 +54,16 @@ export async function saveVisitToBoard(boardId: string, visitId: string): Promis
   if (error) throw error;
 }
 
+// Drag-to-reorder persistence, mirroring reorderPrompts in
+// src/lib/profile-prompts.ts exactly — sequential per-row updates against
+// board_items.position (already indexed via board_items_board_idx).
+export async function reorderBoardItems(orderedItemIds: string[]): Promise<void> {
+  for (let position = 0; position < orderedItemIds.length; position++) {
+    const { error } = await supabase.from('board_items').update({ position }).eq('id', orderedItemIds[position]);
+    if (error) throw error;
+  }
+}
+
 // Cover is picked from an existing item photo already saved to the board —
 // no upload, just a reference — so board owners can set it directly from
 // whatever's already there.
@@ -97,34 +110,59 @@ export async function getLatestReviewPhotoIds(boardIds: string[]): Promise<Recor
 }
 
 export type BoardVisitItem = {
+  kind: 'visit';
   id: string;
   visitId: string;
   addedAt: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   visitedOn: string;
   authorId: string;
   authorName: string;
   placeName: string;
+  stateCountry: string | null;
   placeLat: number | null;
   placeLng: number | null;
   photoIds: string[];
   photoAspectRatios: (number | null)[];
 };
 
+// A bare place saved to a board with no review — see savePlaceToBoard.
+// Deliberately a separate, much narrower shape rather than a BoardVisitItem
+// with nulled-out visit fields: there's no rating/note/photos/author to
+// fake, and every view that needs those (full reviews, images, map) simply
+// doesn't render place-only items rather than pretending they have content
+// they don't.
+export type BoardPlaceItem = {
+  kind: 'place';
+  id: string;
+  placeId: string;
+  addedAt: string;
+  placeName: string;
+  stateCountry: string | null;
+  placeLat: number | null;
+  placeLng: number | null;
+};
+
+export type BoardItem = BoardVisitItem | BoardPlaceItem;
+
 type BoardItemRow = {
   id: string;
-  visit_id: string;
+  item_type: 'visit' | 'photo' | 'place';
+  visit_id: string | null;
+  place_id: string | null;
   added_at: string;
   visits: {
-    rating: number;
+    rating: number | null;
     note: string | null;
     visited_on: string;
     user_id: string;
+    place_id: string;
     users: { handle: string | null; name: string | null } | null;
-    places: { name: string; lat: number | null; lng: number | null } | null;
+    places: PlaceWithLatLng | null;
     photos: { id: string; position: number; width: number | null; height: number | null }[];
   } | null;
+  places: PlaceWithLatLng | null;
 };
 
 function sortedPhotoAspectRatios(photos: { position: number; width: number | null; height: number | null }[]) {
@@ -133,48 +171,74 @@ function sortedPhotoAspectRatios(photos: { position: number; width: number | nul
     .map((p) => (p.width && p.height ? p.width / p.height : null));
 }
 
-// Feeds all 4 board-detail view modes — replaces the inline query that used
-// to live directly in board/[id].tsx.
-export async function getBoardItems(boardId: string): Promise<BoardVisitItem[]> {
+// Feeds all board-detail view modes — replaces the inline query that used
+// to live directly in board/[id].tsx. Returns both visit-backed and
+// place-only rows (in position order, for ranked/list views); callers that
+// need only visit-backed items (full reviews, images, map — anything
+// needing rating/photos) should filter with `item.kind === 'visit'`.
+export async function getBoardItems(boardId: string): Promise<BoardItem[]> {
   const { data, error } = await supabase
     .from('board_items')
     .select(
-      'id, visit_id, added_at, visits(rating, note, visited_on, user_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height))'
+      'id, item_type, visit_id, place_id, added_at, visits(rating, note, visited_on, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height)), places!place_id(name, lat, lng)'
     )
     .eq('board_id', boardId)
-    .eq('item_type', 'visit')
+    .in('item_type', ['visit', 'place'])
     .order('position');
   if (error) throw error;
 
   const rows = data as unknown as BoardItemRow[];
-  return rows
-    .filter((row): row is BoardItemRow & { visits: NonNullable<BoardItemRow['visits']> } => row.visits != null)
-    .map((row) => ({
-      id: row.id,
-      visitId: row.visit_id,
-      addedAt: row.added_at,
-      rating: row.visits.rating,
-      note: row.visits.note,
-      visitedOn: row.visits.visited_on,
-      authorId: row.visits.user_id,
-      authorName: row.visits.users?.name ?? row.visits.users?.handle ?? 'Someone',
-      placeName: row.visits.places?.name ?? 'Unknown place',
-      placeLat: row.visits.places?.lat ?? null,
-      placeLng: row.visits.places?.lng ?? null,
-      photoIds: [...row.visits.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
-      photoAspectRatios: sortedPhotoAspectRatios(row.visits.photos),
-    }));
+  const allPlaceIds = rows
+    .map((row) => (row.item_type === 'visit' ? row.visits?.place_id : row.place_id))
+    .filter((id): id is string => id != null);
+  const stateCountryMap = await resolveStateCountries(allPlaceIds);
+
+  const items: BoardItem[] = [];
+  for (const row of rows) {
+    if (row.item_type === 'visit' && row.visits) {
+      items.push({
+        kind: 'visit',
+        id: row.id,
+        visitId: row.visit_id!,
+        addedAt: row.added_at,
+        rating: row.visits.rating,
+        note: row.visits.note,
+        visitedOn: row.visits.visited_on,
+        authorId: row.visits.user_id,
+        authorName: row.visits.users?.name ?? row.visits.users?.handle ?? 'Someone',
+        placeName: row.visits.places?.name ?? 'Unknown place',
+        stateCountry: stateCountryMap.get(row.visits.place_id) ?? null,
+        placeLat: row.visits.places?.lat ?? null,
+        placeLng: row.visits.places?.lng ?? null,
+        photoIds: [...row.visits.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
+        photoAspectRatios: sortedPhotoAspectRatios(row.visits.photos),
+      });
+    } else if (row.item_type === 'place' && row.places) {
+      items.push({
+        kind: 'place',
+        id: row.id,
+        placeId: row.place_id!,
+        addedAt: row.added_at,
+        placeName: row.places.name,
+        stateCountry: stateCountryMap.get(row.place_id!) ?? null,
+        placeLat: row.places.lat,
+        placeLng: row.places.lng,
+      });
+    }
+  }
+  return items;
 }
 
 type OwnVisitRow = {
   id: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   visited_on: string;
   created_at: string;
   user_id: string;
+  place_id: string;
   users: { handle: string | null; name: string | null } | null;
-  places: { name: string; lat: number | null; lng: number | null } | null;
+  places: PlaceWithLatLng | null;
   photos: { id: string; position: number; width: number | null; height: number | null }[];
 };
 
@@ -186,14 +250,16 @@ export async function getMyVisitItems(userId: string): Promise<BoardVisitItem[]>
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, created_at, user_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height)'
+      'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height)'
     )
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
   if (error) throw error;
 
   const rows = data as unknown as OwnVisitRow[];
+  const stateCountryMap = await resolveStateCountries(rows.map((row) => row.place_id));
   return rows.map((row) => ({
+    kind: 'visit' as const,
     id: row.id,
     visitId: row.id,
     addedAt: row.created_at,
@@ -203,6 +269,7 @@ export async function getMyVisitItems(userId: string): Promise<BoardVisitItem[]>
     authorId: row.user_id,
     authorName: row.users?.name ?? row.users?.handle ?? 'Someone',
     placeName: row.places?.name ?? 'Unknown place',
+    stateCountry: stateCountryMap.get(row.place_id) ?? null,
     placeLat: row.places?.lat ?? null,
     placeLng: row.places?.lng ?? null,
     photoIds: [...row.photos].sort((a, b) => a.position - b.position).map((p) => p.id),

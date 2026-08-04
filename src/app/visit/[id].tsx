@@ -92,7 +92,7 @@ export default function VisitDetailScreen() {
 
   async function handleShare() {
     if (!visit) return;
-    const message = `${visit.authorName} rated ${visit.placeName} ${visit.rating.toFixed(1)}/10${
+    const message = `${visit.authorName} ${visit.rating != null ? `rated ${visit.placeName} ${visit.rating.toFixed(1)}/10` : `visited ${visit.placeName}`}${
       visit.note ? `: "${visit.note}"` : ''
     } on Sightseer.`;
     const result = await shareText(message);
@@ -166,7 +166,8 @@ export default function VisitDetailScreen() {
               </ThemedText>
             )}
             <ThemedText type="small" themeColor="textSecondary">
-              {visit.rating.toFixed(1)} ★{visit.note ? ` · ${visit.note}` : ''}
+              {visit.rating != null ? `${visit.rating.toFixed(1)} ★` : 'Visited'}
+              {visit.note ? ` · ${visit.note}` : ''}
             </ThemedText>
 
             {(() => {

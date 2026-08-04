@@ -37,8 +37,14 @@ export function FullReviewsView({ items, photoUrls }: FullReviewsViewProps) {
             <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })}>
               <View style={styles.header}>
                 <ThemedText type="displaySerif">{item.placeName}</ThemedText>
+                {item.stateCountry && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {item.stateCountry}
+                  </ThemedText>
+                )}
                 <ThemedText type="small" themeColor="textSecondary">
-                  {item.authorName} · {item.rating.toFixed(1)} ★
+                  {item.authorName}
+                  {item.rating != null ? ` · ${item.rating.toFixed(1)} ★` : ''}
                 </ThemedText>
               </View>
               {item.note && <ThemedText type="default">{item.note}</ThemedText>}

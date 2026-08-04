@@ -37,7 +37,7 @@ type RawAttachment = {
   board_id: string | null;
   place_id: string | null;
   visits: {
-    rating: number;
+    rating: number | null;
     note: string | null;
     places: { name: string } | null;
     photos: { id: string; position: number }[];

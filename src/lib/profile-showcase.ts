@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 
 export type ShowcaseVisit = {
   id: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   places: { name: string } | null;
   photos: { id: string; position: number }[];

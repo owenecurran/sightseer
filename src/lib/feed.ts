@@ -1,4 +1,5 @@
 import { getFeedRecaps, type FeedRecap } from '@/lib/travel-book-recaps';
+import { resolveStateCountries } from '@/lib/places-cache';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
@@ -11,13 +12,16 @@ export type TaggedPlace = {
 
 export type FeedVisit = {
   id: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   visited_on: string;
   created_at: string;
   user_id: string;
   authorName: string;
   placeName: string;
+  // "Colorado, United States" (or just one of the two, or null if the
+  // hierarchy is missing/incomplete) — see resolveStateCountry.
+  stateCountry: string | null;
   photoIds: string[];
   // Parallel to photoIds (position-sorted, one entry per photo) — width/height
   // ratio, or null when either dimension is missing. Only meaningful for the
@@ -38,7 +42,7 @@ export const FEED_VISIT_SELECT =
 
 export type RawFeedVisit = {
   id: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   visited_on: string;
   created_at: string;
@@ -55,8 +59,16 @@ export type RawFeedVisit = {
 
 // Shared by the follow-feed query and the reverse "tagged in" query
 // (src/lib/tagged-visits.ts) — same raw shape, same mapping, just a
-// different filter on `visits` upstream.
-export function mapRawFeedVisit(visit: RawFeedVisit, myUserId: string): Omit<FeedVisit, 'visitNumber'> {
+// different filter on `visits` upstream. `stateCountryMap` comes from a
+// separate batched resolve_state_countries RPC call the caller makes once
+// per list (see getFeedVisitsForFollowed etc.) — not fetched inline here,
+// since PostgREST can't nest the ancestor lookup into this same query (see
+// resolveStateCountries' own comment for why).
+export function mapRawFeedVisit(
+  visit: RawFeedVisit,
+  myUserId: string,
+  stateCountryMap?: Map<string, string | null>
+): Omit<FeedVisit, 'visitNumber'> {
   return {
     id: visit.id,
     rating: visit.rating,
@@ -66,6 +78,7 @@ export function mapRawFeedVisit(visit: RawFeedVisit, myUserId: string): Omit<Fee
     user_id: visit.user_id,
     authorName: visit.users?.name ?? visit.users?.handle ?? 'Someone',
     placeName: visit.places?.name ?? 'Unknown place',
+    stateCountry: stateCountryMap?.get(visit.place_id) ?? null,
     photoIds: [...visit.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
     photoAspectRatios: [...visit.photos]
       .sort((a, b) => a.position - b.position)
@@ -104,10 +117,13 @@ async function getFeedVisitsForFollowed(followedIds: string[], myUserId: string)
   if (error) throw error;
 
   const rawVisits = data as unknown as RawFeedVisit[];
-  const visitNumbers = await computeVisitNumbers(rawVisits);
+  const [visitNumbers, stateCountryMap] = await Promise.all([
+    computeVisitNumbers(rawVisits),
+    resolveStateCountries(rawVisits.map((v) => v.place_id)),
+  ]);
 
   return rawVisits.map((visit) => ({
-    ...mapRawFeedVisit(visit, myUserId),
+    ...mapRawFeedVisit(visit, myUserId, stateCountryMap),
     visitNumber: visitNumbers.get(visit.id) ?? 1,
   }));
 }
@@ -131,10 +147,13 @@ export async function getVisitsForPlace(placeId: string, myUserId: string): Prom
   if (error) throw error;
 
   const rawVisits = data as unknown as RawFeedVisit[];
-  const visitNumbers = await computeVisitNumbers(rawVisits);
+  const [visitNumbers, stateCountryMap] = await Promise.all([
+    computeVisitNumbers(rawVisits),
+    resolveStateCountries(rawVisits.map((v) => v.place_id)),
+  ]);
 
   return rawVisits.map((visit) => ({
-    ...mapRawFeedVisit(visit, myUserId),
+    ...mapRawFeedVisit(visit, myUserId, stateCountryMap),
     visitNumber: visitNumbers.get(visit.id) ?? 1,
   }));
 }

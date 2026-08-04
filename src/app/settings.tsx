@@ -13,6 +13,7 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { listBlockedUsers, unblockUser, type BlockedUser } from '@/lib/blocks';
+import { setDiscoverableByContacts, setMyPhoneNumber } from '@/lib/contacts';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 
@@ -60,6 +61,11 @@ export default function SettingsScreen() {
 
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
   const [savingNotification, setSavingNotification] = useState<NotificationKey | null>(null);
+
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [isSavingPhone, setIsSavingPhone] = useState(false);
+  const [phoneSaved, setPhoneSaved] = useState(false);
+  const [isSavingDiscoverable, setIsSavingDiscoverable] = useState(false);
 
   const [isLinkingApple, setIsLinkingApple] = useState(false);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
@@ -173,6 +179,36 @@ export default function SettingsScreen() {
     if (!error) await refreshProfile();
   }
 
+  async function handleSavePhone() {
+    if (!session || !phoneNumber.trim()) return;
+    setIsSavingPhone(true);
+    setPhoneSaved(false);
+    try {
+      await setMyPhoneNumber(session.user.id, phoneNumber.trim());
+      setPhoneSaved(true);
+      setPhoneNumber('');
+      await refreshProfile();
+    } catch {
+      // Best-effort — no dedicated error state here, matches this screen's
+      // existing light-touch error handling for similar single-field saves.
+    } finally {
+      setIsSavingPhone(false);
+    }
+  }
+
+  async function handleToggleDiscoverable() {
+    if (!session || !profile) return;
+    setIsSavingDiscoverable(true);
+    try {
+      await setDiscoverableByContacts(session.user.id, !profile.discoverable_by_contacts);
+      await refreshProfile();
+    } catch {
+      // Best-effort, same as handleSavePhone above.
+    } finally {
+      setIsSavingDiscoverable(false);
+    }
+  }
+
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -247,6 +283,40 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
+            <ThemedText type="sectionLabel">Contacts</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Add your phone number so friends who sync their contacts can find you. It's hashed before
+              it ever leaves your device — never stored or shown as plain text.
+            </ThemedText>
+            <TextField
+              placeholder="Phone number"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              keyboardType="phone-pad"
+              textContentType="telephoneNumber"
+            />
+            {phoneNumber.trim().length > 0 && (
+              <Button label="Save number" onPress={handleSavePhone} loading={isSavingPhone} />
+            )}
+            {phoneSaved && (
+              <ThemedText type="small" themeColor="sage">
+                Number saved.
+              </ThemedText>
+            )}
+            <CheckboxRow
+              label="Let friends find me by my contact info"
+              checked={profile?.discoverable_by_contacts ?? false}
+              onPress={handleToggleDiscoverable}
+              disabled={isSavingDiscoverable}
+            />
+            <Button
+              label="Find friends from contacts"
+              variant="secondary"
+              onPress={() => router.push('/contacts-sync')}
+            />
+          </View>
+
+          <View style={styles.section}>
             <ThemedText type="sectionLabel">Blocked users</ThemedText>
             {blockedError && (
               <ThemedText type="small" themeColor="textSecondary">
@@ -273,9 +343,6 @@ export default function SettingsScreen() {
 
           <View style={styles.section}>
             <ThemedText type="sectionLabel">Connected accounts</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Requires Apple/Google developer setup to actually complete — see AGENTS.md.
-            </ThemedText>
             {Platform.OS === 'ios' && (
               <Button
                 label={linkedProviders.has('apple') ? 'Apple account connected' : 'Connect Apple account'}

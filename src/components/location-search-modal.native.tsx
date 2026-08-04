@@ -370,45 +370,55 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
             { paddingTop: insets.top + Spacing.three, paddingBottom: insets.bottom + Spacing.three },
           ]}
           pointerEvents="box-none">
-          <View style={styles.searchBar}>
-            <Pressable onPress={onCancel} style={styles.cancelButton}>
-              <ThemedText type="smallBold" themeColor="background">
-                Cancel
+          {/* Search bar + results scroll together as one region, capped at a
+              generous but bounded height (not flex:1) rather than the search
+              bar sitting permanently pinned above a small fixed-height
+              results box — lets the bar itself scroll out of view once
+              there's enough content to want that, while an untouched map
+              area still remains below for center-pin dragging when results
+              are short. The confirm bar stays outside this scroll, still
+              pinned at the very bottom via the overlay's own
+              justifyContent:'space-between' — losing sight of the primary
+              "Use X" action while scrolling candidates would be worse than
+              the permanence this is otherwise fixing. */}
+          <ScrollView
+            style={styles.resultsScroll}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}>
+            <View style={styles.searchBar}>
+              <Pressable onPress={onCancel} hitSlop={8}>
+                <ThemedText type="link">← Back</ThemedText>
+              </Pressable>
+              <TextField
+                placeholder="Search for a place"
+                value={query}
+                onChangeText={setQuery}
+                onSubmitEditing={handleSearchSubmit}
+                returnKeyType="search"
+                style={styles.input}
+              />
+            </View>
+
+            {suggestions.length === 0 && !selectedDetails && !selectedCenterPlace && !previewPlaceId && (
+              <ThemedText type="small" themeColor="text" style={styles.hintText}>
+                Drag the map to find nearby places
               </ThemedText>
-            </Pressable>
-            <TextField
-              placeholder="Search for a place"
-              value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={handleSearchSubmit}
-              returnKeyType="search"
-              style={styles.input}
-            />
-          </View>
+            )}
 
-          {suggestions.length === 0 && !selectedDetails && !selectedCenterPlace && !previewPlaceId && (
-            <ThemedText type="small" themeColor="text" style={styles.hintText}>
-              Drag the map to find nearby places
-            </ThemedText>
-          )}
+            {error && (
+              <ThemedView type="backgroundElement" style={styles.messageBox}>
+                <ThemedText type="small">{error}</ThemedText>
+              </ThemedView>
+            )}
+            {isSearching && !error && (
+              <ThemedView type="backgroundElement" style={styles.messageBox}>
+                <ThemedText type="small">Searching…</ThemedText>
+              </ThemedView>
+            )}
 
-          {error && (
-            <ThemedView type="backgroundElement" style={styles.messageBox}>
-              <ThemedText type="small">{error}</ThemedText>
-            </ThemedView>
-          )}
-          {isSearching && !error && (
-            <ThemedView type="backgroundElement" style={styles.messageBox}>
-              <ThemedText type="small">Searching…</ThemedText>
-            </ThemedView>
-          )}
-
-          {suggestions.length > 0 && (
-            <ThemedView type="backgroundElement" style={styles.suggestions}>
-              <ScrollView
-                keyboardDismissMode="on-drag"
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}>
+            {suggestions.length > 0 && (
+              <ThemedView type="backgroundElement" style={styles.suggestions}>
                 {suggestions.map((s) => (
                   <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
                     <ThemedText type="small">{s.primaryText}</ThemedText>
@@ -419,22 +429,11 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
                     )}
                   </Pressable>
                 ))}
-              </ScrollView>
-            </ThemedView>
-          )}
+              </ThemedView>
+            )}
 
-          {mode === 'pick' && (selectedDetails || selectedCenterPlace) && (
-            <View style={styles.confirmBar}>
-              <Button
-                label={`Use ${(selectedDetails ?? selectedCenterPlace)!.displayName}`}
-                onPress={handleConfirm}
-                loading={isConfirming}
-              />
-            </View>
-          )}
-          {mode === 'pick' && !selectedDetails && !selectedCenterPlace && centerCandidates.length > 0 && (
-            <ThemedView type="backgroundElement" style={styles.suggestions}>
-              <ScrollView showsVerticalScrollIndicator={false}>
+            {mode === 'pick' && !selectedDetails && !selectedCenterPlace && centerCandidates.length > 0 && (
+              <ThemedView type="backgroundElement" style={styles.suggestions}>
                 {centerCandidates.map((place) => (
                   <Pressable
                     key={place.id}
@@ -448,30 +447,58 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
                     )}
                   </Pressable>
                 ))}
-              </ScrollView>
-            </ThemedView>
+              </ThemedView>
+            )}
+            {mode === 'pick' &&
+              !selectedDetails &&
+              !selectedCenterPlace &&
+              centerCandidates.length === 0 &&
+              isLoadingCenterPlace && (
+                <ThemedView type="backgroundElement" style={styles.messageBox}>
+                  <ThemedText type="small">Looking here…</ThemedText>
+                </ThemedView>
+              )}
+            {mode === 'pick' &&
+              !selectedDetails &&
+              !selectedCenterPlace &&
+              centerCandidates.length === 0 &&
+              !isLoadingCenterPlace &&
+              hasSearchedCenter && (
+                <ThemedView type="backgroundElement" style={styles.messageBox}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    No named place here — try dragging a bit or search instead.
+                  </ThemedText>
+                </ThemedView>
+              )}
+
+            {mode === 'browse' && !previewPlaceId && centerCandidates.length > 0 && (
+              <ThemedView type="backgroundElement" style={styles.suggestions}>
+                {centerCandidates.map((place) => (
+                  <Pressable
+                    key={place.id}
+                    onPress={() => handleCenterCandidatePress(place)}
+                    style={styles.suggestionRow}>
+                    <ThemedText type="small">{place.displayName}</ThemedText>
+                    {getLocalityName(place) && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {getLocalityName(place)}
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                ))}
+              </ThemedView>
+            )}
+          </ScrollView>
+
+          {mode === 'pick' && (selectedDetails || selectedCenterPlace) && (
+            <View style={styles.confirmBar}>
+              <Button
+                label={`Use ${(selectedDetails ?? selectedCenterPlace)!.displayName}`}
+                onPress={handleConfirm}
+                loading={isConfirming}
+              />
+            </View>
           )}
-          {mode === 'pick' &&
-            !selectedDetails &&
-            !selectedCenterPlace &&
-            centerCandidates.length === 0 &&
-            isLoadingCenterPlace && (
-              <ThemedView type="backgroundElement" style={styles.messageBox}>
-                <ThemedText type="small">Looking here…</ThemedText>
-              </ThemedView>
-            )}
-          {mode === 'pick' &&
-            !selectedDetails &&
-            !selectedCenterPlace &&
-            centerCandidates.length === 0 &&
-            !isLoadingCenterPlace &&
-            hasSearchedCenter && (
-              <ThemedView type="backgroundElement" style={styles.messageBox}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  No named place here — try dragging a bit or search instead.
-                </ThemedText>
-              </ThemedView>
-            )}
 
           {mode === 'browse' && previewPlaceId && (
             <View style={styles.confirmBar}>
@@ -484,25 +511,6 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
                 <NearbyPlacePreviewCard preview={preview} onPress={handlePreviewPress} />
               )}
             </View>
-          )}
-          {mode === 'browse' && !previewPlaceId && centerCandidates.length > 0 && (
-            <ThemedView type="backgroundElement" style={styles.suggestions}>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {centerCandidates.map((place) => (
-                  <Pressable
-                    key={place.id}
-                    onPress={() => handleCenterCandidatePress(place)}
-                    style={styles.suggestionRow}>
-                    <ThemedText type="small">{place.displayName}</ThemedText>
-                    {getLocalityName(place) && (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {getLocalityName(place)}
-                      </ThemedText>
-                    )}
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </ThemedView>
           )}
         </KeyboardAvoidingView>
       </View>
@@ -539,16 +547,17 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.cream,
     transform: [{ translateY: -10 }],
   },
+  // Bounded but generous — not flex:1 — so the search bar + results can
+  // genuinely scroll (the bar moving out of view as results grow) while a
+  // short results list still leaves map area below available for center-pin
+  // dragging, rather than always claiming the whole screen.
+  resultsScroll: {
+    maxHeight: '65%',
+  },
   searchBar: {
     flexDirection: 'row',
     gap: Spacing.two,
     alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: BrandColors.cream,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
   },
   input: {
     flex: 1,
@@ -565,13 +574,9 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  // maxHeight bounds it so the inner ScrollView is actually scrollable (and
-  // so keyboardDismissMode="on-drag" has something to drag) instead of just
-  // growing to fit every suggestion.
   suggestions: {
     marginTop: Spacing.two,
     borderRadius: Spacing.three,
-    maxHeight: 280,
     overflow: 'hidden',
   },
   suggestionRow: {

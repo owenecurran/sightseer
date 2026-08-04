@@ -1,4 +1,5 @@
 import { mapRawFeedVisit, type RawFeedVisit } from '@/lib/feed';
+import { resolveStateCountries } from '@/lib/places-cache';
 import { getVisitsTaggedIn, type TaggedVisit } from '@/lib/tagged-visits';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
@@ -61,6 +62,21 @@ export async function setTravelBookCoverPhoto(bookId: string, photoId: string): 
   if (error) throw error;
 }
 
+// One editable-any-time rating for the trip itself, distinct from
+// travel_book_recaps.rating (a separate "trip recap" write-up concept).
+// Nullable column, no history — setting it again just overwrites.
+export async function setTravelBookRating(bookId: string, rating: number | null): Promise<void> {
+  const { error } = await supabase.from('travel_books').update({ rating }).eq('id', bookId);
+  if (error) throw error;
+}
+
+// location_place_id is set at creation time in travel-book/new.tsx; this is
+// the edit-after-the-fact path.
+export async function setTravelBookLocation(bookId: string, placeId: string | null): Promise<void> {
+  const { error } = await supabase.from('travel_books').update({ location_place_id: placeId }).eq('id', bookId);
+  if (error) throw error;
+}
+
 export type TravelBookCollaborator = { userId: string; name: string };
 
 export async function getTravelBookDetail(
@@ -101,34 +117,80 @@ export async function removeCollaborator(bookId: string, userId: string): Promis
   if (error) throw error;
 }
 
-export type TravelBookItem = TaggedVisit & { itemId: string; addedBy: string; addedAt: string };
+export type TravelBookVisitItem = TaggedVisit & { kind: 'visit'; itemId: string; addedBy: string; addedAt: string };
+
+// A bare place added to the trip with no review — see addPlaceToTravelBook.
+// Deliberately its own narrow shape rather than a TravelBookVisitItem with
+// nulled-out visit fields, same reasoning as BoardPlaceItem in boards.ts.
+export type TravelBookPlaceItem = {
+  kind: 'place';
+  itemId: string;
+  placeId: string;
+  placeName: string;
+  stateCountry: string | null;
+  addedBy: string;
+  addedAt: string;
+};
+
+export type TravelBookItem = TravelBookVisitItem | TravelBookPlaceItem;
 
 export async function getTravelBookItems(bookId: string, viewerId: string): Promise<TravelBookItem[]> {
   const { data, error } = await supabase
     .from('travel_book_items')
     .select(
-      'id, added_by, added_at, visits(id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id))'
+      'id, item_type, place_id, added_by, added_at, visits(id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)), places!place_id(name)'
     )
     .eq('travel_book_id', bookId);
   if (error) throw error;
 
-  type Row = { id: string; added_by: string; added_at: string; visits: RawFeedVisit | null };
+  type Row = {
+    id: string;
+    item_type: 'visit' | 'place';
+    place_id: string | null;
+    added_by: string;
+    added_at: string;
+    visits: RawFeedVisit | null;
+    places: { name: string } | null;
+  };
   const rows = data as unknown as Row[];
-  return rows
-    .filter((row): row is Row & { visits: RawFeedVisit } => row.visits != null)
-    .map((row) => ({
-      ...mapRawFeedVisit(row.visits, viewerId),
-      itemId: row.id,
-      addedBy: row.added_by,
-      addedAt: row.added_at,
-    }))
-    .sort((a, b) => a.visited_on.localeCompare(b.visited_on));
+
+  const allPlaceIds = rows
+    .map((row) => (row.item_type === 'visit' ? row.visits?.place_id : row.place_id))
+    .filter((id): id is string => id != null);
+  const stateCountryMap = await resolveStateCountries(allPlaceIds);
+
+  const items: TravelBookItem[] = [];
+  for (const row of rows) {
+    if (row.item_type === 'visit' && row.visits) {
+      items.push({
+        ...mapRawFeedVisit(row.visits, viewerId, stateCountryMap),
+        kind: 'visit',
+        itemId: row.id,
+        addedBy: row.added_by,
+        addedAt: row.added_at,
+      });
+    } else if (row.item_type === 'place' && row.places && row.place_id) {
+      items.push({
+        kind: 'place',
+        itemId: row.id,
+        placeId: row.place_id,
+        placeName: row.places.name,
+        stateCountry: stateCountryMap.get(row.place_id) ?? null,
+        addedBy: row.added_by,
+        addedAt: row.added_at,
+      });
+    }
+  }
+  return items.sort((a, b) => a.addedAt.localeCompare(b.addedAt));
 }
 
 export async function getVisitIdsInTravelBook(bookId: string): Promise<Set<string>> {
   const { data, error } = await supabase.from('travel_book_items').select('visit_id').eq('travel_book_id', bookId);
   if (error) throw error;
-  return new Set(data.map((row) => row.visit_id));
+  // visit_id is null for place-only items (added in the place-support
+  // migration) — irrelevant here, this set is only used to dedupe against
+  // visit-backed eligibility.
+  return new Set(data.map((row) => row.visit_id).filter((id): id is string => id != null));
 }
 
 // Own visits + visits tagged in, deduped, minus what's already in the book —

@@ -147,7 +147,8 @@ export default function PlaceDetailScreen() {
                   <View style={styles.visitInfo}>
                     <ThemedText type="smallBold">{item.authorName}</ThemedText>
                     <ThemedText type="small" themeColor="textSecondary">
-                      {item.rating.toFixed(1)} ★{item.note ? ` · ${item.note}` : ''}
+                      {item.rating != null ? `${item.rating.toFixed(1)} ★` : 'Visited'}
+                      {item.note ? ` · ${item.note}` : ''}
                       {item.likeCount > 0 ? ` · ${item.likeCount} like${item.likeCount === 1 ? '' : 's'}` : ''}
                     </ThemedText>
                   </View>

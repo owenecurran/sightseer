@@ -9,10 +9,10 @@ import { StretchText } from '@/components/ui/stretch-text';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import type { BoardVisitItem } from '@/lib/boards';
+import type { BoardItem } from '@/lib/boards';
 
 type ListViewProps = {
-  items: BoardVisitItem[];
+  items: BoardItem[];
   photoUrls: Record<string, string>;
   isOwner: boolean;
   onRemove: (itemId: string) => void;
@@ -32,11 +32,16 @@ export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }:
   return (
     <View style={styles.list}>
       {items.map((item) => {
-        const thumbnailUrl = item.photoIds[0] ? photoUrls[item.photoIds[0]] : undefined;
+        const isVisit = item.kind === 'visit';
+        const thumbnailUrl = isVisit && item.photoIds[0] ? photoUrls[item.photoIds[0]] : undefined;
         const row = (
           <Pressable
             key={item.id}
-            onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })}>
+            onPress={() =>
+              isVisit
+                ? router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })
+                : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+            }>
             <ThemedView type="backgroundElement" style={styles.row}>
               {thumbnailUrl ? (
                 <Image source={{ uri: thumbnailUrl }} style={styles.thumbnail} />
@@ -45,9 +50,17 @@ export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }:
               )}
               <View style={styles.info}>
                 <StretchText type="headline" fill>{item.placeName}</StretchText>
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                  {item.rating.toFixed(1)} ★{item.note ? ` · ${item.note}` : ''}
-                </ThemedText>
+                {isVisit ? (
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                    {item.stateCountry ? `${item.stateCountry} · ` : ''}
+                    {item.rating != null ? `${item.rating.toFixed(1)} ★` : 'Visited'}
+                    {item.note ? ` · ${item.note}` : ''}
+                  </ThemedText>
+                ) : (
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                    {item.stateCountry ?? 'No review yet'}
+                  </ThemedText>
+                )}
               </View>
             </ThemedView>
           </Pressable>

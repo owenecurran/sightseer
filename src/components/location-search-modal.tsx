@@ -2,7 +2,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { NearbyPlacePreviewCard } from '@/components/nearby-place-preview-card';
 import { ThemedText } from '@/components/themed-text';
@@ -365,51 +365,112 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
         </View>
 
         <View style={styles.overlay} pointerEvents="box-none">
-          <View style={styles.searchBar}>
-            <Pressable onPress={onCancel} style={styles.cancelButton}>
-              <ThemedText type="smallBold" themeColor="background">
-                Cancel
+          {/* Search bar + results scroll together, bounded but generous —
+              not flex:1 — so the bar can move out of view once there's
+              enough content, matching location-search-modal.native.tsx.
+              Confirm bar stays outside this scroll, pinned at the bottom. */}
+          <ScrollView style={styles.resultsScroll} showsVerticalScrollIndicator={false}>
+            <View style={styles.searchBar}>
+              <Pressable onPress={onCancel} hitSlop={8}>
+                <ThemedText type="link">← Back</ThemedText>
+              </Pressable>
+              <TextField
+                placeholder="Search for a place"
+                value={query}
+                onChangeText={setQuery}
+                style={styles.input}
+              />
+            </View>
+
+            {suggestions.length === 0 && !selectedDetails && !selectedCenterPlace && !previewPlaceId && (
+              <ThemedText type="small" themeColor="text" style={styles.hintText}>
+                Drag the map to find nearby places
               </ThemedText>
-            </Pressable>
-            <TextField
-              placeholder="Search for a place"
-              value={query}
-              onChangeText={setQuery}
-              style={styles.input}
-            />
-          </View>
+            )}
 
-          {suggestions.length === 0 && !selectedDetails && !selectedCenterPlace && !previewPlaceId && (
-            <ThemedText type="small" themeColor="text" style={styles.hintText}>
-              Drag the map to find nearby places
-            </ThemedText>
-          )}
+            {error && (
+              <ThemedView type="backgroundElement" style={styles.messageBox}>
+                <ThemedText type="small">{error}</ThemedText>
+              </ThemedView>
+            )}
+            {isSearching && !error && (
+              <ThemedView type="backgroundElement" style={styles.messageBox}>
+                <ThemedText type="small">Searching…</ThemedText>
+              </ThemedView>
+            )}
 
-          {error && (
-            <ThemedView type="backgroundElement" style={styles.messageBox}>
-              <ThemedText type="small">{error}</ThemedText>
-            </ThemedView>
-          )}
-          {isSearching && !error && (
-            <ThemedView type="backgroundElement" style={styles.messageBox}>
-              <ThemedText type="small">Searching…</ThemedText>
-            </ThemedView>
-          )}
+            {suggestions.length > 0 && (
+              <ThemedView type="backgroundElement" style={styles.suggestions}>
+                {suggestions.map((s) => (
+                  <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
+                    <ThemedText type="small">{s.primaryText}</ThemedText>
+                    {s.secondaryText && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {s.secondaryText}
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                ))}
+              </ThemedView>
+            )}
 
-          {suggestions.length > 0 && (
-            <ThemedView type="backgroundElement" style={styles.suggestions}>
-              {suggestions.map((s) => (
-                <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
-                  <ThemedText type="small">{s.primaryText}</ThemedText>
-                  {s.secondaryText && (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {s.secondaryText}
-                    </ThemedText>
-                  )}
-                </Pressable>
-              ))}
-            </ThemedView>
-          )}
+            {mode === 'pick' && !selectedDetails && !selectedCenterPlace && centerCandidates.length > 0 && (
+              <ThemedView type="backgroundElement" style={styles.suggestions}>
+                {centerCandidates.map((place) => (
+                  <Pressable
+                    key={place.id}
+                    onPress={() => handleCenterCandidatePress(place)}
+                    style={styles.suggestionRow}>
+                    <ThemedText type="small">{place.displayName}</ThemedText>
+                    {getLocalityName(place) && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {getLocalityName(place)}
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                ))}
+              </ThemedView>
+            )}
+            {mode === 'pick' &&
+              !selectedDetails &&
+              !selectedCenterPlace &&
+              centerCandidates.length === 0 &&
+              isLoadingCenterPlace && (
+                <ThemedView type="backgroundElement" style={styles.messageBox}>
+                  <ThemedText type="small">Looking here…</ThemedText>
+                </ThemedView>
+              )}
+            {mode === 'pick' &&
+              !selectedDetails &&
+              !selectedCenterPlace &&
+              centerCandidates.length === 0 &&
+              !isLoadingCenterPlace &&
+              hasSearchedCenter && (
+                <ThemedView type="backgroundElement" style={styles.messageBox}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    No named place here — try dragging a bit or search instead.
+                  </ThemedText>
+                </ThemedView>
+              )}
+
+            {mode === 'browse' && !previewPlaceId && centerCandidates.length > 0 && (
+              <ThemedView type="backgroundElement" style={styles.suggestions}>
+                {centerCandidates.map((place) => (
+                  <Pressable
+                    key={place.id}
+                    onPress={() => handleCenterCandidatePress(place)}
+                    style={styles.suggestionRow}>
+                    <ThemedText type="small">{place.displayName}</ThemedText>
+                    {getLocalityName(place) && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {getLocalityName(place)}
+                      </ThemedText>
+                    )}
+                  </Pressable>
+                ))}
+              </ThemedView>
+            )}
+          </ScrollView>
 
           {mode === 'pick' && (selectedDetails || selectedCenterPlace) && (
             <View style={styles.confirmBar}>
@@ -420,44 +481,6 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
               />
             </View>
           )}
-          {mode === 'pick' && !selectedDetails && !selectedCenterPlace && centerCandidates.length > 0 && (
-            <ThemedView type="backgroundElement" style={styles.suggestions}>
-              {centerCandidates.map((place) => (
-                <Pressable
-                  key={place.id}
-                  onPress={() => handleCenterCandidatePress(place)}
-                  style={styles.suggestionRow}>
-                  <ThemedText type="small">{place.displayName}</ThemedText>
-                  {getLocalityName(place) && (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {getLocalityName(place)}
-                    </ThemedText>
-                  )}
-                </Pressable>
-              ))}
-            </ThemedView>
-          )}
-          {mode === 'pick' &&
-            !selectedDetails &&
-            !selectedCenterPlace &&
-            centerCandidates.length === 0 &&
-            isLoadingCenterPlace && (
-              <ThemedView type="backgroundElement" style={styles.messageBox}>
-                <ThemedText type="small">Looking here…</ThemedText>
-              </ThemedView>
-            )}
-          {mode === 'pick' &&
-            !selectedDetails &&
-            !selectedCenterPlace &&
-            centerCandidates.length === 0 &&
-            !isLoadingCenterPlace &&
-            hasSearchedCenter && (
-              <ThemedView type="backgroundElement" style={styles.messageBox}>
-                <ThemedText type="small" themeColor="textSecondary">
-                  No named place here — try dragging a bit or search instead.
-                </ThemedText>
-              </ThemedView>
-            )}
 
           {mode === 'browse' && previewPlaceId && (
             <View style={styles.confirmBar}>
@@ -470,23 +493,6 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
                 <NearbyPlacePreviewCard preview={preview} onPress={handlePreviewPress} />
               )}
             </View>
-          )}
-          {mode === 'browse' && !previewPlaceId && centerCandidates.length > 0 && (
-            <ThemedView type="backgroundElement" style={styles.suggestions}>
-              {centerCandidates.map((place) => (
-                <Pressable
-                  key={place.id}
-                  onPress={() => handleCenterCandidatePress(place)}
-                  style={styles.suggestionRow}>
-                  <ThemedText type="small">{place.displayName}</ThemedText>
-                  {getLocalityName(place) && (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {getLocalityName(place)}
-                    </ThemedText>
-                  )}
-                </Pressable>
-              ))}
-            </ThemedView>
           )}
         </View>
       </View>
@@ -531,16 +537,15 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.cream,
     transform: [{ translateY: -10 }],
   },
+  // Bounded but generous — not flex:1 — matches
+  // location-search-modal.native.tsx's resultsScroll.
+  resultsScroll: {
+    maxHeight: '65%',
+  },
   searchBar: {
     flexDirection: 'row',
     gap: Spacing.two,
     alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: BrandColors.cream,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
   },
   input: {
     flex: 1,

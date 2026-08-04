@@ -5,7 +5,7 @@ type PlaceCategory = Database['public']['Tables']['places']['Row']['category'];
 
 export type VisitDetail = {
   id: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   visited_on: string;
   user_id: string;
@@ -23,7 +23,7 @@ export type VisitDetail = {
 
 type RawVisitDetail = {
   id: string;
-  rating: number;
+  rating: number | null;
   note: string | null;
   visited_on: string;
   user_id: string;
