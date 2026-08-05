@@ -100,6 +100,18 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
               );
             }
 
+            if (attachment.attachmentType === 'travel_book' && attachment.travelBookId) {
+              return (
+                <Pressable
+                  key={attachment.id}
+                  onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: attachment.travelBookId! } })}
+                  style={styles.borderedBox}>
+                  <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
+                  <StretchText type="headline" fill>{attachment.travelBookName ?? 'Travel book'}</StretchText>
+                </Pressable>
+              );
+            }
+
             if (attachment.attachmentType === 'place' && attachment.placeId) {
               return (
                 <Pressable

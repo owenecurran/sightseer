@@ -34,6 +34,7 @@ const ANSWER_TYPES: { value: AttachmentType; label: string }[] = [
   { value: 'review', label: 'Review' },
   { value: 'board', label: 'Board' },
   { value: 'place', label: 'Place' },
+  { value: 'travel_book', label: 'Travel book' },
 ];
 
 const TEXT_ANSWER_MAX_LENGTH = 200;
@@ -46,6 +47,7 @@ type LocalAttachment = {
   boardId: string | null;
   placeId: string | null;
   placeName: string | null;
+  travelBookId: string | null;
   existingPhotoR2Key: string | null;
   pendingPhotoUri: string | null;
   pendingPhotoMimeType?: string;
@@ -59,6 +61,7 @@ function emptyAttachment(): LocalAttachment {
     boardId: null,
     placeId: null,
     placeName: null,
+    travelBookId: null,
     existingPhotoR2Key: null,
     pendingPhotoUri: null,
   };
@@ -66,6 +69,7 @@ function emptyAttachment(): LocalAttachment {
 
 type OwnVisitOption = { id: string; placeName: string; rating: number | null };
 type OwnBoardOption = { id: string; name: string };
+type OwnTravelBookOption = { id: string; title: string };
 
 type PromptEditorProps = {
   userId: string;
@@ -74,6 +78,7 @@ type PromptEditorProps = {
   usedSlugs: string[];
   ownVisits: OwnVisitOption[];
   ownBoards: OwnBoardOption[];
+  ownTravelBooks: OwnTravelBookOption[];
   onChanged: () => void;
   // Long-press handle to start a drag-reorder — omitted for the trailing
   // "+ Add a prompt" slot, which isn't a real reorderable row.
@@ -87,6 +92,7 @@ export function PromptEditor({
   usedSlugs,
   ownVisits,
   ownBoards,
+  ownTravelBooks,
   onChanged,
   onDragStart,
 }: PromptEditorProps) {
@@ -108,6 +114,7 @@ export function PromptEditor({
           boardId: a.boardId,
           placeId: a.placeId,
           placeName: a.placeName,
+          travelBookId: a.travelBookId,
           existingPhotoR2Key: a.photoR2Key,
           pendingPhotoUri: null,
         }))
@@ -189,6 +196,10 @@ export function PromptEditor({
         setError('Pick a place for every attachment, or remove the empty one.');
         return;
       }
+      if (a.attachmentType === 'travel_book' && !a.travelBookId) {
+        setError('Pick a travel book for every attachment, or remove the empty one.');
+        return;
+      }
     }
 
     setError(null);
@@ -207,6 +218,7 @@ export function PromptEditor({
           visitId: a.attachmentType === 'review' ? a.visitId : null,
           boardId: a.attachmentType === 'board' ? a.boardId : null,
           placeId: a.attachmentType === 'place' ? a.placeId : null,
+          travelBookId: a.attachmentType === 'travel_book' ? a.travelBookId : null,
         });
       }
 
@@ -414,6 +426,25 @@ export function PromptEditor({
                     type={attachment.boardId === b.id ? 'backgroundSelected' : 'background'}
                     style={styles.chip}>
                     <ThemedText type="small">{b.name}</ThemedText>
+                  </ThemedView>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {attachment.attachmentType === 'travel_book' && (
+            <View style={styles.chipRow}>
+              {ownTravelBooks.length === 0 && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  No travel books yet.
+                </ThemedText>
+              )}
+              {ownTravelBooks.map((b) => (
+                <Pressable key={b.id} onPress={() => updateAttachment(index, { travelBookId: b.id })}>
+                  <ThemedView
+                    type={attachment.travelBookId === b.id ? 'backgroundSelected' : 'background'}
+                    style={styles.chip}>
+                    <ThemedText type="small">{b.title}</ThemedText>
                   </ThemedView>
                 </Pressable>
               ))}

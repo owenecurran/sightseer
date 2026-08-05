@@ -19,10 +19,20 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
-import { getBoardItems, reorderBoardItems, setBoardCoverPhoto, type BoardItem, type BoardVisitItem } from '@/lib/boards';
+import {
+  checkBoardItem,
+  getBoardItems,
+  getMyCheckedItemIds,
+  reorderBoardItems,
+  setBoardCoverPhoto,
+  uncheckBoardItem,
+  type BoardItem,
+  type BoardVisitItem,
+} from '@/lib/boards';
 import { getCoverViewUrls, uploadCoverPhoto } from '@/lib/covers';
 import type { Database } from '@/lib/database.types';
 import { pickImageFromLibrary } from '@/lib/image-picker';
+import { getOwnRatingsForPlaces } from '@/lib/own-ratings';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import {
   getSavedBoardState,
@@ -58,6 +68,8 @@ export default function BoardDetailScreen() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [savedState, setSavedState] = useState<{ notifyOnNewItems: boolean } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [checkedItemIds, setCheckedItemIds] = useState<Set<string>>(new Set());
+  const [ownRatings, setOwnRatings] = useState<Record<string, number>>({});
   const scrollHandler = useHideOnScrollHandler();
 
   useEffect(() => {
@@ -72,6 +84,19 @@ export default function BoardDetailScreen() {
         if (boardError) throw boardError;
         setBoard(boardData);
         setItems(boardItems);
+        // Default the view mode from the board's own list_style on first
+        // load only — a later re-fetch (e.g. session identity change)
+        // shouldn't stomp a manual view switch the viewer already made. But
+        // if the board isn't (or no longer is) ranked, the Ranked chip isn't
+        // shown at all (see VIEW_MODES filtering below) — always fall back
+        // off of it regardless of hasLoadedOnce, so a board switched back to
+        // 'collection' from settings never gets stuck showing a view with no
+        // way to reach via the now-hidden chip.
+        if (!hasLoadedOnce) {
+          setViewMode(boardData.list_style === 'ranked' ? 'ranked' : 'list');
+        } else {
+          setViewMode((prev) => (prev === 'ranked' && boardData.list_style !== 'ranked' ? 'list' : prev));
+        }
 
         const photoIds = boardItems.flatMap((item) => (item.kind === 'visit' ? item.photoIds : []));
         if (photoIds.length > 0) {
@@ -81,8 +106,23 @@ export default function BoardDetailScreen() {
           const urls = await getCoverViewUrls('boards', [boardData.id]);
           setCustomCoverUrl(urls[boardData.id]);
         }
+
+        let currentSavedState: { notifyOnNewItems: boolean } | null = null;
         if (session && session.user.id !== boardData.user_id) {
-          setSavedState(await getSavedBoardState(session.user.id, boardData.id));
+          currentSavedState = await getSavedBoardState(session.user.id, boardData.id);
+          setSavedState(currentSavedState);
+        }
+
+        // Checklist is only for boards saved from someone else — a board's
+        // own owner already knows what's on it, and the "your rating"
+        // indicator below covers the "have I actually done this?" signal on
+        // their own board instead.
+        if (session && currentSavedState != null) {
+          setCheckedItemIds(await getMyCheckedItemIds(session.user.id, boardData.id));
+        }
+        if (session) {
+          const placeIds = boardItems.map((item) => item.placeId);
+          setOwnRatings(await getOwnRatingsForPlaces(session.user.id, placeIds));
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not load this board.');
@@ -90,6 +130,7 @@ export default function BoardDetailScreen() {
         setHasLoadedOnce(true);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, session]);
 
   async function handleRemove(itemId: string) {
@@ -154,6 +195,29 @@ export default function BoardDetailScreen() {
     }
   }
 
+  async function handleToggleCheck(item: BoardItem) {
+    if (!session || !board) return;
+    const isChecked = checkedItemIds.has(item.id);
+    setCheckedItemIds((prev) => {
+      const next = new Set(prev);
+      if (isChecked) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
+    try {
+      if (isChecked) await uncheckBoardItem(session.user.id, item.id);
+      else await checkBoardItem(session.user.id, board.id, item.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update that checklist item.');
+      setCheckedItemIds((prev) => {
+        const next = new Set(prev);
+        if (isChecked) next.add(item.id);
+        else next.delete(item.id);
+        return next;
+      });
+    }
+  }
+
   async function handleSetCover(photoId: string) {
     if (!board) return;
     setError(null);
@@ -189,6 +253,9 @@ export default function BoardDetailScreen() {
 
   const isOwner = Boolean(session && board && session.user.id === board.user_id);
   const visitItems = items.filter((item): item is BoardVisitItem => item.kind === 'visit');
+  // Checklist only applies to boards saved from someone else — see the load
+  // effect's matching comment.
+  const canCheck = savedState != null;
 
   if (!hasLoadedOnce) return <PageLoader />;
 
@@ -221,6 +288,14 @@ export default function BoardDetailScreen() {
             </Pressable>
           )}
 
+          {isOwner && board && (
+            <Pressable onPress={() => router.push({ pathname: '/board/[id]/settings', params: { id: board.id } })}>
+              <ThemedText type="small" themeColor="sage">
+                Board settings
+              </ThemedText>
+            </Pressable>
+          )}
+
           {!isOwner && session && (
             <SaveCollectionButton
               isSaved={savedState != null}
@@ -239,7 +314,7 @@ export default function BoardDetailScreen() {
           )}
 
           <View style={styles.modeRow}>
-            {VIEW_MODES.map((mode) => (
+            {VIEW_MODES.filter((mode) => mode.key !== 'ranked' || board?.list_style === 'ranked').map((mode) => (
               <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
                 <ThemedView type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.modeChip}>
                   <ThemedText type="small" themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
@@ -258,7 +333,7 @@ export default function BoardDetailScreen() {
             </ThemedText>
           </View>
         ) : viewMode === 'full' ? (
-          <FullReviewsView items={visitItems} photoUrls={photoUrls} />
+          <FullReviewsView items={visitItems} photoUrls={photoUrls} viewerId={session?.user.id} ownRatings={ownRatings} />
         ) : viewMode === 'map' ? (
           <BoardMapView items={visitItems} />
         ) : (
@@ -282,6 +357,10 @@ export default function BoardDetailScreen() {
                 onReorder={handleReorder}
                 onRemove={handleRemove}
                 isOwner={isOwner}
+                viewerId={session?.user.id}
+                checkedItemIds={canCheck ? checkedItemIds : undefined}
+                onToggleCheck={canCheck ? handleToggleCheck : undefined}
+                ownRatings={ownRatings}
               />
             ) : (
               <ListView
@@ -290,6 +369,10 @@ export default function BoardDetailScreen() {
                 isOwner={isOwner}
                 onRemove={handleRemove}
                 removeMessage="Remove this from the board?"
+                viewerId={session?.user.id}
+                checkedItemIds={canCheck ? checkedItemIds : undefined}
+                onToggleCheck={canCheck ? handleToggleCheck : undefined}
+                ownRatings={ownRatings}
               />
             )}
           </Animated.ScrollView>

@@ -9,7 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { BrandColors, Spacing } from '@/constants/theme';
+import { BrandColors, Colors, Spacing } from '@/constants/theme';
 import { getCurrentLocation } from '@/lib/current-location';
 import type { Database } from '@/lib/database.types';
 import {
@@ -365,15 +365,28 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
         </View>
 
         <View style={styles.overlay} pointerEvents="box-none">
-          {/* Search bar + results scroll together, bounded but generous —
-              not flex:1 — so the bar can move out of view once there's
-              enough content, matching location-search-modal.native.tsx.
-              Confirm bar stays outside this scroll, pinned at the bottom. */}
-          <ScrollView style={styles.resultsScroll} showsVerticalScrollIndicator={false}>
+          {/* Back button + the scrollable search/results are grouped in one
+              plain View so the overlay's own justifyContent:'space-between'
+              still only separates two things — this top group vs. the
+              confirm bar — instead of also prying the back button and
+              ScrollView apart from each other (which pushed the ScrollView
+              down toward the middle/bottom of the screen when no confirm bar
+              was rendered to fill the third slot). */}
+          <View>
+            {/* Back button lives outside the scroll region — always
+                reachable regardless of how far the results list has
+                scrolled, unlike the search bar/results below it (see
+                resultsScroll's own comment for why those scroll away). */}
+            <Pressable onPress={onCancel} hitSlop={8} style={styles.backButton}>
+              <ThemedText type="link">← Back</ThemedText>
+            </Pressable>
+
+            {/* Search bar + results scroll together, bounded but generous —
+                not flex:1 — so the bar can move out of view once there's
+                enough content, matching location-search-modal.native.tsx.
+                Confirm bar stays outside this scroll, pinned at the bottom. */}
+            <ScrollView style={styles.resultsScroll} showsVerticalScrollIndicator={false}>
             <View style={styles.searchBar}>
-              <Pressable onPress={onCancel} hitSlop={8}>
-                <ThemedText type="link">← Back</ThemedText>
-              </Pressable>
               <TextField
                 placeholder="Search for a place"
                 value={query}
@@ -471,6 +484,7 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
               </ThemedView>
             )}
           </ScrollView>
+          </View>
 
           {mode === 'pick' && (selectedDetails || selectedCenterPlace) && (
             <View style={styles.confirmBar}>
@@ -536,6 +550,14 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: BrandColors.cream,
     transform: [{ translateY: -10 }],
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: Spacing.two,
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.five,
+    backgroundColor: Colors.backgroundElement,
   },
   // Bounded but generous — not flex:1 — matches
   // location-search-modal.native.tsx's resultsScroll.

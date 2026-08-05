@@ -26,16 +26,20 @@ import { getAvatarViewUrls } from '@/lib/avatar';
 import { getCoverViewUrls, uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { getPhotoViewUrls } from '@/lib/photo-view';
+import { getOwnRatingsForPlaces } from '@/lib/own-ratings';
 import { getRecap, type TravelBookRecapRow } from '@/lib/travel-book-recaps';
 import {
   addVisitToTravelBook,
+  checkTravelBookItem,
   getEligibleVisitsForTravelBook,
+  getMyCheckedTravelBookItemIds,
   getTravelBookDetail,
   getTravelBookItems,
   removeVisitFromTravelBook,
   setTravelBookCoverPhoto,
   setTravelBookLocation,
   setTravelBookRating,
+  uncheckTravelBookItem,
   type TravelBookCollaborator,
   type TravelBookItem,
   type TravelBookRow,
@@ -75,6 +79,8 @@ export default function TravelBookDetailScreen() {
   const ratingSaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [savedState, setSavedState] = useState<{ notifyOnNewItems: boolean } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [checkedItemIds, setCheckedItemIds] = useState<Set<string>>(new Set());
+  const [ownRatings, setOwnRatings] = useState<Record<string, number>>({});
 
   const theme = useTheme();
   const scrollHandler = useHideOnScrollHandler();
@@ -116,9 +122,19 @@ export default function TravelBookDetailScreen() {
             const urls = await getCoverViewUrls('travel_books', [detail.book.id]);
             setCustomCoverUrl(urls[detail.book.id]);
           }
+          let currentSavedState: { notifyOnNewItems: boolean } | null = null;
           if (session.user.id !== detail.book.user_id) {
-            setSavedState(await getSavedTravelBookState(session.user.id, detail.book.id));
+            currentSavedState = await getSavedTravelBookState(session.user.id, detail.book.id);
+            setSavedState(currentSavedState);
           }
+
+          // Checklist is only for travel books saved from someone else — see
+          // the matching comment in board/[id].tsx.
+          if (currentSavedState != null) {
+            setCheckedItemIds(await getMyCheckedTravelBookItemIds(session.user.id, detail.book.id));
+          }
+          const placeIds = bookItems.map((item) => item.placeId);
+          setOwnRatings(await getOwnRatingsForPlaces(session.user.id, placeIds));
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load this travel book.');
         } finally {
@@ -160,6 +176,29 @@ export default function TravelBookDetailScreen() {
       setItems((prev) => prev.filter((i) => i.itemId !== item.itemId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove that review.');
+    }
+  }
+
+  async function handleToggleCheck(item: TravelBookItem) {
+    if (!session || !book) return;
+    const isChecked = checkedItemIds.has(item.itemId);
+    setCheckedItemIds((prev) => {
+      const next = new Set(prev);
+      if (isChecked) next.delete(item.itemId);
+      else next.add(item.itemId);
+      return next;
+    });
+    try {
+      if (isChecked) await uncheckTravelBookItem(session.user.id, item.itemId);
+      else await checkTravelBookItem(session.user.id, book.id, item.itemId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update that checklist item.');
+      setCheckedItemIds((prev) => {
+        const next = new Set(prev);
+        if (isChecked) next.add(item.itemId);
+        else next.delete(item.itemId);
+        return next;
+      });
     }
   }
 
@@ -271,6 +310,9 @@ export default function TravelBookDetailScreen() {
 
   const isOwner = Boolean(session && book?.user_id === session.user.id);
   const members = book ? [{ userId: book.user_id, name: '' }, ...collaborators] : [];
+  // Checklist only applies to travel books saved from someone else — see the
+  // load effect's matching comment.
+  const canCheck = savedState != null;
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -330,6 +372,14 @@ export default function TravelBookDetailScreen() {
             </Pressable>
           )}
 
+          {isOwner && book && (
+            <Pressable onPress={() => router.push({ pathname: '/travel-book/[id]/settings', params: { id: book.id } })}>
+              <ThemedText type="small" themeColor="sage">
+                Travel book settings
+              </ThemedText>
+            </Pressable>
+          )}
+
           {!isOwner && session && (
             <SaveCollectionButton
               isSaved={savedState != null}
@@ -361,7 +411,11 @@ export default function TravelBookDetailScreen() {
                 No reviews in this trip yet.
               </ThemedText>
             )}
-            {items.map((item) => (
+            {items.map((item) => {
+              const isChecked = checkedItemIds.has(item.itemId);
+              const ownRating = ownRatings[item.placeId];
+              const showOwnRating = ownRating != null && !(item.kind === 'visit' && item.user_id === session?.user.id);
+              return (
               <Pressable
                 key={item.itemId}
                 onPress={() =>
@@ -370,6 +424,13 @@ export default function TravelBookDetailScreen() {
                     : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
                 }>
                 <ThemedView type="backgroundElement" style={styles.itemRow}>
+                  {canCheck && (
+                    <Pressable onPress={() => handleToggleCheck(item)} hitSlop={8}>
+                      <ThemedView type={isChecked ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
+                        {isChecked && <ThemedText type="smallBold">✓</ThemedText>}
+                      </ThemedView>
+                    </Pressable>
+                  )}
                   <View style={styles.itemInfo}>
                     {item.kind === 'visit' ? (
                       <>
@@ -381,6 +442,11 @@ export default function TravelBookDetailScreen() {
                           {item.rating != null ? `${item.rating.toFixed(1)} ★` : 'Visited'}
                           {item.note ? ` · ${item.note}` : ''}
                         </ThemedText>
+                        {showOwnRating && (
+                          <ThemedText type="small" themeColor="textSecondary">
+                            Your rating: {ownRating.toFixed(1)} ★
+                          </ThemedText>
+                        )}
                         <PhotoGrid urls={item.photoIds.map((pid) => photoUrls[pid]).filter((url): url is string => url != null)} />
                         {session && book?.user_id === session.user.id && item.photoIds[0] && (
                           <Pressable onPress={() => handleSetCover(item.photoIds[0])} hitSlop={8}>
@@ -396,6 +462,11 @@ export default function TravelBookDetailScreen() {
                         <ThemedText type="small" themeColor="textSecondary">
                           {item.stateCountry ?? 'No review yet'}
                         </ThemedText>
+                        {showOwnRating && (
+                          <ThemedText type="small" themeColor="textSecondary">
+                            Your rating: {ownRating.toFixed(1)} ★
+                          </ThemedText>
+                        )}
                       </>
                     )}
                   </View>
@@ -409,7 +480,8 @@ export default function TravelBookDetailScreen() {
                   )}
                 </ThemedView>
               </Pressable>
-            ))}
+              );
+            })}
           </View>
 
           {isParticipant && (
@@ -538,6 +610,15 @@ const styles = StyleSheet.create({
   itemInfo: {
     flex: 1,
     gap: Spacing.half,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: Spacing.one,
+    borderWidth: 1.5,
+    borderColor: 'rgba(234,231,207,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   eligibleRow: {
     flexDirection: 'row',

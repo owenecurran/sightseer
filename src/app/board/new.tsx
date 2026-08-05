@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -8,19 +9,34 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
+import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { createBoard } from '@/lib/boards';
 import { uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 
+type ListStyle = 'collection' | 'ranked';
+
+const LIST_STYLES: { key: ListStyle; label: string; description: string }[] = [
+  { key: 'collection', label: 'Collection', description: 'A regular saved list, in whatever order items were added.' },
+  { key: 'ranked', label: 'Ranked', description: 'A numbered ranking you can drag to reorder.' },
+];
+
 // Brings board creation to parity with travel-book/new.tsx (a dedicated
 // screen, not the bare inline name-only row boards.tsx used to have) — same
-// fields that actually apply to a board (name, privacy, cover); no
-// location/collaborators, those are travel-book-specific concepts.
+// fields that actually apply to a board (name, ranking type, privacy,
+// cover); no location/collaborators, those are travel-book-specific
+// concepts. Ranking type and privacy mirror board/[id]/settings.tsx exactly
+// (same options, same immediate-toggle chip UI) so everything settable
+// after creation is also settable up front.
 export default function NewBoardScreen() {
   const { session } = useAuth();
+  const bottomInset = useBottomTabInset();
+  const scrollHandler = useHideOnScrollHandler();
 
   const [name, setName] = useState('');
+  const [listStyle, setListStyle] = useState<ListStyle>('collection');
   const [isPrivate, setIsPrivate] = useState(false);
   const [pendingCoverUri, setPendingCoverUri] = useState<string | null>(null);
   const [pendingCoverMimeType, setPendingCoverMimeType] = useState<string | undefined>();
@@ -43,7 +59,7 @@ export default function NewBoardScreen() {
     setError(null);
     setIsCreating(true);
     try {
-      const board = await createBoard({ userId: session.user.id, name: name.trim(), isPrivate });
+      const board = await createBoard({ userId: session.user.id, name: name.trim(), isPrivate, listStyle });
       if (pendingCoverUri) {
         await uploadCoverPhoto({
           table: 'boards',
@@ -63,34 +79,52 @@ export default function NewBoardScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Pressable onPress={() => router.back()}>
-          <ThemedText type="link">← Back</ThemedText>
-        </Pressable>
+        <Animated.ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
+          showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}>
+          <Pressable onPress={() => router.back()}>
+            <ThemedText type="link">← Back</ThemedText>
+          </Pressable>
 
-        <ThemedText type="displaySerif">New board</ThemedText>
+          <ThemedText type="displaySerif">New board</ThemedText>
 
-        <TextField placeholder="Board name" value={name} onChangeText={setName} />
+          <TextField placeholder="Board name" value={name} onChangeText={setName} />
 
-        <Pressable onPress={() => setIsPrivate((prev) => !prev)} style={styles.checkboxRow}>
-          <ThemedView type={isPrivate ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-            {isPrivate && <ThemedText type="smallBold">✓</ThemedText>}
-          </ThemedView>
-          <ThemedText type="small">Private — only you can see this board</ThemedText>
-        </Pressable>
+          <ThemedText type="sectionLabel">Ranking</ThemedText>
+          {LIST_STYLES.map((style) => (
+            <Pressable key={style.key} onPress={() => setListStyle(style.key)}>
+              <ThemedView type={listStyle === style.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.option}>
+                <ThemedText type="headline">{style.label}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {style.description}
+                </ThemedText>
+              </ThemedView>
+            </Pressable>
+          ))}
 
-        <Button
-          label={pendingCoverUri ? 'Cover photo selected ✓' : 'Add a cover photo (optional)'}
-          variant="secondary"
-          onPress={handlePickCover}
-        />
+          <Pressable onPress={() => setIsPrivate((prev) => !prev)} style={styles.checkboxRow}>
+            <ThemedView type={isPrivate ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
+              {isPrivate && <ThemedText type="smallBold">✓</ThemedText>}
+            </ThemedView>
+            <ThemedText type="small">Private — only you can see this board</ThemedText>
+          </Pressable>
 
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-        )}
+          <Button
+            label={pendingCoverUri ? 'Cover photo selected ✓' : 'Add a cover photo (optional)'}
+            variant="secondary"
+            onPress={handlePickCover}
+          />
 
-        <Button label="Create board" onPress={handleCreate} loading={isCreating} disabled={!name.trim()} />
+          {error && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
+          )}
+
+          <Button label="Create board" onPress={handleCreate} loading={isCreating} disabled={!name.trim()} />
+        </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
@@ -102,12 +136,21 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    alignSelf: 'center',
+    width: '100%',
+  },
+  scrollContent: {
     width: '100%',
     maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    gap: Spacing.three,
+  },
+  option: {
+    gap: Spacing.half,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
   },
   checkboxRow: {
     flexDirection: 'row',

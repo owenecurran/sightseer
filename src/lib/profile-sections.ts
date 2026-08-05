@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 // The reorderable content modules on a profile — header/stats/follow
 // requests/footer utility links stay fixed at their current positions, not
 // draggable.
-export const PROFILE_SECTION_KEYS = ['latest_reviews', 'tagged_in', 'prompts', 'map'] as const;
+export const PROFILE_SECTION_KEYS = ['latest_reviews', 'tagged_in', 'prompts', 'map', 'collections'] as const;
 
 export type ProfileSectionKey = (typeof PROFILE_SECTION_KEYS)[number];
 
@@ -12,6 +12,7 @@ export const PROFILE_SECTION_LABELS: Record<ProfileSectionKey, string> = {
   tagged_in: 'Tagged in',
   prompts: 'Prompts',
   map: 'Map',
+  collections: 'Boards & travel books',
 };
 
 function isSectionKey(value: string): value is ProfileSectionKey {

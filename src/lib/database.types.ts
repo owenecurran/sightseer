@@ -72,6 +72,49 @@ export type Database = {
           },
         ]
       }
+      board_item_checks: {
+        Row: {
+          board_id: string
+          board_item_id: string
+          checked_at: string
+          user_id: string
+        }
+        Insert: {
+          board_id: string
+          board_item_id: string
+          checked_at?: string
+          user_id: string
+        }
+        Update: {
+          board_id?: string
+          board_item_id?: string
+          checked_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "board_item_checks_board_id_fkey"
+            columns: ["board_id"]
+            isOneToOne: false
+            referencedRelation: "boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_item_checks_board_item_id_fkey"
+            columns: ["board_item_id"]
+            isOneToOne: false
+            referencedRelation: "board_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "board_item_checks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       board_items: {
         Row: {
           added_at: string
@@ -148,6 +191,7 @@ export type Database = {
           is_private: boolean
           list_style: string
           name: string
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -160,6 +204,7 @@ export type Database = {
           is_private?: boolean
           list_style?: string
           name: string
+          updated_at?: string
           user_id: string
         }
         Update: {
@@ -172,6 +217,7 @@ export type Database = {
           is_private?: boolean
           list_style?: string
           name?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: [
@@ -486,6 +532,7 @@ export type Database = {
           position: number
           prompt_id: string
           text_value: string | null
+          travel_book_id: string | null
           visit_id: string | null
         }
         Insert: {
@@ -498,6 +545,7 @@ export type Database = {
           position?: number
           prompt_id: string
           text_value?: string | null
+          travel_book_id?: string | null
           visit_id?: string | null
         }
         Update: {
@@ -510,6 +558,7 @@ export type Database = {
           position?: number
           prompt_id?: string
           text_value?: string | null
+          travel_book_id?: string | null
           visit_id?: string | null
         }
         Relationships: [
@@ -532,6 +581,13 @@ export type Database = {
             columns: ["prompt_id"]
             isOneToOne: false
             referencedRelation: "profile_prompts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_prompt_attachments_travel_book_id_fkey"
+            columns: ["travel_book_id"]
+            isOneToOne: false
+            referencedRelation: "travel_books"
             referencedColumns: ["id"]
           },
           {
@@ -758,6 +814,49 @@ export type Database = {
           },
         ]
       }
+      travel_book_item_checks: {
+        Row: {
+          checked_at: string
+          travel_book_id: string
+          travel_book_item_id: string
+          user_id: string
+        }
+        Insert: {
+          checked_at?: string
+          travel_book_id: string
+          travel_book_item_id: string
+          user_id: string
+        }
+        Update: {
+          checked_at?: string
+          travel_book_id?: string
+          travel_book_item_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_book_item_checks_travel_book_id_fkey"
+            columns: ["travel_book_id"]
+            isOneToOne: false
+            referencedRelation: "travel_books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_book_item_checks_travel_book_item_id_fkey"
+            columns: ["travel_book_item_id"]
+            isOneToOne: false
+            referencedRelation: "travel_book_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "travel_book_item_checks_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       travel_book_items: {
         Row: {
           added_at: string
@@ -883,6 +982,7 @@ export type Database = {
           location_place_id: string | null
           rating: number | null
           title: string
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -896,6 +996,7 @@ export type Database = {
           location_place_id?: string | null
           rating?: number | null
           title: string
+          updated_at?: string
           user_id: string
         }
         Update: {
@@ -909,6 +1010,7 @@ export type Database = {
           location_place_id?: string | null
           rating?: number | null
           title?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: [
@@ -1426,6 +1528,15 @@ export type Database = {
         Returns: boolean
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
+      get_collection_stats: {
+        Args: { board_ids?: string[]; travel_book_ids?: string[] }
+        Returns: {
+          avg_rating: number
+          collection_id: string
+          collection_type: string
+          save_count: number
+        }[]
+      }
       get_nearby_reviewed_places: {
         Args: {
           max_lat: number

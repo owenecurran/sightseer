@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileMap } from '@/components/profile-map';
 import { ProfilePromptsSection } from '@/components/profile-prompts-section';
+import { UserCollectionsSection } from '@/components/user-collections-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
@@ -175,6 +176,7 @@ export default function ProfileScreen() {
       </Pressable>
     ),
     prompts: session ? <ProfilePromptsSection key="prompts" userId={session.user.id} /> : null,
+    collections: session ? <UserCollectionsSection key="collections" userId={session.user.id} /> : null,
     map:
       session && profile?.show_map ? (
         <ThemedView key="map" type="backgroundElement" style={styles.neutralCard}>

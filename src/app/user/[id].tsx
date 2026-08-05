@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileMap } from '@/components/profile-map';
 import { ProfilePromptsSection } from '@/components/profile-prompts-section';
+import { UserCollectionsSection } from '@/components/user-collections-section';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
@@ -257,6 +258,8 @@ export default function UserProfileScreen() {
             )}
 
             {canSeeContent && user && <ProfilePromptsSection userId={user.id} />}
+
+            {canSeeContent && user && <UserCollectionsSection userId={user.id} />}
 
             {canSeeContent && user?.show_map && (
               <ThemedView type="backgroundElement" style={styles.neutralCard}>

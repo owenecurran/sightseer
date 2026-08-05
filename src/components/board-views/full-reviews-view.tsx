@@ -12,13 +12,17 @@ import type { BoardVisitItem } from '@/lib/boards';
 type FullReviewsViewProps = {
   items: BoardVisitItem[];
   photoUrls: Record<string, string>;
+  viewerId?: string;
+  // "Your rating: X" read-only overlay for places the viewer has
+  // independently reviewed — see src/lib/own-ratings.ts.
+  ownRatings?: Record<string, number>;
 };
 
 // One full review per row, normal vertical scroll — matching every other
 // list in the app (reviews.tsx, index.tsx). Previously a horizontal paging
 // carousel (one review per swipe); only the scroll axis changed, card
 // content (place name, author+rating, note, full-bleed photo) is unchanged.
-export function FullReviewsView({ items, photoUrls }: FullReviewsViewProps) {
+export function FullReviewsView({ items, photoUrls, viewerId, ownRatings }: FullReviewsViewProps) {
   const bottomInset = useBottomTabInset();
   const scrollHandler = useHideOnScrollHandler();
 
@@ -31,7 +35,10 @@ export function FullReviewsView({ items, photoUrls }: FullReviewsViewProps) {
       showsVerticalScrollIndicator={false}
       onScroll={scrollHandler}
       scrollEventThrottle={16}
-      renderItem={({ item }: { item: BoardVisitItem }) => (
+      renderItem={({ item }: { item: BoardVisitItem }) => {
+        const ownRating = ownRatings?.[item.placeId];
+        const showOwnRating = ownRating != null && item.authorId !== viewerId;
+        return (
         <View style={styles.card}>
           <View style={styles.textWrap}>
             <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })}>
@@ -46,6 +53,11 @@ export function FullReviewsView({ items, photoUrls }: FullReviewsViewProps) {
                   {item.authorName}
                   {item.rating != null ? ` · ${item.rating.toFixed(1)} ★` : ''}
                 </ThemedText>
+                {showOwnRating && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Your rating: {ownRating.toFixed(1)} ★
+                  </ThemedText>
+                )}
               </View>
               {item.note && <ThemedText type="default">{item.note}</ThemedText>}
             </Pressable>
@@ -57,7 +69,8 @@ export function FullReviewsView({ items, photoUrls }: FullReviewsViewProps) {
             return <PhotoGrid urls={photos.map((p) => p.url)} aspectRatios={photos.map((p) => p.ratio)} />;
           })()}
         </View>
-      )}
+        );
+      }}
     />
   );
 }

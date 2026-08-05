@@ -86,51 +86,6 @@ export default function PlaceDetailScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Pressable onPress={() => router.back()}>
-          <ThemedText type="link">← Back</ThemedText>
-        </Pressable>
-
-        {heroPhotoUrl && (
-          <View style={styles.heroWrap}>
-            <LoadableImage source={{ uri: heroPhotoUrl }} style={styles.hero} />
-          </View>
-        )}
-
-        <StretchText type="headline">{place?.name ?? 'Place'}</StretchText>
-        {breadcrumb.length > 0 && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {breadcrumb}
-          </ThemedText>
-        )}
-        <ThemedText type="default">
-          {avgRating !== null ? `${avgRating.toFixed(1)} ★ · ${reviewCount} review${reviewCount === 1 ? '' : 's'}` : 'No reviews yet'}
-        </ThemedText>
-
-        <Button
-          label="Add your review"
-          onPress={() => router.push({ pathname: '/review-form', params: { placeId: id } })}
-        />
-
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-        )}
-
-        {visits.length > 0 && (
-          <View style={styles.sortRow}>
-            {(['recent', 'popular'] as const).map((mode) => (
-              <Pressable key={mode} onPress={() => setSortMode(mode)}>
-                <ThemedView type={sortMode === mode ? 'backgroundSelected' : 'backgroundElement'} style={styles.sortChip}>
-                  <ThemedText type="small" themeColor={sortMode === mode ? 'text' : 'textSecondary'}>
-                    {mode === 'recent' ? 'Most recent' : 'Popular'}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
-            ))}
-          </View>
-        )}
-
         <Animated.FlatList
           data={sortedVisits}
           keyExtractor={(item: FeedVisit) => item.id}
@@ -138,10 +93,62 @@ export default function PlaceDetailScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
+          ListHeaderComponent={
+            <View style={[styles.contentWrap, styles.headerSection]}>
+              <Pressable onPress={() => router.back()}>
+                <ThemedText type="link">← Back</ThemedText>
+              </Pressable>
+
+              {heroPhotoUrl && (
+                <View style={styles.heroWrap}>
+                  <LoadableImage source={{ uri: heroPhotoUrl }} style={styles.hero} />
+                </View>
+              )}
+
+              <StretchText type="headline">{place?.name ?? 'Place'}</StretchText>
+              {breadcrumb.length > 0 && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {breadcrumb}
+                </ThemedText>
+              )}
+              <ThemedText type="default">
+                {avgRating !== null
+                  ? `${avgRating.toFixed(1)} ★ · ${reviewCount} review${reviewCount === 1 ? '' : 's'}`
+                  : 'No reviews yet'}
+              </ThemedText>
+
+              <Button
+                label="Add your review"
+                onPress={() => router.push({ pathname: '/review-form', params: { placeId: id } })}
+              />
+
+              {error && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {error}
+                </ThemedText>
+              )}
+
+              {visits.length > 0 && (
+                <View style={styles.sortRow}>
+                  {(['recent', 'popular'] as const).map((mode) => (
+                    <Pressable key={mode} onPress={() => setSortMode(mode)}>
+                      <ThemedView type={sortMode === mode ? 'backgroundSelected' : 'backgroundElement'} style={styles.sortChip}>
+                        <ThemedText type="small" themeColor={sortMode === mode ? 'text' : 'textSecondary'}>
+                          {mode === 'recent' ? 'Most recent' : 'Popular'}
+                        </ThemedText>
+                      </ThemedView>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          }
           renderItem={({ item }: { item: FeedVisit }) => {
             const visitPhotoUrls = item.photoIds.map((photoId) => photoUrls[photoId]).filter((url) => url != null);
             return (
-              <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}>
+              <Pressable
+                onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}
+                style={styles.contentWrap}>
                 <ThemedView type="backgroundElement" style={styles.visitCard}>
                   <PhotoGrid urls={visitPhotoUrls} aspectRatios={item.photoAspectRatios} />
                   <View style={styles.visitInfo}>
@@ -168,12 +175,18 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    alignSelf: 'center',
     width: '100%',
-    maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+  },
+  contentWrap: {
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+  },
+  headerSection: {
     gap: Spacing.three,
+    marginBottom: Spacing.three,
   },
   heroWrap: {
     width: '100%',

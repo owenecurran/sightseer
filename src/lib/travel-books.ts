@@ -33,6 +33,25 @@ export async function listMyTravelBooks(userId: string): Promise<TravelBookListI
   }));
 }
 
+// Travel books owned by `userId`, for browsing someone else's collections
+// from their profile — unlike listMyTravelBooks, deliberately excludes the
+// *viewing* session's own collaborator books (not relevant when userId is
+// someone else's profile). RLS (travel_books_select) still restricts
+// results to whatever's actually visible to the viewer.
+export async function listUserTravelBooks(userId: string): Promise<TravelBookListItem[]> {
+  const { data, error } = await supabase
+    .from('travel_books')
+    .select('*, places!location_place_id(name)')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  return (data as unknown as TravelBookWithPlace[]).map(({ places, ...book }) => ({
+    ...book,
+    locationName: places?.name ?? null,
+  }));
+}
+
 export async function createTravelBook(params: {
   userId: string;
   title: string;
@@ -257,5 +276,42 @@ export async function removeVisitFromTravelBookByVisit(bookId: string, visitId: 
     .delete()
     .eq('travel_book_id', bookId)
     .eq('visit_id', visitId);
+  if (error) throw error;
+}
+
+// Private per-user progress checklist, mirrors boards.ts's
+// getMyCheckedItemIds/checkBoardItem/uncheckBoardItem — see
+// 20260804100000_item_check_lists.sql.
+export async function getMyCheckedTravelBookItemIds(userId: string, travelBookId: string): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('travel_book_item_checks')
+    .select('travel_book_item_id')
+    .eq('user_id', userId)
+    .eq('travel_book_id', travelBookId);
+  if (error) throw error;
+  return new Set(data.map((row) => row.travel_book_item_id));
+}
+
+export async function checkTravelBookItem(userId: string, travelBookId: string, itemId: string): Promise<void> {
+  const { error } = await supabase
+    .from('travel_book_item_checks')
+    .insert({ user_id: userId, travel_book_id: travelBookId, travel_book_item_id: itemId });
+  if (error) throw error;
+}
+
+export async function uncheckTravelBookItem(userId: string, itemId: string): Promise<void> {
+  const { error } = await supabase
+    .from('travel_book_item_checks')
+    .delete()
+    .eq('user_id', userId)
+    .eq('travel_book_item_id', itemId);
+  if (error) throw error;
+}
+
+// Travel-book settings — see travel-book/[id]/settings.tsx. Mirrors boards.ts's
+// updateBoardPrivacy; travel books have no list_style column (ranking is
+// scoped to boards only).
+export async function updateTravelBookPrivacy(bookId: string, isPrivate: boolean): Promise<void> {
+  const { error } = await supabase.from('travel_books').update({ is_private: isPrivate }).eq('id', bookId);
   if (error) throw error;
 }

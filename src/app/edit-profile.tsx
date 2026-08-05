@@ -20,6 +20,7 @@ import { pickImageFromLibrary } from '@/lib/image-picker';
 import { listMyBoards } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
 import { listPrompts, reorderPrompts, type ProfilePrompt } from '@/lib/profile-prompts';
+import { listUserTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
 import {
   parseSectionOrder,
   PROFILE_SECTION_LABELS,
@@ -57,6 +58,7 @@ export default function EditProfileScreen() {
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
   const [ownVisits, setOwnVisits] = useState<OwnVisitOption[]>([]);
   const [ownBoards, setOwnBoards] = useState<BoardRow[]>([]);
+  const [ownTravelBooks, setOwnTravelBooks] = useState<TravelBookListItem[]>([]);
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
@@ -73,6 +75,10 @@ export default function EditProfileScreen() {
     if (!session) return;
     loadPrompts();
     listMyBoards(session.user.id).then(setOwnBoards);
+    // Owner-only (not listMyTravelBooks) — the travel_book prompt-attachment
+    // RLS only allows tb.user_id = auth.uid(), matching the 'board' clause
+    // exactly, so a collaborator book must never appear as pickable here.
+    listUserTravelBooks(session.user.id).then(setOwnTravelBooks);
     supabase
       .from('visits')
       .select('id, rating, places!place_id(name)')
@@ -172,12 +178,13 @@ export default function EditProfileScreen() {
           usedSlugs={prompts.filter((p) => p.id !== item.id).map((p) => p.promptSlug)}
           ownVisits={ownVisits}
           ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
+          ownTravelBooks={ownTravelBooks.map((b) => ({ id: b.id, title: b.title }))}
           onChanged={loadPrompts}
           onDragStart={drag}
         />
       </ScaleDecorator>
     ),
-    [session, prompts, ownVisits, ownBoards, loadPrompts]
+    [session, prompts, ownVisits, ownBoards, ownTravelBooks, loadPrompts]
   );
 
   const renderSectionItem = useCallback(
@@ -268,6 +275,7 @@ export default function EditProfileScreen() {
               usedSlugs={prompts.map((p) => p.promptSlug)}
               ownVisits={ownVisits}
               ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
+              ownTravelBooks={ownTravelBooks.map((b) => ({ id: b.id, title: b.title }))}
               onChanged={loadPrompts}
             />
           )}

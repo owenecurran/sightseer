@@ -18,6 +18,7 @@ export type FeedVisit = {
   created_at: string;
   user_id: string;
   authorName: string;
+  placeId: string;
   placeName: string;
   // "Colorado, United States" (or just one of the two, or null if the
   // hierarchy is missing/incomplete) — see resolveStateCountry.
@@ -77,6 +78,7 @@ export function mapRawFeedVisit(
     created_at: visit.created_at,
     user_id: visit.user_id,
     authorName: visit.users?.name ?? visit.users?.handle ?? 'Someone',
+    placeId: visit.place_id,
     placeName: visit.places?.name ?? 'Unknown place',
     stateCountry: stateCountryMap?.get(visit.place_id) ?? null,
     photoIds: [...visit.photos].sort((a, b) => a.position - b.position).map((p) => p.id),

@@ -17,6 +17,14 @@ type ListViewProps = {
   isOwner: boolean;
   onRemove: (itemId: string) => void;
   removeMessage?: string;
+  // Personal progress checklist — only rendered when both are provided (the
+  // viewer owns or has saved this board, see board/[id].tsx).
+  viewerId?: string;
+  checkedItemIds?: Set<string>;
+  onToggleCheck?: (item: BoardItem) => void;
+  // "Your rating: X" read-only overlay for places the viewer has
+  // independently reviewed — see src/lib/own-ratings.ts.
+  ownRatings?: Record<string, number>;
 };
 
 // Today's only-ever-shipped board-detail layout, restyled from a full-width
@@ -26,7 +34,17 @@ type ListViewProps = {
 // squeezing the title's available space, forcing StretchText to compress it
 // more aggressively than necessary. Swipe-left-to-reveal instead: same
 // capability, no permanently-reserved row space.
-export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }: ListViewProps) {
+export function ListView({
+  items,
+  photoUrls,
+  isOwner,
+  onRemove,
+  removeMessage,
+  viewerId,
+  checkedItemIds,
+  onToggleCheck,
+  ownRatings,
+}: ListViewProps) {
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
 
   return (
@@ -34,6 +52,9 @@ export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }:
       {items.map((item) => {
         const isVisit = item.kind === 'visit';
         const thumbnailUrl = isVisit && item.photoIds[0] ? photoUrls[item.photoIds[0]] : undefined;
+        const isChecked = checkedItemIds?.has(item.id) ?? false;
+        const ownRating = ownRatings?.[item.placeId];
+        const showOwnRating = ownRating != null && !(isVisit && item.authorId === viewerId);
         const row = (
           <Pressable
             key={item.id}
@@ -43,6 +64,13 @@ export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }:
                 : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
             }>
             <ThemedView type="backgroundElement" style={styles.row}>
+              {onToggleCheck && (
+                <Pressable onPress={() => onToggleCheck(item)} hitSlop={8}>
+                  <ThemedView type={isChecked ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
+                    {isChecked && <ThemedText type="smallBold">✓</ThemedText>}
+                  </ThemedView>
+                </Pressable>
+              )}
               {thumbnailUrl ? (
                 <Image source={{ uri: thumbnailUrl }} style={styles.thumbnail} />
               ) : (
@@ -59,6 +87,11 @@ export function ListView({ items, photoUrls, isOwner, onRemove, removeMessage }:
                 ) : (
                   <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
                     {item.stateCountry ?? 'No review yet'}
+                  </ThemedText>
+                )}
+                {showOwnRating && (
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                    Your rating: {ownRating.toFixed(1)} ★
                   </ThemedText>
                 )}
               </View>
@@ -109,6 +142,15 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: Spacing.one,
+    borderWidth: 1.5,
+    borderColor: 'rgba(234,231,207,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   thumbnail: {
     width: 56,

@@ -1,6 +1,6 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CollectionsList } from '@/components/collections-list';
@@ -11,18 +11,26 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
-import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
 import { listMyBoards } from '@/lib/boards';
 import { getCollectionStats, type CollectionStats } from '@/lib/collection-stats';
 import { getBoardThumbnailUrls, getTravelBookThumbnailUrls } from '@/lib/collection-thumbnails';
 import type { Database } from '@/lib/database.types';
-import { listMyTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
+import { supabase } from '@/lib/supabase';
+import { listMyTravelBooks, listUserTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
-export default function BoardsScreen() {
+// Not the (tabs)/boards.tsx tab itself — native tabs are 5 fixed-pathname
+// PagerView pages with no param slot (see src/constants/tab-routes.ts), so
+// viewing someone ELSE's boards/travel books needs its own pushed route
+// instead of overloading /boards. Shares CollectionsList (switcher + sort +
+// cover thumbnails) with the tab, just with its own isSelf-aware data
+// fetching.
+export default function UserCollectionsScreen() {
+  const { userId } = useLocalSearchParams<{ userId: string }>();
   const { session } = useAuth();
+  const [userName, setUserName] = useState<string | null>(null);
   const [mode, setMode] = useState<CollectionMode>('boards');
   const [sortMode, setSortMode] = useState<CollectionSortMode>('recently_edited');
   const [boards, setBoards] = useState<BoardRow[]>([]);
@@ -35,28 +43,28 @@ export default function BoardsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
-  // Both datasets load together regardless of which mode is active, so
-  // switching between Boards and Travel Books is instant with no reload —
-  // the whole point of merging these into one tabbed screen.
-  useTabFocusEffect(
-    3,
+  const isSelf = Boolean(session && userId && session.user.id === userId);
+
+  useFocusEffect(
     useCallback(() => {
-      if (!session) return;
+      if (!userId) return;
       setIsLoading(true);
       setError(null);
       Promise.all([
-        listMyBoards(session.user.id).then(async (myBoards) => {
+        supabase.from('users').select('name, handle').eq('id', userId).single(),
+        listMyBoards(userId).then(async (myBoards) => {
           setBoards(myBoards);
           setBoardThumbnailUrls(await getBoardThumbnailUrls(myBoards));
           return myBoards;
         }),
-        listMyTravelBooks(session.user.id).then(async (myBooks) => {
+        (isSelf ? listMyTravelBooks(userId) : listUserTravelBooks(userId)).then(async (myBooks) => {
           setTravelBooks(myBooks);
           setTravelBookThumbnailUrls(await getTravelBookThumbnailUrls(myBooks));
           return myBooks;
         }),
       ])
-        .then(async ([myBoards, myBooks]) => {
+        .then(async ([{ data: userRow }, myBoards, myBooks]) => {
+          setUserName(userRow?.name ?? userRow?.handle ?? null);
           const stats = await getCollectionStats(
             myBoards.map((b) => b.id),
             myBooks.map((b) => b.id)
@@ -64,12 +72,12 @@ export default function BoardsScreen() {
           setBoardStats(stats.boards);
           setTravelBookStats(stats.travelBooks);
         })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your collections.'))
+        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load these collections.'))
         .finally(() => {
           setIsLoading(false);
           setHasLoadedOnce(true);
         });
-    }, [session])
+    }, [userId, isSelf])
   );
 
   if (!hasLoadedOnce) return <PageLoader />;
@@ -77,12 +85,20 @@ export default function BoardsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="displaySerif">{mode === 'boards' ? 'Your boards' : 'Your travel books'}</ThemedText>
+        <Pressable onPress={() => router.back()}>
+          <ThemedText type="link">← Back</ThemedText>
+        </Pressable>
 
-        <Button
-          label={mode === 'boards' ? 'New board' : 'New travel book'}
-          onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
-        />
+        <ThemedText type="displaySerif">
+          {isSelf ? 'Your boards' : userName ? `${userName}’s boards` : 'Boards'}
+        </ThemedText>
+
+        {isSelf && (
+          <Button
+            label={mode === 'boards' ? 'New board' : 'New travel book'}
+            onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
+          />
+        )}
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
@@ -102,8 +118,8 @@ export default function BoardsScreen() {
           boardStats={boardStats}
           travelBookStats={travelBookStats}
           isLoading={isLoading}
-          emptyBoardsMessage="No boards yet. Create one above, or save a visit to a board from the Search tab."
-          emptyTravelBooksMessage="No travel books yet. Start one to keep a chronological log of a trip."
+          emptyBoardsMessage={isSelf ? 'No boards yet.' : 'No boards to show.'}
+          emptyTravelBooksMessage={isSelf ? 'No travel books yet.' : 'No travel books to show.'}
         />
       </SafeAreaView>
     </ThemedView>

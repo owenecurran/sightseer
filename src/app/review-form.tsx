@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,7 +52,11 @@ export default function ReviewFormScreen() {
   const { placeId } = useLocalSearchParams<{ placeId?: string }>();
   const bottomInset = useBottomTabInset();
   const [error, setError] = useState<string | null>(null);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  // Arriving fresh (no placeId already picked, e.g. place/[id].tsx's "Add
+  // your review") goes straight to the map instead of requiring an extra tap
+  // on "Search for a place" first — that button/label still render as a
+  // fallback (and a way to change the place later) once the picker's closed.
+  const [isPickerOpen, setIsPickerOpen] = useState(!placeId);
   const scrollHandler = useHideOnScrollHandler();
 
   const [selectedPlace, setSelectedPlace] = useState<PlaceRow | null>(null);
@@ -163,6 +167,18 @@ export default function ReviewFormScreen() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
     }
+  }
+
+  // Cancelling the picker before ever picking a place means there's nothing
+  // left on this screen worth seeing (no "Search places" fallback page
+  // anymore, see isPickerOpen's own comment) — go back to wherever this
+  // screen was pushed from (the Create menu, or place/[id]'s "Add your
+  // review") instead of leaving the user on a blank review form. Once a
+  // place IS selected, reopening the picker to change it and then cancelling
+  // should just close it back to the filled-in form, not navigate away.
+  function handlePickerCancel() {
+    setIsPickerOpen(false);
+    if (!selectedPlace) router.back();
   }
 
   // Arriving from place/[id]'s "Add your review" button — the place is
@@ -501,7 +517,7 @@ export default function ReviewFormScreen() {
         />
         <LocationSearchModal
           visible={isPickerOpen}
-          onCancel={() => setIsPickerOpen(false)}
+          onCancel={handlePickerCancel}
           onSelect={handlePlaceSelected}
         />
       </SafeAreaView>

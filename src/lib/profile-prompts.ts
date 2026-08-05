@@ -12,12 +12,14 @@ export type PromptAttachment = {
   visitId: string | null;
   boardId: string | null;
   placeId: string | null;
+  travelBookId: string | null;
   visitPlaceName: string | null;
   visitRating: number | null;
   visitNote: string | null;
   visitPhotoId: string | null;
   boardName: string | null;
   placeName: string | null;
+  travelBookName: string | null;
 };
 
 export type ProfilePrompt = {
@@ -36,6 +38,7 @@ type RawAttachment = {
   visit_id: string | null;
   board_id: string | null;
   place_id: string | null;
+  travel_book_id: string | null;
   visits: {
     rating: number | null;
     note: string | null;
@@ -44,6 +47,7 @@ type RawAttachment = {
   } | null;
   boards: { name: string } | null;
   places: { name: string } | null;
+  travel_books: { title: string } | null;
 };
 
 type RawPrompt = {
@@ -54,7 +58,7 @@ type RawPrompt = {
 };
 
 const PROMPT_SELECT =
-  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name))';
+  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
 
 function mapAttachment(r: RawAttachment): PromptAttachment {
   const firstPhoto = [...(r.visits?.photos ?? [])].sort((a, b) => a.position - b.position)[0];
@@ -66,12 +70,14 @@ function mapAttachment(r: RawAttachment): PromptAttachment {
     visitId: r.visit_id,
     boardId: r.board_id,
     placeId: r.place_id,
+    travelBookId: r.travel_book_id,
     visitPlaceName: r.visits?.places?.name ?? null,
     visitRating: r.visits?.rating ?? null,
     visitNote: r.visits?.note ?? null,
     visitPhotoId: firstPhoto?.id ?? null,
     boardName: r.boards?.name ?? null,
     placeName: r.places?.name ?? null,
+    travelBookName: r.travel_books?.title ?? null,
   };
 }
 
@@ -98,6 +104,7 @@ export type AttachmentInput = {
   visitId?: string | null;
   boardId?: string | null;
   placeId?: string | null;
+  travelBookId?: string | null;
 };
 
 type SavePromptParams = {
@@ -147,6 +154,7 @@ export async function savePrompt(params: SavePromptParams): Promise<void> {
         visit_id: a.visitId ?? null,
         board_id: a.boardId ?? null,
         place_id: a.placeId ?? null,
+        travel_book_id: a.travelBookId ?? null,
       }))
     );
     if (insertError) throw insertError;

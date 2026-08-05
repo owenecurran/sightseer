@@ -20,10 +20,16 @@ export async function createBoard(params: {
   userId: string;
   name: string;
   isPrivate?: boolean;
+  listStyle?: 'collection' | 'ranked';
 }): Promise<BoardRow> {
   const { data, error } = await supabase
     .from('boards')
-    .insert({ user_id: params.userId, name: params.name, is_private: params.isPrivate ?? false })
+    .insert({
+      user_id: params.userId,
+      name: params.name,
+      is_private: params.isPrivate ?? false,
+      list_style: params.listStyle ?? 'collection',
+    })
     .select()
     .single();
   if (error) throw error;
@@ -119,6 +125,7 @@ export type BoardVisitItem = {
   visitedOn: string;
   authorId: string;
   authorName: string;
+  placeId: string;
   placeName: string;
   stateCountry: string | null;
   placeLat: number | null;
@@ -206,6 +213,7 @@ export async function getBoardItems(boardId: string): Promise<BoardItem[]> {
         visitedOn: row.visits.visited_on,
         authorId: row.visits.user_id,
         authorName: row.visits.users?.name ?? row.visits.users?.handle ?? 'Someone',
+        placeId: row.visits.place_id,
         placeName: row.visits.places?.name ?? 'Unknown place',
         stateCountry: stateCountryMap.get(row.visits.place_id) ?? null,
         placeLat: row.visits.places?.lat ?? null,
@@ -268,6 +276,7 @@ export async function getMyVisitItems(userId: string): Promise<BoardVisitItem[]>
     visitedOn: row.visited_on,
     authorId: row.user_id,
     authorName: row.users?.name ?? row.users?.handle ?? 'Someone',
+    placeId: row.place_id,
     placeName: row.places?.name ?? 'Unknown place',
     stateCountry: stateCountryMap.get(row.place_id) ?? null,
     placeLat: row.places?.lat ?? null,
@@ -275,4 +284,46 @@ export async function getMyVisitItems(userId: string): Promise<BoardVisitItem[]>
     photoIds: [...row.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
     photoAspectRatios: sortedPhotoAspectRatios(row.photos),
   }));
+}
+
+// Private per-user progress checklist — never visible to the board owner or
+// anyone else, see 20260804100000_item_check_lists.sql. Existence of a row
+// means checked; there's no separate boolean column.
+export async function getMyCheckedItemIds(userId: string, boardId: string): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('board_item_checks')
+    .select('board_item_id')
+    .eq('user_id', userId)
+    .eq('board_id', boardId);
+  if (error) throw error;
+  return new Set(data.map((row) => row.board_item_id));
+}
+
+export async function checkBoardItem(userId: string, boardId: string, boardItemId: string): Promise<void> {
+  const { error } = await supabase
+    .from('board_item_checks')
+    .insert({ user_id: userId, board_id: boardId, board_item_id: boardItemId });
+  if (error) throw error;
+}
+
+export async function uncheckBoardItem(userId: string, boardItemId: string): Promise<void> {
+  const { error } = await supabase
+    .from('board_item_checks')
+    .delete()
+    .eq('user_id', userId)
+    .eq('board_item_id', boardItemId);
+  if (error) throw error;
+}
+
+// Board settings — see board/[id]/settings.tsx. Both columns already existed
+// (20260803120200_travel_book_rating_and_board_list_style.sql) but were
+// never writable from the app until now.
+export async function updateBoardListStyle(boardId: string, listStyle: 'collection' | 'ranked'): Promise<void> {
+  const { error } = await supabase.from('boards').update({ list_style: listStyle }).eq('id', boardId);
+  if (error) throw error;
+}
+
+export async function updateBoardPrivacy(boardId: string, isPrivate: boolean): Promise<void> {
+  const { error } = await supabase.from('boards').update({ is_private: isPrivate }).eq('id', boardId);
+  if (error) throw error;
 }
