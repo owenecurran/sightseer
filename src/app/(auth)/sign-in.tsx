@@ -10,9 +10,10 @@ import { SocialAuthButtons } from '@/components/ui/social-auth-buttons';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { supabase } from '@/lib/supabase';
+import { signInWithUsername } from '@/lib/username-signin';
 
 export default function SignInScreen() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -20,12 +21,24 @@ export default function SignInScreen() {
   async function handleSignIn() {
     setError(null);
     setIsSubmitting(true);
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-    setIsSubmitting(false);
-    if (signInError) {
-      setError(signInError.message);
+    try {
+      // Email sign-in is unchanged; a bare handle (no "@") routes through
+      // resolve-username-signin instead — see src/lib/username-signin.ts.
+      if (identifier.includes('@')) {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: identifier,
+          password,
+        });
+        if (signInError) throw signInError;
+      } else {
+        await signInWithUsername(identifier, password);
+      }
+      // On success, AuthProvider picks up the new session and the root layout redirects.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not sign in.');
+    } finally {
+      setIsSubmitting(false);
     }
-    // On success, AuthProvider picks up the new session and the root layout redirects.
   }
 
   return (
@@ -37,11 +50,11 @@ export default function SignInScreen() {
 
         <ThemedView style={styles.form}>
           <TextField
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            textContentType="emailAddress"
+            placeholder="Email or username"
+            value={identifier}
+            onChangeText={setIdentifier}
+            autoCapitalize="none"
+            textContentType="username"
           />
           <TextField
             placeholder="Password"

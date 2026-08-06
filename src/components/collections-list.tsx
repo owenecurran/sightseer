@@ -32,8 +32,22 @@ type CollectionsListProps = {
   emptyTravelBooksMessage: string;
 };
 
-function sortValue(stats: CollectionStats | undefined, updatedAt: string, sortMode: CollectionSortMode): number {
-  if (sortMode === 'mean_rating') return stats?.avgRating ?? -Infinity;
+function sortValue(
+  stats: CollectionStats | undefined,
+  updatedAt: string,
+  sortMode: CollectionSortMode,
+  // Travel books have their own single manually-set trip rating
+  // (travel_books.rating, set via the RatingSlider on travel-book/[id].tsx)
+  // — "Top rated" should sort by that, not by the average of the book's
+  // item ratings, so callers for travel books pass it explicitly. `undefined`
+  // (boards, which have no such field) falls through to the computed
+  // average; an explicit `null` (an unrated travel book) sinks to the
+  // bottom rather than silently falling back to the average.
+  manualRating?: number | null
+): number {
+  if (sortMode === 'mean_rating') {
+    return manualRating !== undefined ? (manualRating ?? -Infinity) : (stats?.avgRating ?? -Infinity);
+  }
   if (sortMode === 'most_saves') return stats?.saveCount ?? 0;
   return Date.parse(updatedAt);
 }
@@ -66,7 +80,8 @@ export function CollectionsList({
   );
   const sortedTravelBooks = [...travelBooks].sort(
     (a, b) =>
-      sortValue(travelBookStats[b.id], b.updated_at, sortMode) - sortValue(travelBookStats[a.id], a.updated_at, sortMode)
+      sortValue(travelBookStats[b.id], b.updated_at, sortMode, b.rating) -
+      sortValue(travelBookStats[a.id], a.updated_at, sortMode, a.rating)
   );
 
   return (
@@ -144,7 +159,7 @@ export function CollectionsList({
                   <View style={styles.rowLeading}>
                     <ThemedText type="headline">{item.title}</ThemedText>
                     <ThemedText type="small" themeColor="textSecondary">
-                      {stats?.avgRating != null ? `${stats.avgRating.toFixed(1)} ★ · ` : ''}
+                      {item.rating != null ? `${item.rating.toFixed(1)} ★ · ` : ''}
                       {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
                       {item.locationName ? ` · ${item.locationName}` : ''}
                       {item.is_private ? ' · Private' : ''}

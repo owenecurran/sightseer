@@ -21,16 +21,25 @@ function clamp(n: number, min: number, max: number) {
 function LightboxPage({ uri, width, height }: { uri: string; width: number; height: number }) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
+  // translateX/Y are the single continuously-authoritative position, kept in
+  // sync by whichever gesture (pinch or pan) last touched them — no separate
+  // "saved" checkpoint needed for translate the way scale needs savedScale,
+  // since every write below is already relative to the live current value.
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
-  const savedTranslateX = useSharedValue(0);
-  const savedTranslateY = useSharedValue(0);
-  // Focal point at pinch-start, in view coordinates — used to keep whatever
-  // point is under the fingers visually fixed as scale changes, instead of
-  // always expanding from the image's center regardless of where the pinch
-  // actually happened.
-  const focalX = useSharedValue(0);
-  const focalY = useSharedValue(0);
+  // The focal point as of the *previous* onChange frame (reset to the
+  // initial focal on onStart) — this is what makes the zoom track a moving
+  // pinch instead of freezing to wherever the gesture began. The earlier
+  // version only ever read event.focalX/focalY once, in onStart, and used
+  // that single frozen point for the whole gesture's translate math — so
+  // scaling was correctly anchored at first touch, but any finger movement
+  // during the pinch (which is how you'd naturally pinch-zoom toward an
+  // off-center point) was completely ignored until you lifted your fingers
+  // and did a separate one-finger pan. Recomputing against the *current*
+  // focal point every single onChange frame, relative to last frame's focal
+  // point, folds zoom and pan into one continuous two-finger gesture.
+  const lastFocalX = useSharedValue(0);
+  const lastFocalY = useSharedValue(0);
 
   // Keeps translateX/Y from drifting the zoomed image past its own edges —
   // at scale S, the image is (S-1)*width/2 wider than the view on each
@@ -44,44 +53,49 @@ function LightboxPage({ uri, width, height }: { uri: string; width: number; heig
 
   const pinch = Gesture.Pinch()
     .onStart((event) => {
-      focalX.value = event.focalX - width / 2;
-      focalY.value = event.focalY - height / 2;
+      lastFocalX.value = event.focalX - width / 2;
+      lastFocalY.value = event.focalY - height / 2;
     })
     .onChange((event) => {
+      const prevScale = scale.value;
       const nextScale = clamp(savedScale.value * event.scale, 1, MAX_ZOOM);
-      // Standard focal-point-anchored zoom approximation: as the content
-      // scales by event.scale (cumulative since gesture start) the point
-      // originally under the fingers drifts away from them by
-      // offset * (event.scale - 1); translating by the negative of that
-      // keeps it visually pinned under the fingers instead of the zoom
-      // always radiating from the image's fixed center.
-      scale.value = nextScale;
+      const focalX = event.focalX - width / 2;
+      const focalY = event.focalY - height / 2;
+
+      // The full per-frame formula: the content point that was under last
+      // frame's focal point — (lastFocal - translate) / prevScale — must
+      // land back under *this* frame's focal point at the new scale. Reduces
+      // to plain focal-anchored zoom when the focal point hasn't moved
+      // (focalX === lastFocalX.value), and to plain panning when the scale
+      // hasn't changed (nextScale === prevScale) — one formula covers both,
+      // continuously, every frame, rather than zoom and pan being two
+      // separate gestures the user has to alternate between.
       translateX.value = clampTranslate(
-        savedTranslateX.value - focalX.value * (event.scale - 1),
+        focalX - (lastFocalX.value - translateX.value) * (nextScale / prevScale),
         width,
         nextScale
       );
       translateY.value = clampTranslate(
-        savedTranslateY.value - focalY.value * (event.scale - 1),
+        focalY - (lastFocalY.value - translateY.value) * (nextScale / prevScale),
         height,
         nextScale
       );
+
+      scale.value = nextScale;
+      lastFocalX.value = focalX;
+      lastFocalY.value = focalY;
     })
     .onEnd(() => {
       savedScale.value = scale.value;
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
     });
 
-  // Reposition-while-zoomed — manual activation so it only actually claims
-  // the gesture once scale > 1 (checked as a worklet condition against the
-  // live shared value, not a one-time prop, since RNGH resolves activation
-  // per-touch not per-render). Below that threshold it fails immediately,
-  // letting the untouched single-finger drag fall through to the outer
-  // FlatList's own paging swipe and the lightbox's swipe-to-dismiss, exactly
-  // as before this change — this was the earlier, deliberate scope cut
-  // ("would fight the FlatList's horizontal swipe") that adding a pan
-  // gesture needs to actually respect, not just add alongside.
+  // Reposition-while-zoomed via a single finger (once the pinch has already
+  // ended) — manual activation so it only actually claims the gesture once
+  // scale > 1 (checked as a worklet condition against the live shared
+  // value, not a one-time prop, since RNGH resolves activation per-touch not
+  // per-render). Below that threshold it fails immediately, letting the
+  // untouched single-finger drag fall through to the outer FlatList's own
+  // paging swipe and the lightbox's swipe-to-dismiss.
   const pan = Gesture.Pan()
     .manualActivation(true)
     .onTouchesDown((_event, state) => {
@@ -91,10 +105,6 @@ function LightboxPage({ uri, width, height }: { uri: string; width: number; heig
     .onChange((event) => {
       translateX.value = clampTranslate(translateX.value + event.changeX, width, scale.value);
       translateY.value = clampTranslate(translateY.value + event.changeY, height, scale.value);
-    })
-    .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
     });
 
   const doubleTap = Gesture.Tap()
@@ -105,8 +115,6 @@ function LightboxPage({ uri, width, height }: { uri: string; width: number; heig
       savedScale.value = 1;
       translateX.value = withTiming(0);
       translateY.value = withTiming(0);
-      savedTranslateX.value = 0;
-      savedTranslateY.value = 0;
     });
 
   const composed = Gesture.Simultaneous(Gesture.Race(pan, pinch), doubleTap);
@@ -133,14 +141,15 @@ type PhotoLightboxProps = {
   onClose: () => void;
 };
 
-// Full-screen tap-to-focus viewer — pinch to zoom anchored at the actual
-// pinch focal point (not always the image's center), double-tap to reset,
-// pan to reposition once zoomed in (LightboxPage's `pan` gesture, manually
-// activated only above scale 1 so an un-zoomed single-finger drag still
-// falls through untouched to the outer FlatList's own paging swipe and this
-// component's own swipe-to-dismiss below — the previous version deliberately
-// skipped pan-to-reposition entirely to avoid exactly that conflict; manual
-// activation is what resolves it instead of avoiding it).
+// Full-screen tap-to-focus viewer — pinch to zoom, continuously anchored to
+// wherever the two fingers currently are (not just where the pinch started),
+// so zooming and repositioning happen as one fluid two-finger gesture rather
+// than "zoom, then lift fingers, then pan separately" (see LightboxPage's
+// `pinch` gesture). Double-tap resets to fit. A single-finger `pan` gesture
+// still exists for repositioning after the pinch has ended, manually
+// activated only above scale 1 so an un-zoomed single-finger drag falls
+// through untouched to the outer FlatList's own paging swipe and this
+// component's own swipe-to-dismiss below.
 export function PhotoLightbox({ visible, urls, initialIndex, onClose }: PhotoLightboxProps) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();

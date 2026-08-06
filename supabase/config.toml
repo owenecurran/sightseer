@@ -448,3 +448,13 @@ entrypoint = "./functions/get-photo-urls/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/get-photo-urls/*.html" ]
+
+# The only auth: "none" function in this project (see its own file
+# comment) — verify_jwt = false is required here, not just conventional:
+# this function is called before the user has a session at all, so there is
+# no caller JWT for the gateway to verify.
+[functions.resolve-username-signin]
+enabled = true
+verify_jwt = false
+import_map = "./functions/resolve-username-signin/deno.json"
+entrypoint = "./functions/resolve-username-signin/index.ts"

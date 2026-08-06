@@ -30,11 +30,31 @@ function relativeTime(isoDate: string): string {
   return `${Math.floor(days / 7)}w ago`;
 }
 
+// A real switch (not if/else) is a compile-time exhaustiveness check — the
+// previous if/else version's `else` branch silently assumed "must be
+// travel_book_item_added", which would have quietly mis-rendered every one
+// of the 7 new types added in this batch had it been left as-is.
 function describe(notification: AppNotification): string {
-  if (notification.type === 'board_item_added') {
-    return `${notification.actorName} added something new to "${notification.boardName ?? 'a board'}"`;
+  switch (notification.type) {
+    case 'board_item_added':
+      return `${notification.actorName} added something new to "${notification.boardName ?? 'a board'}"`;
+    case 'travel_book_item_added':
+      return `${notification.actorName} added something new to "${notification.travelBookTitle ?? 'a travel book'}"`;
+    case 'board_saved':
+      return `${notification.actorName} saved your board "${notification.boardName ?? 'a board'}"`;
+    case 'travel_book_saved':
+      return `${notification.actorName} saved your travel book "${notification.travelBookTitle ?? 'a travel book'}"`;
+    case 'like':
+      return `${notification.actorName} liked your review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+    case 'comment':
+      return `${notification.actorName} commented on your review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+    case 'friend_visit':
+      return `${notification.actorName} posted a new review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+    case 'follow':
+      return `${notification.actorName} started following you`;
+    case 'nearby_review_digest':
+      return `${notification.digestReviewCount ?? 0} new review${notification.digestReviewCount === 1 ? '' : 's'} at ${notification.digestPlaceCount ?? 0} place${notification.digestPlaceCount === 1 ? '' : 's'} you've been`;
   }
-  return `${notification.actorName} added something new to "${notification.travelBookTitle ?? 'a travel book'}"`;
 }
 
 export default function NotificationsScreen() {
@@ -71,10 +91,34 @@ export default function NotificationsScreen() {
     if (!notification.isRead) {
       markNotificationRead(notification.id).catch(() => {});
     }
-    if (notification.type === 'board_item_added' && notification.boardId) {
-      router.push({ pathname: '/board/[id]', params: { id: notification.boardId } });
-    } else if (notification.type === 'travel_book_item_added' && notification.travelBookId) {
-      router.push({ pathname: '/travel-book/[id]', params: { id: notification.travelBookId } });
+    switch (notification.type) {
+      case 'board_item_added':
+      case 'board_saved':
+        if (notification.boardId) {
+          router.push({ pathname: '/board/[id]', params: { id: notification.boardId } });
+        }
+        break;
+      case 'travel_book_item_added':
+      case 'travel_book_saved':
+        if (notification.travelBookId) {
+          router.push({ pathname: '/travel-book/[id]', params: { id: notification.travelBookId } });
+        }
+        break;
+      case 'like':
+      case 'comment':
+      case 'friend_visit':
+        if (notification.visitId) {
+          router.push({ pathname: '/visit/[id]', params: { id: notification.visitId } });
+        }
+        break;
+      case 'follow':
+        if (notification.actorUserId) {
+          router.push({ pathname: '/user/[id]', params: { id: notification.actorUserId } });
+        }
+        break;
+      case 'nearby_review_digest':
+        // Multi-place aggregate — no single natural destination to jump to.
+        break;
     }
   }
 

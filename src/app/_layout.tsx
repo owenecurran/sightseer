@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type PagerView from 'react-native-pager-view';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { FloatingNavBar } from '@/components/floating-nav-bar';
 import { KeyboardProviderWrapper } from '@/components/keyboard-provider-wrapper';
 import { TAB_ROUTES } from '@/constants/tab-routes';
@@ -24,6 +25,7 @@ function RootNavigator() {
 
   const isAuthenticated = session !== null;
   const hasCompletedOnboarding = profile?.handle != null;
+  const hasSetDemographics = profile?.has_set_demographics === true;
   const hasSetPrivacy = profile?.has_set_privacy === true;
   const hasPassedInviteGate = profile?.has_shared_invite === true || profile?.invite_exempt === true;
   const isOnMainTab = (TAB_ROUTES as readonly string[]).includes(pathname);
@@ -32,7 +34,13 @@ function RootNavigator() {
   // to needing their own in-content back control, same as a normal Stack
   // push. Previously this was intentionally *not* scoped (nav present on
   // every authenticated screen); reversed per explicit follow-up feedback.
-  const showNavBar = isAuthenticated && hasCompletedOnboarding && hasSetPrivacy && hasPassedInviteGate && isOnMainTab;
+  const showNavBar =
+    isAuthenticated &&
+    hasCompletedOnboarding &&
+    hasSetDemographics &&
+    hasSetPrivacy &&
+    hasPassedInviteGate &&
+    isOnMainTab;
 
   function setActivePage(index: number) {
     if (Platform.OS === 'web') {
@@ -60,15 +68,34 @@ function RootNavigator() {
               <Stack.Screen name="onboarding" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && !hasSetPrivacy}>
+            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && !hasSetDemographics}>
+              <Stack.Screen name="demographics" />
+            </Stack.Protected>
+
+            <Stack.Protected
+              guard={isAuthenticated && hasCompletedOnboarding && hasSetDemographics && !hasSetPrivacy}>
               <Stack.Screen name="privacy-choice" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && hasSetPrivacy && !hasPassedInviteGate}>
+            <Stack.Protected
+              guard={
+                isAuthenticated &&
+                hasCompletedOnboarding &&
+                hasSetDemographics &&
+                hasSetPrivacy &&
+                !hasPassedInviteGate
+              }>
               <Stack.Screen name="invite-gate" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && hasSetPrivacy && hasPassedInviteGate}>
+            <Stack.Protected
+              guard={
+                isAuthenticated &&
+                hasCompletedOnboarding &&
+                hasSetDemographics &&
+                hasSetPrivacy &&
+                hasPassedInviteGate
+              }>
               <Stack.Screen name="(tabs)" />
             </Stack.Protected>
           </Stack>
@@ -103,10 +130,20 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProviderWrapper>
         <ThemeProvider value={DarkTheme}>
-          <AuthProvider>
-            <AnimatedSplashOverlay />
-            <RootNavigator />
-          </AuthProvider>
+          {/* Last-resort net for render-phase errors (fetch errors are
+              already caught per-screen via try/catch + setError) — see
+              error-boundary.tsx's own comment for why this matters
+              specifically for this app (no OTA/EAS Update channel
+              configured, so a bad build can't be fast-followed). Inside
+              ThemeProvider so the fallback UI's own ThemedView/ThemedText
+              still resolve theme colors correctly; outside AuthProvider so
+              a crash during auth initialization itself is also caught. */}
+          <ErrorBoundary>
+            <AuthProvider>
+              <AnimatedSplashOverlay />
+              <RootNavigator />
+            </AuthProvider>
+          </ErrorBoundary>
         </ThemeProvider>
       </KeyboardProviderWrapper>
     </GestureHandlerRootView>

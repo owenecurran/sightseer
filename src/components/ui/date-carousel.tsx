@@ -11,7 +11,7 @@ const ITEM_HEIGHT = 40;
 const VISIBLE_ROWS = 3;
 const VIEWPORT_HEIGHT = ITEM_HEIGHT * VISIBLE_ROWS;
 const TOP_PADDING = ITEM_HEIGHT * Math.floor(VISIBLE_ROWS / 2);
-const YEARS_BACK = 10;
+const DEFAULT_YEARS_BACK = 10;
 const MONTH_LABELS = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
@@ -96,9 +96,14 @@ function WheelPicker({ itemCount, selectedIndex, renderLabel, onChange }: WheelP
 type DateCarouselProps = {
   value: string; // ISO date, YYYY-MM-DD
   onChange: (value: string) => void;
+  // How many years back the year wheel spans — defaults to 10 (recent-visit
+  // range, review-form.tsx's use case). A birthdate picker needs far more
+  // (e.g. 100), so this is a prop rather than the module constant it used
+  // to be.
+  yearsBack?: number;
 };
 
-export function DateCarousel({ value, onChange }: DateCarouselProps) {
+export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK }: DateCarouselProps) {
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -112,8 +117,8 @@ export function DateCarousel({ value, onChange }: DateCarouselProps) {
 
   const currentYear = today.getFullYear();
   const years = useMemo(
-    () => Array.from({ length: YEARS_BACK + 1 }, (_, i) => currentYear - YEARS_BACK + i),
-    [currentYear]
+    () => Array.from({ length: yearsBack + 1 }, (_, i) => currentYear - yearsBack + i),
+    [currentYear, yearsBack]
   );
 
   // No future dates — you review places you've already been. Each wheel's

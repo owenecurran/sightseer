@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
@@ -28,6 +28,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Tracks the current session outside React state, so onAuthStateChange's
+  // callback (created once, inside an empty-deps effect) can tell whether a
+  // new session is a *fresh* sign-in without closing over a stale `session`
+  // value from mount time.
+  const sessionRef = useRef<Session | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -38,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } = await supabase.auth.getSession();
       if (!isMounted) return;
 
+      sessionRef.current = initialSession;
       setSession(initialSession);
       if (initialSession) {
         setProfile(await fetchProfile(initialSession.user.id));
@@ -52,8 +58,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
       if (!isMounted) return;
 
+      // A fresh sign-in (no session -> a session) needs its profile fetched
+      // before the root layout's Stack.Protected guards re-evaluate, or
+      // there's a render in between where session is already set but
+      // profile is still whatever it was before (null) — hasCompletedOnboarding
+      // reads false during that exact gap, which briefly routes to the
+      // onboarding screen instead of straight into the app. Re-using
+      // isLoading (which already makes the root layout render nothing
+      // until it's false) closes that gap the same way it already does for
+      // the very first app load. Scoped to just this transition — token
+      // refreshes and sign-outs don't have a stale-profile problem, and
+      // blanking the whole app during a routine background token refresh
+      // would be a worse regression than the bug this fixes.
+      const isFreshSignIn = sessionRef.current === null && nextSession !== null;
+      if (isFreshSignIn) setIsLoading(true);
+
+      sessionRef.current = nextSession;
       setSession(nextSession);
       setProfile(nextSession ? await fetchProfile(nextSession.user.id) : null);
+
+      if (isFreshSignIn) setIsLoading(false);
     });
 
     return () => {

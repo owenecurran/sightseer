@@ -1,29 +1,48 @@
 import { supabase } from '@/lib/supabase';
 
+export type NotificationType =
+  | 'board_item_added'
+  | 'travel_book_item_added'
+  | 'board_saved'
+  | 'travel_book_saved'
+  | 'like'
+  | 'comment'
+  | 'follow'
+  | 'friend_visit'
+  | 'nearby_review_digest';
+
 export type AppNotification = {
   id: string;
-  type: 'board_item_added' | 'travel_book_item_added';
+  type: NotificationType;
+  actorUserId: string | null;
   actorName: string;
   boardId: string | null;
   boardName: string | null;
   travelBookId: string | null;
   travelBookTitle: string | null;
+  visitId: string | null;
+  visitPlaceName: string | null;
+  digestPlaceCount: number | null;
+  digestReviewCount: number | null;
   isRead: boolean;
   createdAt: string;
 };
 
 type RawNotification = {
   id: string;
-  type: 'board_item_added' | 'travel_book_item_added';
+  type: NotificationType;
   is_read: boolean;
   created_at: string;
-  actor: { name: string | null; handle: string | null } | null;
+  digest_place_ids: string[] | null;
+  digest_review_count: number | null;
+  actor: { id: string; name: string | null; handle: string | null } | null;
   board: { id: string; name: string } | null;
   travel_book: { id: string; title: string } | null;
+  visit: { id: string; places: { name: string } | null } | null;
 };
 
 const NOTIFICATION_SELECT =
-  'id, type, is_read, created_at, actor:users!actor_id(name, handle), board:boards!board_id(id, name), travel_book:travel_books!travel_book_id(id, title)';
+  'id, type, is_read, created_at, digest_place_ids, digest_review_count, actor:users!actor_id(id, name, handle), board:boards!board_id(id, name), travel_book:travel_books!travel_book_id(id, title), visit:visits!visit_id(id, places!place_id(name))';
 
 export async function listNotifications(userId: string): Promise<AppNotification[]> {
   const { data, error } = await supabase
@@ -37,11 +56,16 @@ export async function listNotifications(userId: string): Promise<AppNotification
   return (data as unknown as RawNotification[]).map((row) => ({
     id: row.id,
     type: row.type,
+    actorUserId: row.actor?.id ?? null,
     actorName: row.actor?.name ?? row.actor?.handle ?? 'Someone',
     boardId: row.board?.id ?? null,
     boardName: row.board?.name ?? null,
     travelBookId: row.travel_book?.id ?? null,
     travelBookTitle: row.travel_book?.title ?? null,
+    visitId: row.visit?.id ?? null,
+    visitPlaceName: row.visit?.places?.name ?? null,
+    digestPlaceCount: row.digest_place_ids?.length ?? null,
+    digestReviewCount: row.digest_review_count,
     isRead: row.is_read,
     createdAt: row.created_at,
   }));

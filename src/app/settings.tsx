@@ -17,12 +17,21 @@ import { setDiscoverableByContacts, setMyPhoneNumber } from '@/lib/contacts';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 
-type NotificationKey = 'notify_likes' | 'notify_comments' | 'notify_follows';
+type NotificationKey =
+  | 'notify_likes'
+  | 'notify_comments'
+  | 'notify_follows'
+  | 'notify_saves'
+  | 'notify_friend_activity'
+  | 'notify_nearby_reviews';
 
-const NOTIFICATION_OPTIONS: { key: NotificationKey; label: string }[] = [
-  { key: 'notify_likes', label: 'Likes on my visits' },
-  { key: 'notify_comments', label: 'Comments on my visits' },
-  { key: 'notify_follows', label: 'New followers and follow requests' },
+const NOTIFICATION_OPTIONS: { key: NotificationKey; label: string; defaultValue: boolean }[] = [
+  { key: 'notify_likes', label: 'Likes on my visits', defaultValue: true },
+  { key: 'notify_comments', label: 'Comments on my visits', defaultValue: true },
+  { key: 'notify_follows', label: 'New followers and follow requests', defaultValue: true },
+  { key: 'notify_saves', label: 'Someone saves my board or travel book', defaultValue: true },
+  { key: 'notify_friend_activity', label: 'People I follow post a new review', defaultValue: false },
+  { key: 'notify_nearby_reviews', label: 'Weekly digest: new reviews at places I’ve been', defaultValue: false },
 ];
 
 function CheckboxRow({
@@ -172,6 +181,9 @@ export default function SettingsScreen() {
       notify_likes: profile.notify_likes,
       notify_comments: profile.notify_comments,
       notify_follows: profile.notify_follows,
+      notify_saves: profile.notify_saves,
+      notify_friend_activity: profile.notify_friend_activity,
+      notify_nearby_reviews: profile.notify_nearby_reviews,
     };
     update[key] = !profile[key];
     const { error } = await supabase.from('users').update(update).eq('id', session.user.id);
@@ -275,7 +287,7 @@ export default function SettingsScreen() {
               <CheckboxRow
                 key={option.key}
                 label={option.label}
-                checked={profile?.[option.key] ?? true}
+                checked={profile?.[option.key] ?? option.defaultValue}
                 onPress={() => handleToggleNotification(option.key)}
                 disabled={savingNotification === option.key}
               />

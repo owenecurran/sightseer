@@ -351,36 +351,45 @@ export type Database = {
           board_id: string | null
           board_item_id: string | null
           created_at: string
+          digest_place_ids: string[] | null
+          digest_review_count: number | null
           id: string
           is_read: boolean
           recipient_id: string
           travel_book_id: string | null
           travel_book_item_id: string | null
           type: string
+          visit_id: string | null
         }
         Insert: {
           actor_id?: string | null
           board_id?: string | null
           board_item_id?: string | null
           created_at?: string
+          digest_place_ids?: string[] | null
+          digest_review_count?: number | null
           id?: string
           is_read?: boolean
           recipient_id: string
           travel_book_id?: string | null
           travel_book_item_id?: string | null
           type: string
+          visit_id?: string | null
         }
         Update: {
           actor_id?: string | null
           board_id?: string | null
           board_item_id?: string | null
           created_at?: string
+          digest_place_ids?: string[] | null
+          digest_review_count?: number | null
           id?: string
           is_read?: boolean
           recipient_id?: string
           travel_book_id?: string | null
           travel_book_item_id?: string | null
           type?: string
+          visit_id?: string | null
         }
         Relationships: [
           {
@@ -423,6 +432,13 @@ export type Database = {
             columns: ["travel_book_item_id"]
             isOneToOne: false
             referencedRelation: "travel_book_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
             referencedColumns: ["id"]
           },
         ]
@@ -1041,16 +1057,20 @@ export type Database = {
         Row: {
           avatar_r2_key: string | null
           bio: string | null
+          birthdate: string | null
           created_at: string
           discoverable_by_contacts: boolean
           handle: string | null
+          has_set_demographics: boolean
           has_set_privacy: boolean
           has_shared_invite: boolean
           hashed_phone: string | null
+          home_place_id: string | null
           id: string
           invite_exempt: boolean
           is_admin: boolean
           is_private: boolean
+          last_nearby_digest_at: string
           map_default_center_lat: number | null
           map_default_center_lng: number | null
           map_default_layers: string[]
@@ -1058,23 +1078,30 @@ export type Database = {
           name: string | null
           notify_comments: boolean
           notify_follows: boolean
+          notify_friend_activity: boolean
           notify_likes: boolean
+          notify_nearby_reviews: boolean
+          notify_saves: boolean
           profile_section_order: string[] | null
           show_map: boolean
         }
         Insert: {
           avatar_r2_key?: string | null
           bio?: string | null
+          birthdate?: string | null
           created_at?: string
           discoverable_by_contacts?: boolean
           handle?: string | null
+          has_set_demographics?: boolean
           has_set_privacy?: boolean
           has_shared_invite?: boolean
           hashed_phone?: string | null
+          home_place_id?: string | null
           id: string
           invite_exempt?: boolean
           is_admin?: boolean
           is_private?: boolean
+          last_nearby_digest_at?: string
           map_default_center_lat?: number | null
           map_default_center_lng?: number | null
           map_default_layers?: string[]
@@ -1082,23 +1109,30 @@ export type Database = {
           name?: string | null
           notify_comments?: boolean
           notify_follows?: boolean
+          notify_friend_activity?: boolean
           notify_likes?: boolean
+          notify_nearby_reviews?: boolean
+          notify_saves?: boolean
           profile_section_order?: string[] | null
           show_map?: boolean
         }
         Update: {
           avatar_r2_key?: string | null
           bio?: string | null
+          birthdate?: string | null
           created_at?: string
           discoverable_by_contacts?: boolean
           handle?: string | null
+          has_set_demographics?: boolean
           has_set_privacy?: boolean
           has_shared_invite?: boolean
           hashed_phone?: string | null
+          home_place_id?: string | null
           id?: string
           invite_exempt?: boolean
           is_admin?: boolean
           is_private?: boolean
+          last_nearby_digest_at?: string
           map_default_center_lat?: number | null
           map_default_center_lng?: number | null
           map_default_layers?: string[]
@@ -1106,11 +1140,22 @@ export type Database = {
           name?: string | null
           notify_comments?: boolean
           notify_follows?: boolean
+          notify_friend_activity?: boolean
           notify_likes?: boolean
+          notify_nearby_reviews?: boolean
+          notify_saves?: boolean
           profile_section_order?: string[] | null
           show_map?: boolean
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "users_home_place_id_fkey"
+            columns: ["home_place_id"]
+            isOneToOne: false
+            referencedRelation: "places"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       visit_tagged_places: {
         Row: {
@@ -1634,6 +1679,7 @@ export type Database = {
           state_name: string
         }[]
       }
+      run_nearby_review_digest: { Args: never; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       st_3dclosestpoint: {
