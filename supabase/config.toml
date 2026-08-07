@@ -438,6 +438,12 @@ entrypoint = "./functions/create-photo-upload-url/index.ts"
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/create-photo-upload-url/*.html" ]
 
+[functions.create-draft-photo-upload-url]
+enabled = true
+verify_jwt = false
+import_map = "./functions/create-draft-photo-upload-url/deno.json"
+entrypoint = "./functions/create-draft-photo-upload-url/index.ts"
+
 [functions.get-photo-urls]
 enabled = true
 verify_jwt = false

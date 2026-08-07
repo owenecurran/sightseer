@@ -1,10 +1,14 @@
 import { router } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { useTabFocusEffect } from '@/hooks/use-tab-pager';
+import { useAuth } from '@/lib/auth-context';
+import { countMyDrafts } from '@/lib/drafts';
 
 // The add-circle nav tab used to land straight on the review form (now
 // review-form.tsx) — this chooser sits in front of it so "New travel book"
@@ -12,16 +16,44 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 // or tab-routes.ts (this file is already what setActivePage(2) resolves to
 // on both native and web).
 export default function CreateChooserScreen() {
+  const { session } = useAuth();
+  const [draftCount, setDraftCount] = useState(0);
+
+  useTabFocusEffect(
+    2,
+    useCallback(() => {
+      if (!session) return;
+      countMyDrafts(session.user.id).then(setDraftCount);
+    }, [session])
+  );
+
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedText type="displaySerif">Create</ThemedText>
+
+        {draftCount > 0 && (
+          <Pressable onPress={() => router.push('/drafts')}>
+            <ThemedText type="link">
+              You have {draftCount} draft{draftCount === 1 ? '' : 's'} →
+            </ThemedText>
+          </Pressable>
+        )}
 
         <Pressable onPress={() => router.push('/review-form')}>
           <ThemedView type="backgroundElement" style={styles.optionCard}>
             <ThemedText type="headline">New review</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               Log a visit to a place you've been.
+            </ThemedText>
+          </ThemedView>
+        </Pressable>
+
+        <Pressable onPress={() => router.push('/bulk-upload')}>
+          <ThemedView type="backgroundElement" style={styles.optionCard}>
+            <ThemedText type="headline">Bulk upload</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Turn a batch of photos into starting drafts, one per place.
             </ThemedText>
           </ThemedView>
         </Pressable>

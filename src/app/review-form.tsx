@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -19,8 +20,10 @@ import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
+import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
+import { deleteDraftPhoto, getDraftForEdit, publishDraft, updateDraftFields, uploadPhotoForDraft } from '@/lib/drafts';
 import {
   autocompletePlaces,
   createPlacesSessionToken,
@@ -32,6 +35,20 @@ import { cachePlaceHierarchy, getPlaceBreadcrumb } from '@/lib/places-cache';
 import { uploadPhotoForVisit } from '@/lib/photo-upload';
 import { searchUsers } from '@/lib/search';
 import { supabase } from '@/lib/supabase';
+
+// Mirrors edit-visit/[id].tsx's own PhotoSlot pattern — needed only for
+// resuming a draft, which (unlike a fresh review) can arrive with photos
+// already uploaded. The fresh-review path below keeps its original
+// pendingPhotos/uploadedPhotoUris pair untouched.
+type PhotoSlot =
+  | { kind: 'existing'; id: string; url: string; position: number }
+  | { kind: 'new'; uri: string; width: number; height: number };
+
+type CropTarget =
+  | { kind: 'pending' }
+  | { kind: 'after-save' }
+  | { kind: 'draft-new' }
+  | { kind: 'draft-recrop'; index: number };
 
 const DEBOUNCE_MS = 300;
 
@@ -49,15 +66,26 @@ function todayIsoDate(): string {
 
 export default function ReviewFormScreen() {
   const { session } = useAuth();
-  const { placeId } = useLocalSearchParams<{ placeId?: string }>();
+  const theme = useTheme();
+  const { placeId, draftId } = useLocalSearchParams<{ placeId?: string; draftId?: string }>();
   const bottomInset = useBottomTabInset();
   const [error, setError] = useState<string | null>(null);
   // Arriving fresh (no placeId already picked, e.g. place/[id].tsx's "Add
   // your review") goes straight to the map instead of requiring an extra tap
   // on "Search for a place" first — that button/label still render as a
   // fallback (and a way to change the place later) once the picker's closed.
-  const [isPickerOpen, setIsPickerOpen] = useState(!placeId);
+  // A draftId arrival doesn't auto-open either way — the draft-load effect
+  // below decides, once it knows whether that draft already has a place.
+  const [isPickerOpen, setIsPickerOpen] = useState(!placeId && !draftId);
   const scrollHandler = useHideOnScrollHandler();
+
+  // Set once a draft has been loaded (or once one's been published this
+  // session, back to null — see handleSaveVisit) — gates which photo model
+  // and which button label render, and whether handlePlaceSelected resets
+  // the rest of the form.
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(draftId ?? null);
+  const [photoSlots, setPhotoSlots] = useState<PhotoSlot[]>([]);
+  const [deletedPhotoIds, setDeletedPhotoIds] = useState<string[]>([]);
 
   const [selectedPlace, setSelectedPlace] = useState<PlaceRow | null>(null);
   const [breadcrumb, setBreadcrumb] = useState('');
@@ -73,9 +101,7 @@ export default function ReviewFormScreen() {
   const [pendingPhotos, setPendingPhotos] = useState<CroppedPhoto[]>([]);
   const [uploadedPhotoUris, setUploadedPhotoUris] = useState<string[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-  const [cropSource, setCropSource] = useState<{ uri: string; target: 'pending' | 'after-save' } | null>(
-    null
-  );
+  const [cropSource, setCropSource] = useState<{ uri: string; target: CropTarget } | null>(null);
 
   const [tagQuery, setTagQuery] = useState('');
   const [tagSuggestions, setTagSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
@@ -152,6 +178,11 @@ export default function ReviewFormScreen() {
       const crumb = await getPlaceBreadcrumb(place);
       setSelectedPlace(place);
       setBreadcrumb(crumb);
+      // Resuming a draft: this might just be correcting an auto-picked
+      // place (or resolving a "needs a location" one) — keep whatever
+      // rating/note/photos/tags the draft already has instead of wiping
+      // them like a genuinely fresh place pick does below.
+      if (currentDraftId) return;
       setRating(null);
       setNote('');
       setVisitedOn(todayIsoDate());
@@ -197,6 +228,37 @@ export default function ReviewFormScreen() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [placeId]);
+
+  // Arriving from drafts.tsx to resume an unfinished review. Seeds every
+  // field the draft already has; a place-less draft ("Needs a location")
+  // forces the picker open immediately instead of showing a blank form with
+  // no way to reach it (mirrors the fresh-arrival isPickerOpen behavior).
+  useEffect(() => {
+    if (!draftId || !session) return;
+    (async () => {
+      try {
+        const draft = await getDraftForEdit(draftId, session.user.id);
+        if (!draft) {
+          setError('This draft is no longer available.');
+          return;
+        }
+        setCurrentDraftId(draft.id);
+        setRating(draft.rating);
+        setNote(draft.note ?? '');
+        setVisitedOn(draft.visitedOn);
+        setPhotoSlots(draft.photos.map((p) => ({ kind: 'existing', id: p.id, url: p.url, position: p.position })));
+        if (draft.place) {
+          setSelectedPlace(draft.place);
+          setBreadcrumb(await getPlaceBreadcrumb(draft.place));
+        } else {
+          setIsPickerOpen(true);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not load that draft.');
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId, session]);
 
   async function handleSelectTag(suggestion: PlaceAutocompleteSuggestion) {
     setError(null);
@@ -249,14 +311,34 @@ export default function ReviewFormScreen() {
     if (pendingPhotos.length + uploadedPhotoUris.length >= MAX_VISIT_PHOTOS) return;
     setError(null);
     const asset = await pickImage();
-    if (asset) setCropSource({ uri: asset.uri, target: 'pending' });
+    if (asset) setCropSource({ uri: asset.uri, target: { kind: 'pending' } });
   }
 
   async function handleAddPhotoAfterSave() {
     if (!savedVisitId || uploadedPhotoUris.length >= MAX_VISIT_PHOTOS) return;
     setError(null);
     const asset = await pickImage();
-    if (asset) setCropSource({ uri: asset.uri, target: 'after-save' });
+    if (asset) setCropSource({ uri: asset.uri, target: { kind: 'after-save' } });
+  }
+
+  // Draft-resume photo handling — mirrors edit-visit/[id].tsx's
+  // handleAddPhoto/handleRecropSlot/handleRemoveSlot exactly.
+  async function handleAddDraftPhoto() {
+    if (photoSlots.length >= MAX_VISIT_PHOTOS) return;
+    setError(null);
+    const asset = await pickImage();
+    if (asset) setCropSource({ uri: asset.uri, target: { kind: 'draft-new' } });
+  }
+
+  function handleRecropDraftSlot(index: number) {
+    const slot = photoSlots[index];
+    setCropSource({ uri: slot.kind === 'existing' ? slot.url : slot.uri, target: { kind: 'draft-recrop', index } });
+  }
+
+  function handleRemoveDraftSlot(index: number) {
+    const slot = photoSlots[index];
+    if (slot.kind === 'existing') setDeletedPhotoIds((prev) => [...prev, slot.id]);
+    setPhotoSlots((prev) => prev.filter((_, i) => i !== index));
   }
 
   function handleCropCancel() {
@@ -266,13 +348,14 @@ export default function ReviewFormScreen() {
   async function handleCropConfirm(result: CroppedPhoto) {
     const target = cropSource?.target;
     setCropSource(null);
+    if (!target) return;
 
-    if (target === 'pending') {
+    if (target.kind === 'pending') {
       setPendingPhotos((prev) => [...prev, result]);
       return;
     }
 
-    if (target === 'after-save' && savedVisitId) {
+    if (target.kind === 'after-save' && savedVisitId) {
       setIsUploadingPhoto(true);
       try {
         await uploadPhotoForVisit({
@@ -289,6 +372,23 @@ export default function ReviewFormScreen() {
       } finally {
         setIsUploadingPhoto(false);
       }
+      return;
+    }
+
+    const newSlot: PhotoSlot = { kind: 'new', uri: result.uri, width: result.width, height: result.height };
+
+    if (target.kind === 'draft-new') {
+      setPhotoSlots((prev) => [...prev, newSlot]);
+      return;
+    }
+
+    if (target.kind === 'draft-recrop') {
+      const recropIndex = target.index;
+      setPhotoSlots((prev) => {
+        const existingSlot = prev[recropIndex];
+        if (existingSlot.kind === 'existing') setDeletedPhotoIds((ids) => [...ids, existingSlot.id]);
+        return prev.map((slot, i) => (i === recropIndex ? newSlot : slot));
+      });
     }
   }
 
@@ -296,55 +396,105 @@ export default function ReviewFormScreen() {
     if (!session || !selectedPlace) return;
     setError(null);
     setIsSavingVisit(true);
+    const isPublishingDraft = currentDraftId != null;
     try {
-      const { data, error: insertError } = await supabase
-        .from('visits')
-        .insert({
-          user_id: session.user.id,
-          place_id: selectedPlace.id,
+      let visitId: string;
+
+      if (isPublishingDraft && currentDraftId) {
+        await updateDraftFields(currentDraftId, {
+          placeId: selectedPlace.id,
           rating,
           note: note.trim() || null,
-          visited_on: visitedOn,
-        })
-        .select()
-        .single();
-      if (insertError) throw insertError;
-      setSavedVisitId(data.id);
+          visitedOn,
+        });
+
+        for (const photoId of deletedPhotoIds) {
+          await deleteDraftPhoto(photoId);
+        }
+
+        // New photos are appended after every kept existing photo's own
+        // position — matches edit-visit/[id].tsx's identical position math.
+        const maxExistingPosition = photoSlots.reduce(
+          (max, slot) => (slot.kind === 'existing' ? Math.max(max, slot.position) : max),
+          -1
+        );
+        let nextPosition = maxExistingPosition + 1;
+        for (const slot of photoSlots) {
+          if (slot.kind !== 'new') continue;
+          await uploadPhotoForDraft({
+            draftId: currentDraftId,
+            uri: slot.uri,
+            mimeType: 'image/jpeg',
+            width: slot.width,
+            height: slot.height,
+            position: nextPosition,
+          });
+          nextPosition += 1;
+        }
+
+        visitId = await publishDraft(currentDraftId);
+        setUploadedPhotoUris([
+          ...photoSlots.filter((slot) => slot.kind === 'existing').map((slot) => slot.url),
+          ...photoSlots.filter((slot) => slot.kind === 'new').map((slot) => slot.uri),
+        ]);
+        setCurrentDraftId(null);
+      } else {
+        const { data, error: insertError } = await supabase
+          .from('visits')
+          .insert({
+            user_id: session.user.id,
+            place_id: selectedPlace.id,
+            rating,
+            note: note.trim() || null,
+            visited_on: visitedOn,
+          })
+          .select()
+          .single();
+        if (insertError) throw insertError;
+        visitId = data.id;
+      }
+
+      setSavedVisitId(visitId);
 
       if (taggedPlaces.length > 0) {
         await supabase
           .from('visit_tagged_places')
-          .insert(taggedPlaces.map((place) => ({ visit_id: data.id, place_id: place.id })));
+          .insert(taggedPlaces.map((place) => ({ visit_id: visitId, place_id: place.id })));
       }
 
       if (taggedUsers.length > 0) {
         await supabase
           .from('visit_tagged_users')
-          .insert(taggedUsers.map((user) => ({ visit_id: data.id, user_id: user.id })));
+          .insert(taggedUsers.map((user) => ({ visit_id: visitId, user_id: user.id })));
       }
 
-      const stillPending: CroppedPhoto[] = [];
-      for (const [index, asset] of pendingPhotos.entries()) {
-        try {
-          await uploadPhotoForVisit({
-            visitId: data.id,
-            uri: asset.uri,
-            mimeType: 'image/jpeg',
-            width: asset.width,
-            height: asset.height,
-            position: index,
-          });
-          setUploadedPhotoUris((prev) => [...prev, asset.uri]);
-        } catch {
-          stillPending.push(asset);
+      // The draft path already uploaded its new photo slots above, before
+      // publish_draft ran — only the fresh-review path still has photos
+      // waiting to go up.
+      if (!isPublishingDraft) {
+        const stillPending: CroppedPhoto[] = [];
+        for (const [index, asset] of pendingPhotos.entries()) {
+          try {
+            await uploadPhotoForVisit({
+              visitId,
+              uri: asset.uri,
+              mimeType: 'image/jpeg',
+              width: asset.width,
+              height: asset.height,
+              position: index,
+            });
+            setUploadedPhotoUris((prev) => [...prev, asset.uri]);
+          } catch {
+            stillPending.push(asset);
+          }
+        }
+        setPendingPhotos(stillPending);
+        if (stillPending.length > 0) {
+          setError(`Visit saved, but ${stillPending.length} photo(s) failed to upload — try again below.`);
         }
       }
-      setPendingPhotos(stillPending);
-      if (stillPending.length > 0) {
-        setError(`Visit saved, but ${stillPending.length} photo(s) failed to upload — try again below.`);
-      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that visit.');
+      setError(err instanceof Error ? err.message : isPublishingDraft ? 'Could not publish that draft.' : 'Could not save that visit.');
     } finally {
       setIsSavingVisit(false);
     }
@@ -381,24 +531,59 @@ export default function ReviewFormScreen() {
               <ThemedView style={styles.form}>
                 <RatingSlider value={rating} onChange={setRating} />
 
-                <View style={styles.photoSection}>
-                  {(pendingPhotos.length > 0 || uploadedPhotoUris.length > 0) && (
-                    <View style={styles.photoRow}>
-                      {pendingPhotos.map((asset, index) => (
-                        <Pressable key={asset.uri} onPress={() => handleRemovePendingPhoto(index)}>
-                          <Image source={{ uri: asset.uri }} style={styles.photoThumbnail} />
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-                  {totalPhotoCount < MAX_VISIT_PHOTOS && (
-                    <Button
-                      label={`Add photo (${totalPhotoCount}/${MAX_VISIT_PHOTOS})`}
-                      variant="secondary"
-                      onPress={handlePickPhoto}
-                    />
-                  )}
-                </View>
+                {currentDraftId ? (
+                  <View style={styles.photoSection}>
+                    {photoSlots.length > 0 && (
+                      <View style={styles.photoRow}>
+                        {photoSlots.map((slot, index) => (
+                          <Pressable
+                            key={slot.kind === 'existing' ? slot.id : slot.uri}
+                            onPress={() => handleRecropDraftSlot(index)}
+                            style={styles.photoTile}>
+                            <Image source={{ uri: slot.kind === 'existing' ? slot.url : slot.uri }} style={styles.photoThumbnail} />
+                            <Pressable
+                              onPress={() => handleRemoveDraftSlot(index)}
+                              hitSlop={8}
+                              style={[styles.removeBadge, { backgroundColor: theme.background }]}>
+                              <Ionicons name="close" size={14} color={theme.text} />
+                            </Pressable>
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                    {photoSlots.length < MAX_VISIT_PHOTOS && (
+                      <Button
+                        label={`Add photo (${photoSlots.length}/${MAX_VISIT_PHOTOS})`}
+                        variant="secondary"
+                        onPress={handleAddDraftPhoto}
+                      />
+                    )}
+                    {photoSlots.length > 0 && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Tap a photo to recrop it.
+                      </ThemedText>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.photoSection}>
+                    {(pendingPhotos.length > 0 || uploadedPhotoUris.length > 0) && (
+                      <View style={styles.photoRow}>
+                        {pendingPhotos.map((asset, index) => (
+                          <Pressable key={asset.uri} onPress={() => handleRemovePendingPhoto(index)}>
+                            <Image source={{ uri: asset.uri }} style={styles.photoThumbnail} />
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                    {totalPhotoCount < MAX_VISIT_PHOTOS && (
+                      <Button
+                        label={`Add photo (${totalPhotoCount}/${MAX_VISIT_PHOTOS})`}
+                        variant="secondary"
+                        onPress={handlePickPhoto}
+                      />
+                    )}
+                  </View>
+                )}
 
                 <TextField
                   placeholder="Note (optional)"
@@ -474,7 +659,7 @@ export default function ReviewFormScreen() {
                 </View>
 
                 <Button
-                  label="Save visit"
+                  label={currentDraftId ? 'Publish' : 'Save visit'}
                   onPress={handleSaveVisit}
                   loading={isSavingVisit}
                 />
@@ -568,6 +753,20 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: Spacing.two,
+  },
+  photoTile: {
+    width: 64,
+    height: 64,
+  },
+  removeBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tagSection: {
     gap: Spacing.two,

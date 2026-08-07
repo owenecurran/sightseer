@@ -276,6 +276,54 @@ export type Database = {
           },
         ]
       }
+      draft_visits: {
+        Row: {
+          created_at: string
+          id: string
+          note: string | null
+          place_id: string | null
+          rating: number | null
+          updated_at: string
+          user_id: string
+          visited_on: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          place_id?: string | null
+          rating?: number | null
+          updated_at?: string
+          user_id: string
+          visited_on: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          note?: string | null
+          place_id?: string | null
+          rating?: number | null
+          updated_at?: string
+          user_id?: string
+          visited_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "draft_visits_place_id_fkey"
+            columns: ["place_id"]
+            isOneToOne: false
+            referencedRelation: "places"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "draft_visits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       follows: {
         Row: {
           created_at: string
@@ -446,32 +494,42 @@ export type Database = {
       photos: {
         Row: {
           created_at: string
+          draft_visit_id: string | null
           height: number | null
           id: string
           position: number
           r2_key: string
-          visit_id: string
+          visit_id: string | null
           width: number | null
         }
         Insert: {
           created_at?: string
+          draft_visit_id?: string | null
           height?: number | null
           id?: string
           position?: number
           r2_key: string
-          visit_id: string
+          visit_id?: string | null
           width?: number | null
         }
         Update: {
           created_at?: string
+          draft_visit_id?: string | null
           height?: number | null
           id?: string
           position?: number
           r2_key?: string
-          visit_id?: string
+          visit_id?: string | null
           width?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "photos_draft_visit_id_fkey"
+            columns: ["draft_visit_id"]
+            isOneToOne: false
+            referencedRelation: "draft_visits"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "photos_visit_id_fkey"
             columns: ["visit_id"]
@@ -1671,6 +1729,7 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      publish_draft: { Args: { draft_id: string }; Returns: string }
       resolve_state_countries: {
         Args: { place_ids: string[] }
         Returns: {
