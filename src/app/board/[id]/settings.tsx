@@ -8,7 +8,7 @@ import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
-import { updateBoardListStyle, updateBoardPrivacy } from '@/lib/boards';
+import { setBoardFeatured, updateBoardListStyle, updateBoardPrivacy } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 
@@ -22,7 +22,7 @@ const LIST_STYLES: { key: ListStyle; label: string; description: string }[] = [
 
 export default function BoardSettingsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const [board, setBoard] = useState<BoardRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -66,9 +66,22 @@ export default function BoardSettingsScreen() {
     }
   }
 
+  async function handleToggleFeatured() {
+    if (!board) return;
+    const next = !board.is_featured;
+    setBoard({ ...board, is_featured: next });
+    try {
+      await setBoardFeatured(board.id, next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update featured status.');
+      setBoard((prev) => (prev ? { ...prev, is_featured: !next } : prev));
+    }
+  }
+
   if (!hasLoadedOnce) return <PageLoader />;
 
   const isOwner = Boolean(session && board && session.user.id === board.user_id);
+  const isAdmin = Boolean(profile?.is_admin);
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -80,34 +93,47 @@ export default function BoardSettingsScreen() {
 
           <ThemedText type="displaySerif">Board settings</ThemedText>
 
-          {!isOwner ? (
+          {!isOwner && !isAdmin ? (
             <ThemedText type="small" themeColor="textSecondary">
               Only this board's owner can change its settings.
             </ThemedText>
           ) : (
             <>
-              <View style={styles.group}>
-                <ThemedText type="sectionLabel">Ranking</ThemedText>
-                {LIST_STYLES.map((style) => (
-                  <Pressable key={style.key} onPress={() => handleSetListStyle(style.key)}>
-                    <ThemedView
-                      type={board?.list_style === style.key ? 'backgroundSelected' : 'backgroundElement'}
-                      style={styles.option}>
-                      <ThemedText type="headline">{style.label}</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {style.description}
-                      </ThemedText>
-                    </ThemedView>
-                  </Pressable>
-                ))}
-              </View>
+              {isOwner && (
+                <>
+                  <View style={styles.group}>
+                    <ThemedText type="sectionLabel">Ranking</ThemedText>
+                    {LIST_STYLES.map((style) => (
+                      <Pressable key={style.key} onPress={() => handleSetListStyle(style.key)}>
+                        <ThemedView
+                          type={board?.list_style === style.key ? 'backgroundSelected' : 'backgroundElement'}
+                          style={styles.option}>
+                          <ThemedText type="headline">{style.label}</ThemedText>
+                          <ThemedText type="small" themeColor="textSecondary">
+                            {style.description}
+                          </ThemedText>
+                        </ThemedView>
+                      </Pressable>
+                    ))}
+                  </View>
 
-              <Pressable onPress={handleTogglePrivate} style={styles.toggleRow}>
-                <ThemedView type={board?.is_private ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                  {board?.is_private && <ThemedText type="smallBold">✓</ThemedText>}
-                </ThemedView>
-                <ThemedText type="small">Private — only visible to people who can already see my content</ThemedText>
-              </Pressable>
+                  <Pressable onPress={handleTogglePrivate} style={styles.toggleRow}>
+                    <ThemedView type={board?.is_private ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
+                      {board?.is_private && <ThemedText type="smallBold">✓</ThemedText>}
+                    </ThemedView>
+                    <ThemedText type="small">Private — only visible to people who can already see my content</ThemedText>
+                  </Pressable>
+                </>
+              )}
+
+              {isAdmin && (
+                <Pressable onPress={handleToggleFeatured} style={styles.toggleRow}>
+                  <ThemedView type={board?.is_featured ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
+                    {board?.is_featured && <ThemedText type="smallBold">✓</ThemedText>}
+                  </ThemedView>
+                  <ThemedText type="small">Featured — shown on everyone's Discover tab</ThemedText>
+                </Pressable>
+              )}
             </>
           )}
 

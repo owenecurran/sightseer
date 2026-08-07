@@ -39,6 +39,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      articles: {
+        Row: {
+          author_id: string
+          body: string
+          cover_photo_r2_key: string | null
+          created_at: string
+          id: string
+          published_at: string | null
+          subtitle: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          cover_photo_r2_key?: string | null
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          subtitle?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          cover_photo_r2_key?: string | null
+          created_at?: string
+          id?: string
+          published_at?: string | null
+          subtitle?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "articles_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blocks: {
         Row: {
           blocked_id: string
@@ -188,6 +232,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          is_featured: boolean
           is_private: boolean
           list_style: string
           name: string
@@ -201,6 +246,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_featured?: boolean
           is_private?: boolean
           list_style?: string
           name: string
@@ -214,6 +260,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_featured?: boolean
           is_private?: boolean
           list_style?: string
           name?: string
@@ -1118,6 +1165,7 @@ export type Database = {
           birthdate: string | null
           created_at: string
           discoverable_by_contacts: boolean
+          feed_last_viewed_at: string | null
           handle: string | null
           has_set_demographics: boolean
           has_set_privacy: boolean
@@ -1149,6 +1197,7 @@ export type Database = {
           birthdate?: string | null
           created_at?: string
           discoverable_by_contacts?: boolean
+          feed_last_viewed_at?: string | null
           handle?: string | null
           has_set_demographics?: boolean
           has_set_privacy?: boolean
@@ -1180,6 +1229,7 @@ export type Database = {
           birthdate?: string | null
           created_at?: string
           discoverable_by_contacts?: boolean
+          feed_last_viewed_at?: string | null
           handle?: string | null
           has_set_demographics?: boolean
           has_set_privacy?: boolean
@@ -1660,6 +1710,17 @@ export type Database = {
         Args: { target_place_id: string }
         Returns: {
           avg_rating: number
+          review_count: number
+        }[]
+      }
+      get_popular_places: {
+        Args: { result_limit?: number }
+        Returns: {
+          avg_rating: number
+          lat: number
+          lng: number
+          name: string
+          place_id: string
           review_count: number
         }[]
       }

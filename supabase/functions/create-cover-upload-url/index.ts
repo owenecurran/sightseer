@@ -5,7 +5,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const ALLOWED_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const UPLOAD_URL_TTL_SECONDS = 300;
-const ALLOWED_TABLES = ["boards", "travel_books"] as const;
+const ALLOWED_TABLES = ["boards", "travel_books", "articles"] as const;
 
 const s3 = new S3Client({
   region: "auto",
@@ -33,17 +33,36 @@ export default {
       return Response.json({ error: "Invalid contentType" }, { status: 400 });
     }
 
-    const { data: owned, error: ownError } = await ctx.supabase
-      .from(table)
-      .select("id")
-      .eq("id", id)
-      .eq("user_id", ctx.userClaims.id)
-      .maybeSingle();
-    if (ownError) {
-      return Response.json({ error: ownError.message }, { status: 500 });
-    }
-    if (!owned) {
-      return Response.json({ error: "Not found or not yours" }, { status: 404 });
+    // articles has no user_id (it's author_id, the authoring admin, not
+    // per-row ownership) — the check there is "are you an admin at all",
+    // not "do you own this specific row", matching articles_update_admin's
+    // own RLS shape.
+    if (table === "articles") {
+      const { data: adminRow, error: adminError } = await ctx.supabase
+        .from("users")
+        .select("id")
+        .eq("id", ctx.userClaims.id)
+        .eq("is_admin", true)
+        .maybeSingle();
+      if (adminError) {
+        return Response.json({ error: adminError.message }, { status: 500 });
+      }
+      if (!adminRow) {
+        return Response.json({ error: "Not found or not yours" }, { status: 404 });
+      }
+    } else {
+      const { data: owned, error: ownError } = await ctx.supabase
+        .from(table)
+        .select("id")
+        .eq("id", id)
+        .eq("user_id", ctx.userClaims.id)
+        .maybeSingle();
+      if (ownError) {
+        return Response.json({ error: ownError.message }, { status: 500 });
+      }
+      if (!owned) {
+        return Response.json({ error: "Not found or not yours" }, { status: 404 });
+      }
     }
 
     const extension = contentType.split("/")[1];

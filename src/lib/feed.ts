@@ -162,7 +162,11 @@ export async function getVisitsForPlace(placeId: string, myUserId: string): Prom
 
 export type FeedItem =
   | { type: 'visit'; sortKey: string; visit: FeedVisit }
-  | { type: 'recap'; sortKey: string; recap: FeedRecap };
+  | { type: 'recap'; sortKey: string; recap: FeedRecap }
+  // Not returned by getFeedItems itself — inserted client-side by
+  // (tabs)/index.tsx to mark the boundary between items posted since the
+  // viewer's last feed visit and items already seen before.
+  | { type: 'divider'; sortKey: '' };
 
 // Merges the follow-feed's two independent sources (visits, published
 // travel-book recaps) client-side by timestamp — there's no DB view/union

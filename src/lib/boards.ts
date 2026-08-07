@@ -327,3 +327,24 @@ export async function updateBoardPrivacy(boardId: string, isPrivate: boolean): P
   const { error } = await supabase.from('boards').update({ is_private: isPrivate }).eq('id', boardId);
   if (error) throw error;
 }
+
+// Admin-only in practice — authorized by the additive boards_update_admin
+// RLS policy (full-row grant, same trust model as visits_delete_admin),
+// not by anything this function checks client-side.
+export async function setBoardFeatured(boardId: string, featured: boolean): Promise<void> {
+  const { error } = await supabase.from('boards').update({ is_featured: featured }).eq('id', boardId);
+  if (error) throw error;
+}
+
+// No RPC needed — boards_select RLS already scopes results correctly per
+// caller (a featured-but-private board still only shows to its owner).
+export async function listFeaturedBoards(limit = 5): Promise<BoardRow[]> {
+  const { data, error } = await supabase
+    .from('boards')
+    .select('*')
+    .eq('is_featured', true)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data;
+}

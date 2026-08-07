@@ -6,6 +6,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CommentsThread } from '@/components/comments-section';
+import { DiscoverView } from '@/components/discover-view';
+import { FeedSwitcher, type FeedMode } from '@/components/feed-switcher';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -26,6 +28,7 @@ import { getUnreadNotificationCount } from '@/lib/notifications';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { getRecapCoverUrls, type FeedRecap } from '@/lib/travel-book-recaps';
 import { shareText } from '@/lib/share';
+import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/hooks/use-theme';
 
 function formatAuthorLine(authorName: string, taggedUserNames: string[]): string {
@@ -56,9 +59,10 @@ function ordinal(n: number): string {
 }
 
 export default function HomeScreen() {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const theme = useTheme();
   const bottomInset = useBottomTabInset();
+  const [viewMode, setViewMode] = useState<FeedMode>('feed');
   const [items, setItems] = useState<FeedItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
@@ -69,6 +73,9 @@ export default function HomeScreen() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [copiedVisitId, setCopiedVisitId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  // Captured once per screen focus, before feed_last_viewed_at gets bumped
+  // to now() below — this is the boundary "already seen" divider needs.
+  const [previousViewedAt] = useState(() => profile?.feed_last_viewed_at ?? null);
   const scrollHandler = useHideOnScrollHandler();
 
   const loadFeed = useCallback(async () => {
@@ -111,6 +118,18 @@ export default function HomeScreen() {
         getUnreadNotificationCount(session.user.id)
           .then(setUnreadCount)
           .catch(() => {});
+        // Fire-and-forget — bumps the boundary for the *next* visit.
+        // previousViewedAt (captured once at mount) stays fixed for this
+        // whole session, so the divider doesn't jump around as the user
+        // swipes between tabs and back.
+        supabase
+          .from('users')
+          .update({ feed_last_viewed_at: new Date().toISOString() })
+          .eq('id', session.user.id)
+          .then(
+            () => {},
+            () => {}
+          );
       }
     }, [loadFeed, session])
   );
@@ -175,6 +194,17 @@ export default function HomeScreen() {
 
   if (!hasLoadedOnce) return <PageLoader />;
 
+  // Splice a divider in right before the first item posted before this
+  // viewer's last feed visit — skipped entirely on a first-ever visit
+  // (previousViewedAt null) or when nothing's new since last time (boundary
+  // at index 0, which would just be a pointless divider at the very top).
+  const displayItems: FeedItem[] = (() => {
+    if (!previousViewedAt) return items;
+    const boundaryIndex = items.findIndex((item) => item.sortKey <= previousViewedAt);
+    if (boundaryIndex <= 0) return items;
+    return [...items.slice(0, boundaryIndex), { type: 'divider', sortKey: '' } as const, ...items.slice(boundaryIndex)];
+  })();
+
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -192,47 +222,61 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
+        <FeedSwitcher active={viewMode} onChange={setViewMode} />
+
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
             {error}
           </ThemedText>
         )}
 
-        {!isLoading && items.length === 0 && (
-          <ThemedText type="small" themeColor="textSecondary">
-            No visits yet from people you follow. Follow someone from the People tab, or check back
-            once they log a visit.
-          </ThemedText>
-        )}
+        {viewMode === 'discover' ? (
+          <DiscoverView />
+        ) : (
+          <>
+            {!isLoading && items.length === 0 && (
+              <ThemedText type="small" themeColor="textSecondary">
+                No visits yet from people you follow. Follow someone from the People tab, or check back
+                once they log a visit.
+              </ThemedText>
+            )}
 
-        <Animated.FlatList
-          data={items}
-          keyExtractor={(item: FeedItem) => (item.type === 'visit' ? `visit-${item.visit.id}` : `recap-${item.recap.id}`)}
-          contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
-          showsVerticalScrollIndicator={false}
-          onScroll={scrollHandler}
-          scrollEventThrottle={16}
-          refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={theme.sage} />
-          }
-          renderItem={({ item }: { item: FeedItem }) =>
-            item.type === 'recap' ? (
-              <RecapCard recap={item.recap} avatarUrl={avatarUrls[item.recap.authorId]} coverUrl={recapCoverUrls[item.recap.id]} />
-            ) : (
-              <VisitCard
-                visit={item.visit}
-                photoUrls={photoUrls}
-                avatarUrl={avatarUrls[item.visit.user_id]}
-                isOwner={session?.user.id === item.visit.user_id}
-                isCopied={copiedVisitId === item.visit.id}
-                onToggleLike={() => handleToggleLike(item.visit)}
-                onShare={() => handleShareVisit(item.visit)}
-                onDeleted={() => handleVisitDeleted(item.visit.id)}
-                theme={theme}
-              />
-            )
-          }
-        />
+            <Animated.FlatList
+              data={displayItems}
+              keyExtractor={(item: FeedItem) =>
+                item.type === 'visit' ? `visit-${item.visit.id}` : item.type === 'recap' ? `recap-${item.recap.id}` : 'divider'
+              }
+              contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
+              showsVerticalScrollIndicator={false}
+              onScroll={scrollHandler}
+              scrollEventThrottle={16}
+              refreshControl={
+                <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={theme.sage} />
+              }
+              renderItem={({ item }: { item: FeedItem }) =>
+                item.type === 'divider' ? (
+                  <ThemedText type="sectionLabel" style={styles.dividerText}>
+                    Already seen
+                  </ThemedText>
+                ) : item.type === 'recap' ? (
+                  <RecapCard recap={item.recap} avatarUrl={avatarUrls[item.recap.authorId]} coverUrl={recapCoverUrls[item.recap.id]} />
+                ) : (
+                  <VisitCard
+                    visit={item.visit}
+                    photoUrls={photoUrls}
+                    avatarUrl={avatarUrls[item.visit.user_id]}
+                    isOwner={session?.user.id === item.visit.user_id}
+                    isCopied={copiedVisitId === item.visit.id}
+                    onToggleLike={() => handleToggleLike(item.visit)}
+                    onShare={() => handleShareVisit(item.visit)}
+                    onDeleted={() => handleVisitDeleted(item.visit.id)}
+                    theme={theme}
+                  />
+                )
+              }
+            />
+          </>
+        )}
       </SafeAreaView>
     </ThemedView>
   );
@@ -436,6 +480,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  dividerText: {
+    textAlign: 'center',
   },
   bellButton: {
     position: 'relative',

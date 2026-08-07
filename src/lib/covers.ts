@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-export type CoverTable = 'boards' | 'travel_books';
+export type CoverTable = 'boards' | 'travel_books' | 'articles';
 
 type UploadCoverParams = {
   table: CoverTable;

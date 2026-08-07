@@ -17,7 +17,8 @@ export type ThemedTextProps = TextProps & {
     | 'headline'
     | 'statLine'
     | 'roundedStat'
-    | 'sectionLabel';
+    | 'sectionLabel'
+    | 'body';
   themeColor?: ThemeColor;
 };
 
@@ -41,6 +42,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'statLine' && styles.statLine,
         type === 'roundedStat' && styles.roundedStat,
         type === 'sectionLabel' && styles.sectionLabel,
+        type === 'body' && styles.body,
         style,
       ]}
       {...rest}
@@ -115,5 +117,14 @@ const styles = StyleSheet.create({
   sectionLabel: {
     fontFamily: BrandFonts.wideMedium,
     fontSize: 12,
+  },
+  // Sustained-reading body copy (article paragraphs) — none of the other
+  // variants fit: `default` is UI-copy sized (16/24), everything else is
+  // either a small label or a big decorative display/headline treatment.
+  // Same 16px as `default` but more generous line-height for a wall of text.
+  body: {
+    fontSize: 16,
+    lineHeight: 26,
+    fontWeight: 400,
   },
 });

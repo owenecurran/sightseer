@@ -266,6 +266,13 @@ export default function ProfileScreen() {
                   </ThemedText>
                 </Pressable>
               )}
+              {profile?.is_admin && (
+                <Pressable onPress={() => router.push('/admin/articles')}>
+                  <ThemedText type="small" themeColor="sage">
+                    Articles
+                  </ThemedText>
+                </Pressable>
+              )}
               <Button label="Settings" variant="secondary" onPress={() => router.push('/settings')} />
             </View>
           </View>

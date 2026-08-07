@@ -43,6 +43,27 @@ export async function getNearbyReviewedPlaces(bounds: MapBounds): Promise<Nearby
     }));
 }
 
+// Global ranking (not viewport-bounded), for the Discover tab's "Popular
+// locations" section. Unlike get_nearby_reviewed_places, get_popular_places
+// is security definer — it aggregates across ALL visits, not just what the
+// caller's own follow graph can see, while still respecting per-visit
+// privacy inside its own aggregation (see the migration's comment).
+export async function getPopularPlaces(limit = 10): Promise<NearbyPlace[]> {
+  const { data, error } = await supabase.rpc('get_popular_places', { result_limit: limit });
+  if (error) throw error;
+
+  return data
+    .filter((row) => row.lat != null && row.lng != null)
+    .map((row) => ({
+      id: row.place_id,
+      name: row.name,
+      lat: row.lat as number,
+      lng: row.lng as number,
+      avgRating: Number(row.avg_rating),
+      reviewCount: Number(row.review_count),
+    }));
+}
+
 export type PlacePreview = {
   placeName: string;
   rating: number | null;
