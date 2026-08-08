@@ -15,7 +15,13 @@ import { useAuth } from '@/lib/auth-context';
 import { createDraft, uploadPhotoForDraft } from '@/lib/drafts';
 import { findNearbyPlaces } from '@/lib/google-places';
 import { pickMultipleImagesFromLibrary } from '@/lib/image-picker';
-import { clusterPhotosByLocation, extractGpsFromExif, type GeoTaggedAsset } from '@/lib/photo-clustering';
+import {
+  clusterPhotosByLocation,
+  earliestTakenOn,
+  extractDateFromExif,
+  extractGpsFromExif,
+  type GeoTaggedAsset,
+} from '@/lib/photo-clustering';
 import { cachePlaceHierarchy } from '@/lib/places-cache';
 
 // Local date, not toISOString() — same reasoning as review-form.tsx's own
@@ -50,7 +56,8 @@ export default function BulkUploadScreen() {
 
     setIsProcessing(true);
     const assets: GeoTaggedAsset[] = result.map((asset) => {
-      const gps = extractGpsFromExif(asset.exif as Record<string, unknown> | null | undefined);
+      const exif = asset.exif as Record<string, unknown> | null | undefined;
+      const gps = extractGpsFromExif(exif);
       return {
         uri: asset.uri,
         width: asset.width,
@@ -58,6 +65,7 @@ export default function BulkUploadScreen() {
         mimeType: asset.mimeType,
         lat: gps?.lat ?? null,
         lng: gps?.lng ?? null,
+        takenOn: extractDateFromExif(exif),
       };
     });
     const clusters = clusterPhotosByLocation(assets);
@@ -82,7 +90,13 @@ export default function BulkUploadScreen() {
           }
         }
 
-        const draft = await createDraft({ userId: session.user.id, placeId, visitedOn: todayIsoDate() });
+        // Earliest EXIF date among the cluster's own photos — when the
+        // visit actually happened, not when it's being bulk-uploaded (often
+        // much later, e.g. importing an old trip's photos in one go).
+        // Falls back to today only when none of the cluster's photos have a
+        // usable EXIF date at all.
+        const visitedOn = earliestTakenOn(cluster.photos) ?? todayIsoDate();
+        const draft = await createDraft({ userId: session.user.id, placeId, visitedOn });
 
         const photosToUpload = cluster.photos.slice(0, MAX_VISIT_PHOTOS);
         cappedPhotoCount += cluster.photos.length - photosToUpload.length;

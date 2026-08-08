@@ -646,7 +646,10 @@ export type Database = {
         Row: {
           attachment_type: string
           board_id: string | null
+          cover_photo_id: string | null
           created_at: string
+          display_mode: string | null
+          grid_photo_ids: string[] | null
           id: string
           photo_r2_key: string | null
           place_id: string | null
@@ -660,7 +663,10 @@ export type Database = {
         Insert: {
           attachment_type: string
           board_id?: string | null
+          cover_photo_id?: string | null
           created_at?: string
+          display_mode?: string | null
+          grid_photo_ids?: string[] | null
           id?: string
           photo_r2_key?: string | null
           place_id?: string | null
@@ -674,7 +680,10 @@ export type Database = {
         Update: {
           attachment_type?: string
           board_id?: string | null
+          cover_photo_id?: string | null
           created_at?: string
+          display_mode?: string | null
+          grid_photo_ids?: string[] | null
           id?: string
           photo_r2_key?: string | null
           place_id?: string | null
@@ -691,6 +700,13 @@ export type Database = {
             columns: ["board_id"]
             isOneToOne: false
             referencedRelation: "boards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_prompt_attachments_cover_photo_id_fkey"
+            columns: ["cover_photo_id"]
+            isOneToOne: false
+            referencedRelation: "photos"
             referencedColumns: ["id"]
           },
           {

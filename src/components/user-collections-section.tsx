@@ -1,11 +1,7 @@
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, View, StyleSheet } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { StretchText } from '@/components/ui/stretch-text';
-import { Spacing } from '@/constants/theme';
+import { TeaserCard } from '@/components/ui/teaser-card';
 import { TAB_ROUTES } from '@/constants/tab-routes';
 import { useAuth } from '@/lib/auth-context';
 import { listMyBoards } from '@/lib/boards';
@@ -80,42 +76,5 @@ export function UserCollectionsSection({ userId }: UserCollectionsSectionProps) 
     }
   }
 
-  return (
-    <Pressable onPress={handlePress} style={styles.borderedBox}>
-      <ThemedText type="sectionLabel">Boards & travel books</ThemedText>
-      <View style={styles.row}>
-        {thumbnailUrl && <Image source={{ uri: thumbnailUrl }} style={styles.thumbnail} />}
-        <View style={styles.rowText}>
-          <StretchText type="headline" fill>
-            {featured.label}
-          </StretchText>
-        </View>
-        <ThemedText type="headline">›</ThemedText>
-      </View>
-    </Pressable>
-  );
+  return <TeaserCard label="Boards & travel books" title={featured.label} thumbnailUrl={thumbnailUrl} onPress={handlePress} />;
 }
-
-const styles = StyleSheet.create({
-  borderedBox: {
-    borderWidth: 1,
-    borderColor: 'rgba(234,231,207,0.35)',
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    gap: Spacing.one,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-  },
-  rowText: {
-    flex: 1,
-  },
-  thumbnail: {
-    width: 48,
-    height: 48,
-    borderRadius: Spacing.one,
-  },
-});

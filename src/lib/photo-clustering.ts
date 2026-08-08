@@ -5,6 +5,9 @@ export type GeoTaggedAsset = {
   mimeType?: string;
   lat: number | null;
   lng: number | null;
+  // 'YYYY-MM-DD', from EXIF — see extractDateFromExif. Null when the photo
+  // has no EXIF date (e.g. a screenshot, or a photo stripped of metadata).
+  takenOn: string | null;
 };
 
 export type PhotoCluster = {
@@ -47,6 +50,41 @@ export function extractGpsFromExif(exif: Record<string, unknown> | null | undefi
 
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
   return { lat, lng };
+}
+
+// EXIF date tags are conventionally 'YYYY:MM:DD HH:MM:SS' (colons in the
+// date portion, not dashes — a real EXIF quirk, not a typo) under
+// DateTimeOriginal (when the photo was actually taken) first, falling back
+// to the less specific DateTime/CreateDate tags some libraries report
+// instead. Same "never assume presence or shape" caution as
+// extractGpsFromExif above — bulk-uploaded photos routinely come from
+// screenshots or already-stripped files with no EXIF date at all.
+export function extractDateFromExif(exif: Record<string, unknown> | null | undefined): string | null {
+  if (!exif) return null;
+
+  const raw =
+    (typeof exif.DateTimeOriginal === 'string' && exif.DateTimeOriginal) ||
+    (typeof exif.DateTime === 'string' && exif.DateTime) ||
+    (typeof exif.CreateDate === 'string' && exif.CreateDate) ||
+    null;
+  if (!raw) return null;
+
+  const match = raw.match(/^(\d{4}):(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  return `${year}-${month}-${day}`;
+}
+
+// The date a cluster's draft gets created with — the earliest EXIF date
+// among its photos (plain string comparison works: 'YYYY-MM-DD' sorts
+// chronologically), so a multi-day cluster lands on when the visit
+// started rather than an arbitrary photo's date. Null when none of the
+// cluster's photos have a usable EXIF date — the caller falls back to
+// today's date in that case, matching this function's pre-EXIF behavior.
+export function earliestTakenOn(photos: GeoTaggedAsset[]): string | null {
+  const dates = photos.map((p) => p.takenOn).filter((d): d is string => d != null);
+  if (dates.length === 0) return null;
+  return dates.reduce((earliest, d) => (d < earliest ? d : earliest));
 }
 
 // Greedy threshold clustering: each photo joins the first existing cluster

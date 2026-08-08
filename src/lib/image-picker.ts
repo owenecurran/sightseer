@@ -20,7 +20,7 @@ export type PickMultipleImagesResult = ImagePicker.ImagePickerAsset[] | 'denied'
 // One bulk-import batch's worth — bounds how many drafts a single pick can
 // spawn (photo-clustering.ts creates roughly one draft per detected
 // location/unlocated photo).
-const BULK_SELECTION_LIMIT = 40;
+const BULK_SELECTION_LIMIT = 10;
 
 // exif: true is what the bulk-upload flow reads GPS off of (see
 // photo-clustering.ts's extractGpsFromExif) — pickImageFromLibrary above

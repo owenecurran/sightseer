@@ -355,9 +355,22 @@ export function StretchText({
           // ReviewPromptCard justifies its content to the end) and stretched
           // from that bottom edge upward, so the filled band reads as
           // flush with the photo's bottom rather than centered within it.
+          // fill mode's own container does the same bottom-anchoring
+          // whenever vertical compensation actually kicks in (`fillBottom`
+          // above, gated on `containerHeightOverride`) — but until this
+          // fix its transform-origin defaulted to vertical-center (a bare
+          // "left" resolves to "left center" per the CSS spec), so the
+          // scaleY growth pivoted from the pre-transform box's middle while
+          // the box itself stayed bottom-anchored, visibly shifting the
+          // rendered glyphs down out of alignment with anything sitting
+          // beside it at a fixed height (confirmed live: a board teaser
+          // card's square thumbnail and its title ended up the same height
+          // but offset from each other by several px). scaleY is always 1
+          // outside fill/outline (see scaleY above), so this is a no-op
+          // for every other case — safe to apply unconditionally here.
           {
             transform: [{ scaleX }, { scaleY }],
-            transformOrigin: outline ? "left bottom" : "left",
+            transformOrigin: outline || fill ? "left bottom" : "left",
           },
         ];
         // strokeRadius is an OutlinedText-only prop (unknown to ThemedText),

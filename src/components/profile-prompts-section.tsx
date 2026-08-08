@@ -6,6 +6,7 @@ import { ReviewPromptCard } from '@/components/review-prompt-card';
 import { ThemedText } from '@/components/themed-text';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { StretchText } from '@/components/ui/stretch-text';
+import { CARD_PADDING, CARD_PADDING_LEFT, CARD_RADIUS, TeaserCard, TIGHT_GAP, TITLE_FONT_SIZE } from '@/components/ui/teaser-card';
 import { Spacing } from '@/constants/theme';
 import { PROFILE_PROMPTS } from '@/constants/profile-prompts';
 import { getPhotoViewUrls } from '@/lib/photo-view';
@@ -19,10 +20,52 @@ type ProfilePromptsSectionProps = {
   userId: string;
 };
 
+// 'board'/'travel_book' in 'grid' mode — the only prompt card that can't
+// use the shared TeaserCard as-is (that's built around exactly one square
+// photo beside the title; a grid of up to 4 needs its own photo layout),
+// so it reuses TeaserCard's own style tokens directly to still read as the
+// same family of card.
+function GridPromptCard({
+  label,
+  title,
+  photoIds,
+  photoUrls,
+  onPress,
+}: {
+  label: string;
+  title: string;
+  photoIds: string[];
+  photoUrls: Record<string, string>;
+  onPress: () => void;
+}) {
+  const withUrls = photoIds.filter((id) => photoUrls[id]);
+  return (
+    <Pressable onPress={onPress} style={styles.gridCard}>
+      <ThemedText type="sectionLabel">{label}</ThemedText>
+      {withUrls.length > 0 && (
+        <View style={styles.gridContainer}>
+          {withUrls.map((id) => (
+            <LoadableImage key={id} source={{ uri: photoUrls[id] }} style={styles.gridPhoto} contentFit="cover" />
+          ))}
+        </View>
+      )}
+      <View style={styles.gridTitleRow}>
+        <View style={styles.gridTitle}>
+          <StretchText type="headline" fill style={styles.titleText}>
+            {title}
+          </StretchText>
+        </View>
+        <ThemedText type="headline">›</ThemedText>
+      </View>
+    </Pressable>
+  );
+}
+
 export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [visitPhotoUrls, setVisitPhotoUrls] = useState<Record<string, string>>({});
+  const [coverPhotoUrls, setCoverPhotoUrls] = useState<Record<string, string>>({});
 
   // useFocusEffect, not useEffect — this screen stays mounted while Edit
   // Profile is pushed on top, so a plain useEffect keyed on userId (which
@@ -34,8 +77,7 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
         setPrompts(loaded);
         const attachments = loaded.flatMap((p) => p.attachments);
 
-        // 'photo' attachments always have one; 'place' attachments now
-        // optionally do too (see 20260808100000_prompt_photo_options.sql).
+        // 'photo' attachments always have one.
         const photoAttachmentIds = attachments.filter((a) => a.photoR2Key != null).map((a) => a.id);
         setPhotoUrls(photoAttachmentIds.length > 0 ? await getPromptPhotoUrls(photoAttachmentIds) : {});
 
@@ -43,6 +85,13 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
           .filter((a) => a.attachmentType === 'review' && a.visitPhotoId)
           .map((a) => a.visitPhotoId!);
         setVisitPhotoUrls(visitPhotoIds.length > 0 ? await getPhotoViewUrls(visitPhotoIds) : {});
+
+        // 'place'/'board'/'travel_book' cover/grid photos — see
+        // 20260808110000_prompt_cover_photos.sql.
+        const coverIds = attachments.flatMap((a) =>
+          [a.coverPhotoId, ...a.gridPhotoIds].filter((id): id is string => id != null)
+        );
+        setCoverPhotoUrls(coverIds.length > 0 ? await getPhotoViewUrls(coverIds) : {});
       });
     }, [userId])
   );
@@ -58,7 +107,9 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
               return (
                 <View key={attachment.id} style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <StretchText type="headline" fill>{attachment.textValue}</StretchText>
+                  <StretchText type="headline" fill style={styles.titleText}>
+                    {attachment.textValue}
+                  </StretchText>
                 </View>
               );
             }
@@ -91,54 +142,65 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
             }
 
             if (attachment.attachmentType === 'board' && attachment.boardId) {
+              const onPress = () => router.push({ pathname: '/board/[id]', params: { id: attachment.boardId! } });
+              if (attachment.displayMode === 'grid' && attachment.gridPhotoIds.length > 0) {
+                return (
+                  <GridPromptCard
+                    key={attachment.id}
+                    label={promptLabel(prompt.promptSlug)}
+                    title={attachment.boardName ?? 'Board'}
+                    photoIds={attachment.gridPhotoIds}
+                    photoUrls={coverPhotoUrls}
+                    onPress={onPress}
+                  />
+                );
+              }
               return (
-                <Pressable
+                <TeaserCard
                   key={attachment.id}
-                  onPress={() => router.push({ pathname: '/board/[id]', params: { id: attachment.boardId! } })}
-                  style={styles.borderedBox}>
-                  <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <View style={styles.titleRow}>
-                    <StretchText type="headline" fill>{attachment.boardName ?? 'Board'}</StretchText>
-                    <ThemedText type="headline">›</ThemedText>
-                  </View>
-                </Pressable>
+                  label={promptLabel(prompt.promptSlug)}
+                  title={attachment.boardName ?? 'Board'}
+                  thumbnailUrl={attachment.coverPhotoId ? coverPhotoUrls[attachment.coverPhotoId] : undefined}
+                  onPress={onPress}
+                />
               );
             }
 
             if (attachment.attachmentType === 'travel_book' && attachment.travelBookId) {
+              const onPress = () =>
+                router.push({ pathname: '/travel-book/[id]', params: { id: attachment.travelBookId! } });
+              if (attachment.displayMode === 'grid' && attachment.gridPhotoIds.length > 0) {
+                return (
+                  <GridPromptCard
+                    key={attachment.id}
+                    label={promptLabel(prompt.promptSlug)}
+                    title={attachment.travelBookName ?? 'Travel book'}
+                    photoIds={attachment.gridPhotoIds}
+                    photoUrls={coverPhotoUrls}
+                    onPress={onPress}
+                  />
+                );
+              }
               return (
-                <Pressable
+                <TeaserCard
                   key={attachment.id}
-                  onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: attachment.travelBookId! } })}
-                  style={styles.borderedBox}>
-                  <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <View style={styles.titleRow}>
-                    <StretchText type="headline" fill>{attachment.travelBookName ?? 'Travel book'}</StretchText>
-                    <ThemedText type="headline">›</ThemedText>
-                  </View>
-                </Pressable>
+                  label={promptLabel(prompt.promptSlug)}
+                  title={attachment.travelBookName ?? 'Travel book'}
+                  thumbnailUrl={attachment.coverPhotoId ? coverPhotoUrls[attachment.coverPhotoId] : undefined}
+                  onPress={onPress}
+                />
               );
             }
 
             if (attachment.attachmentType === 'place' && attachment.placeId) {
               return (
-                <Pressable
+                <TeaserCard
                   key={attachment.id}
+                  label={promptLabel(prompt.promptSlug)}
+                  title={attachment.placeName ?? 'Unknown place'}
+                  thumbnailUrl={attachment.coverPhotoId ? coverPhotoUrls[attachment.coverPhotoId] : undefined}
                   onPress={() => router.push({ pathname: '/place/[id]', params: { id: attachment.placeId! } })}
-                  style={styles.borderedBox}>
-                  <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  {photoUrls[attachment.id] && (
-                    <LoadableImage
-                      source={{ uri: photoUrls[attachment.id] }}
-                      style={styles.photo}
-                      contentFit="cover"
-                    />
-                  )}
-                  <View style={styles.titleRow}>
-                    <StretchText type="headline" fill>{attachment.placeName ?? 'Unknown place'}</StretchText>
-                    <ThemedText type="headline">›</ThemedText>
-                  </View>
-                </Pressable>
+                />
               );
             }
 
@@ -157,24 +219,48 @@ const styles = StyleSheet.create({
   promptGroup: {
     gap: Spacing.two,
   },
+  // 'text'/'photo' only — neither navigates anywhere, so unlike the other
+  // types here they don't get TeaserCard's chevron/image-row treatment,
+  // just the same sharp corners/tight padding/larger stretched text.
   borderedBox: {
     borderWidth: 1,
     borderColor: 'rgba(234,231,207,0.35)',
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    gap: Spacing.one,
+    borderRadius: CARD_RADIUS,
+    padding: CARD_PADDING,
+    paddingLeft: CARD_PADDING_LEFT,
+    gap: TIGHT_GAP,
   },
   photo: {
     width: '100%',
     aspectRatio: 1.5,
-    borderRadius: Spacing.two,
+    borderRadius: Spacing.one,
   },
-  // Trailing "›" makes it obvious the whole card is a tap target, matching
-  // the chevron convention used everywhere else in this app for a
-  // navigates-somewhere row (e.g. user-collections-section.tsx).
-  titleRow: {
+  titleText: {
+    fontSize: TITLE_FONT_SIZE,
+  },
+  gridCard: {
+    borderWidth: 1,
+    borderColor: 'rgba(234,231,207,0.35)',
+    borderRadius: CARD_RADIUS,
+    padding: CARD_PADDING,
+    gap: TIGHT_GAP,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: TIGHT_GAP,
+  },
+  gridPhoto: {
+    width: '48%',
+    aspectRatio: 1,
+    borderRadius: Spacing.one,
+  },
+  gridTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  gridTitle: {
+    flex: 1,
   },
 });

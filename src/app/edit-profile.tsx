@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
-import { PromptEditor } from '@/components/prompt-editor';
+import { PromptCard } from '@/components/prompt-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -17,10 +17,7 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import { pickImageFromLibrary } from '@/lib/image-picker';
-import { listMyBoards } from '@/lib/boards';
-import type { Database } from '@/lib/database.types';
 import { listPrompts, reorderPrompts, type ProfilePrompt } from '@/lib/profile-prompts';
-import { listUserTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
 import {
   parseSectionOrder,
   PROFILE_SECTION_LABELS,
@@ -33,9 +30,6 @@ import { Avatar } from '@/components/ui/avatar';
 
 const BIO_MAX_LENGTH = 160;
 const PROMPT_SLOT_COUNT = 6;
-
-type BoardRow = Database['public']['Tables']['boards']['Row'];
-type OwnVisitOption = { id: string; placeName: string; rating: number | null };
 
 // Prompts and profile-section order used to live behind an Info/Layout tab
 // toggle, with prompts reordered via up/down arrows and sections via
@@ -56,9 +50,6 @@ export default function EditProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
-  const [ownVisits, setOwnVisits] = useState<OwnVisitOption[]>([]);
-  const [ownBoards, setOwnBoards] = useState<BoardRow[]>([]);
-  const [ownTravelBooks, setOwnTravelBooks] = useState<TravelBookListItem[]>([]);
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>();
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
@@ -71,29 +62,14 @@ export default function EditProfileScreen() {
     setPrompts(await listPrompts(session.user.id));
   }, [session]);
 
-  useEffect(() => {
-    if (!session) return;
-    loadPrompts();
-    listMyBoards(session.user.id).then(setOwnBoards);
-    // Owner-only (not listMyTravelBooks) — the travel_book prompt-attachment
-    // RLS only allows tb.user_id = auth.uid(), matching the 'board' clause
-    // exactly, so a collaborator book must never appear as pickable here.
-    listUserTravelBooks(session.user.id).then(setOwnTravelBooks);
-    supabase
-      .from('visits')
-      .select('id, rating, places!place_id(name)')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setOwnVisits(
-          (data ?? []).map((v) => ({
-            id: v.id,
-            rating: v.rating,
-            placeName: v.places?.name ?? 'Unknown place',
-          }))
-        );
-      });
-  }, [session, loadPrompts]);
+  // useFocusEffect, not useEffect — adding/editing a prompt now happens on
+  // its own pushed route (prompt-editor.tsx), so this screen needs to
+  // refetch when regaining focus on the way back, not just once on mount.
+  useFocusEffect(
+    useCallback(() => {
+      loadPrompts();
+    }, [loadPrompts])
+  );
 
   useEffect(() => {
     if (!session || !profile?.avatar_r2_key) return;
@@ -171,20 +147,10 @@ export default function EditProfileScreen() {
   const renderPrompt = useCallback(
     ({ item, drag }: RenderItemParams<ProfilePrompt>) => (
       <ScaleDecorator>
-        <PromptEditor
-          userId={session?.user.id ?? ''}
-          position={item.position}
-          existing={item}
-          usedSlugs={prompts.filter((p) => p.id !== item.id).map((p) => p.promptSlug)}
-          ownVisits={ownVisits}
-          ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
-          ownTravelBooks={ownTravelBooks.map((b) => ({ id: b.id, title: b.title }))}
-          onChanged={loadPrompts}
-          onDragStart={drag}
-        />
+        <PromptCard existing={item} onChanged={loadPrompts} onDragStart={drag} />
       </ScaleDecorator>
     ),
-    [session, prompts, ownVisits, ownBoards, ownTravelBooks, loadPrompts]
+    [loadPrompts]
   );
 
   const renderSectionItem = useCallback(
@@ -200,8 +166,6 @@ export default function EditProfileScreen() {
     ),
     [theme.textSecondary]
   );
-
-  const nextPosition = prompts.length > 0 ? Math.max(...prompts.map((p) => p.position)) + 1 : 0;
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -266,19 +230,7 @@ export default function EditProfileScreen() {
             scrollEnabled={false}
             contentContainerStyle={styles.promptsList}
           />
-          {prompts.length < PROMPT_SLOT_COUNT && (
-            <PromptEditor
-              key="new"
-              userId={session?.user.id ?? ''}
-              position={nextPosition}
-              existing={undefined}
-              usedSlugs={prompts.map((p) => p.promptSlug)}
-              ownVisits={ownVisits}
-              ownBoards={ownBoards.map((b) => ({ id: b.id, name: b.name }))}
-              ownTravelBooks={ownTravelBooks.map((b) => ({ id: b.id, title: b.title }))}
-              onChanged={loadPrompts}
-            />
-          )}
+          {prompts.length < PROMPT_SLOT_COUNT && <PromptCard existing={undefined} onChanged={loadPrompts} />}
 
           <ThemedText type="sectionLabel">Layout</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">

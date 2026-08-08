@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
@@ -13,7 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
-import { StretchText } from '@/components/ui/stretch-text';
+import { TeaserCard } from '@/components/ui/teaser-card';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -144,36 +143,22 @@ export default function ProfileScreen() {
 
   const sectionMap: Record<ProfileSectionKey, ReactNode> = {
     latest_reviews: (
-      <Pressable key="latest_reviews" onPress={() => router.push('/reviews')} style={styles.borderedBox}>
-        <ThemedText type="sectionLabel">Latest reviews</ThemedText>
-        <View style={styles.latestReviewRow}>
-          {(() => {
-            const photoId = firstPhotoId(latestVisit);
-            return (
-              photoId &&
-              teaserPhotoUrls[photoId] && <Image source={{ uri: teaserPhotoUrls[photoId] }} style={styles.teaserThumbnail} />
-            );
-          })()}
-          <View style={styles.latestReviewText}>
-            <StretchText type="headline" fill>{latestVisit?.places?.name ?? 'No reviews yet'}</StretchText>
-          </View>
-          <ThemedText type="headline">›</ThemedText>
-        </View>
-      </Pressable>
+      <TeaserCard
+        key="latest_reviews"
+        label="Latest reviews"
+        title={latestVisit?.places?.name ?? 'No reviews yet'}
+        thumbnailUrl={teaserPhotoUrls[firstPhotoId(latestVisit) ?? '']}
+        onPress={() => router.push('/reviews')}
+      />
     ),
     tagged_in: (
-      <Pressable key="tagged_in" onPress={() => router.push('/tagged-in')} style={styles.borderedBox}>
-        <ThemedText type="sectionLabel">Tagged in</ThemedText>
-        <View style={styles.latestReviewRow}>
-          {latestTagged?.photoIds?.[0] && teaserPhotoUrls[latestTagged.photoIds[0]] && (
-            <Image source={{ uri: teaserPhotoUrls[latestTagged.photoIds[0]] }} style={styles.teaserThumbnail} />
-          )}
-          <View style={styles.latestReviewText}>
-            <StretchText type="headline" fill>{latestTagged?.placeName ?? 'Not tagged in anything yet'}</StretchText>
-          </View>
-          <ThemedText type="headline">›</ThemedText>
-        </View>
-      </Pressable>
+      <TeaserCard
+        key="tagged_in"
+        label="Tagged in"
+        title={latestTagged?.placeName ?? 'Not tagged in anything yet'}
+        thumbnailUrl={teaserPhotoUrls[latestTagged?.photoIds?.[0] ?? '']}
+        onPress={() => router.push('/tagged-in')}
+      />
     ),
     prompts: session ? <ProfilePromptsSection key="prompts" userId={session.user.id} /> : null,
     collections: session ? <UserCollectionsSection key="collections" userId={session.user.id} /> : null,
@@ -317,27 +302,6 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: Spacing.three,
-  },
-  borderedBox: {
-    borderWidth: 1,
-    borderColor: 'rgba(234,231,207,0.35)',
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    gap: Spacing.one,
-  },
-  latestReviewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.two,
-  },
-  latestReviewText: {
-    flex: 1,
-  },
-  teaserThumbnail: {
-    width: 48,
-    height: 48,
-    borderRadius: Spacing.one,
   },
   neutralCard: {
     borderRadius: Spacing.three,

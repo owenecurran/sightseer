@@ -505,6 +505,12 @@ export default function ReviewFormScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()}>
+            <ThemedText type="link">← Back</ThemedText>
+          </Pressable>
+        </View>
+
         <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
@@ -718,12 +724,19 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
+  header: {
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four + TopTabInset,
+  },
   scrollContent: {
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.four + TopTabInset,
+    paddingTop: Spacing.three,
     gap: Spacing.three,
   },
   suggestionRow: {

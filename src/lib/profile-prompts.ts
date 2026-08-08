@@ -5,6 +5,12 @@ import type { Database } from '@/lib/database.types';
 
 export type AttachmentType = Database['public']['Tables']['profile_prompt_attachments']['Row']['attachment_type'];
 
+// 'board'/'travel_book' attachments choose between showing one featured
+// photo (cover) or a small album grid of up to 4 (grid) — see
+// 20260808110000_prompt_cover_photos.sql. 'place' only ever gets a cover
+// (no grid option was asked for there).
+export type AttachmentDisplayMode = 'cover' | 'grid';
+
 export type PromptAttachment = {
   id: string;
   attachmentType: AttachmentType;
@@ -24,6 +30,14 @@ export type PromptAttachment = {
   boardName: string | null;
   placeName: string | null;
   travelBookName: string | null;
+  // 'place': the single chosen cover photo, picked from that place's own
+  // reviews. 'board'/'travel_book': the single chosen cover photo when
+  // displayMode is 'cover' (or unset, the default).
+  coverPhotoId: string | null;
+  // 'board'/'travel_book' only.
+  displayMode: AttachmentDisplayMode | null;
+  // 'board'/'travel_book' in 'grid' mode: up to 4 chosen photos.
+  gridPhotoIds: string[];
 };
 
 export type ProfilePrompt = {
@@ -44,6 +58,9 @@ type RawAttachment = {
   place_id: string | null;
   travel_book_id: string | null;
   visit_photo_id: string | null;
+  cover_photo_id: string | null;
+  display_mode: string | null;
+  grid_photo_ids: string[] | null;
   visits: {
     rating: number | null;
     note: string | null;
@@ -63,7 +80,7 @@ type RawPrompt = {
 };
 
 const PROMPT_SELECT =
-  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visit_photo_id, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
+  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visit_photo_id, cover_photo_id, display_mode, grid_photo_ids, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
 
 function mapAttachment(r: RawAttachment): PromptAttachment {
   const photos = [...(r.visits?.photos ?? [])].sort((a, b) => a.position - b.position);
@@ -84,6 +101,9 @@ function mapAttachment(r: RawAttachment): PromptAttachment {
     boardName: r.boards?.name ?? null,
     placeName: r.places?.name ?? null,
     travelBookName: r.travel_books?.title ?? null,
+    coverPhotoId: r.cover_photo_id,
+    displayMode: r.display_mode === 'grid' ? 'grid' : r.display_mode === 'cover' ? 'cover' : null,
+    gridPhotoIds: r.grid_photo_ids ?? [],
   };
 }
 
@@ -114,6 +134,13 @@ export type AttachmentInput = {
   // 'review' only — an explicit choice of which of the visit's photos to
   // feature; null falls back to the first photo by position.
   visitPhotoId?: string | null;
+  // 'place': the chosen cover photo. 'board'/'travel_book': the chosen
+  // cover photo when displayMode is 'cover'.
+  coverPhotoId?: string | null;
+  // 'board'/'travel_book' only.
+  displayMode?: AttachmentDisplayMode | null;
+  // 'board'/'travel_book' in 'grid' mode: up to 4 chosen photos.
+  gridPhotoIds?: string[] | null;
 };
 
 type SavePromptParams = {
@@ -165,6 +192,9 @@ export async function savePrompt(params: SavePromptParams): Promise<void> {
         place_id: a.placeId ?? null,
         travel_book_id: a.travelBookId ?? null,
         visit_photo_id: a.visitPhotoId ?? null,
+        cover_photo_id: a.coverPhotoId ?? null,
+        display_mode: a.displayMode ?? null,
+        grid_photo_ids: a.gridPhotoIds && a.gridPhotoIds.length > 0 ? a.gridPhotoIds : null,
       }))
     );
     if (insertError) throw insertError;
@@ -244,4 +274,68 @@ export async function getVisitPhotoOptions(visitId: string): Promise<VisitPhotoO
 
   const urls = await getPhotoViewUrls(data.map((p) => p.id));
   return data.map((p) => ({ id: p.id, url: urls[p.id] })).filter((p): p is VisitPhotoOption => p.url != null);
+}
+
+async function resolvePhotoOptions(photoIds: string[]): Promise<VisitPhotoOption[]> {
+  if (photoIds.length === 0) return [];
+  const urls = await getPhotoViewUrls(photoIds);
+  return photoIds.map((id) => ({ id, url: urls[id] })).filter((p): p is VisitPhotoOption => p.url != null);
+}
+
+// Powers the cover-photo picker for a 'place' attachment — every photo on
+// every review of this place the caller can see (photos_select RLS governs
+// visibility the same as anywhere else), not just the caller's own reviews.
+export async function getPlacePhotoOptions(placeId: string): Promise<VisitPhotoOption[]> {
+  const { data, error } = await supabase.from('visits').select('photos(id, position)').eq('place_id', placeId);
+  if (error) throw error;
+
+  const photoIds = (data ?? [])
+    .flatMap((v) => [...v.photos].sort((a, b) => a.position - b.position))
+    .map((p) => p.id);
+  return resolvePhotoOptions(photoIds);
+}
+
+type BoardItemPhotoRow = {
+  item_type: 'visit' | 'photo' | 'place';
+  photo_id: string | null;
+  visits: { photos: { id: string; position: number }[] } | null;
+};
+
+// Powers the cover/grid photo picker for a 'board' attachment — every photo
+// already saved to the board, either directly ('photo' items) or via a
+// saved review's own photos ('visit' items); 'place' items have no photo.
+export async function getBoardPhotoOptions(boardId: string): Promise<VisitPhotoOption[]> {
+  const { data, error } = await supabase
+    .from('board_items')
+    .select('item_type, photo_id, visits(photos(id, position))')
+    .eq('board_id', boardId)
+    .in('item_type', ['visit', 'photo']);
+  if (error) throw error;
+
+  const rows = data as unknown as BoardItemPhotoRow[];
+  const photoIds: string[] = [];
+  for (const row of rows) {
+    if (row.item_type === 'photo' && row.photo_id) {
+      photoIds.push(row.photo_id);
+    } else if (row.item_type === 'visit' && row.visits) {
+      for (const p of [...row.visits.photos].sort((a, b) => a.position - b.position)) photoIds.push(p.id);
+    }
+  }
+  return resolvePhotoOptions(photoIds);
+}
+
+// Powers the cover/grid photo picker for a 'travel_book' attachment — every
+// photo on every review saved in the book (travel_book_items is always
+// visit-backed, unlike board_items).
+export async function getTravelBookPhotoOptions(travelBookId: string): Promise<VisitPhotoOption[]> {
+  const { data, error } = await supabase
+    .from('travel_book_items')
+    .select('visits(photos(id, position))')
+    .eq('travel_book_id', travelBookId);
+  if (error) throw error;
+
+  const photoIds = (data ?? [])
+    .flatMap((row) => [...(row.visits?.photos ?? [])].sort((a, b) => a.position - b.position))
+    .map((p) => p.id);
+  return resolvePhotoOptions(photoIds);
 }
