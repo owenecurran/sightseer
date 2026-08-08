@@ -34,7 +34,9 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
         setPrompts(loaded);
         const attachments = loaded.flatMap((p) => p.attachments);
 
-        const photoAttachmentIds = attachments.filter((a) => a.attachmentType === 'photo').map((a) => a.id);
+        // 'photo' attachments always have one; 'place' attachments now
+        // optionally do too (see 20260808100000_prompt_photo_options.sql).
+        const photoAttachmentIds = attachments.filter((a) => a.photoR2Key != null).map((a) => a.id);
         setPhotoUrls(photoAttachmentIds.length > 0 ? await getPromptPhotoUrls(photoAttachmentIds) : {});
 
         const visitPhotoIds = attachments
@@ -95,7 +97,10 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   onPress={() => router.push({ pathname: '/board/[id]', params: { id: attachment.boardId! } })}
                   style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <StretchText type="headline" fill>{attachment.boardName ?? 'Board'}</StretchText>
+                  <View style={styles.titleRow}>
+                    <StretchText type="headline" fill>{attachment.boardName ?? 'Board'}</StretchText>
+                    <ThemedText type="headline">›</ThemedText>
+                  </View>
                 </Pressable>
               );
             }
@@ -107,7 +112,10 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: attachment.travelBookId! } })}
                   style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <StretchText type="headline" fill>{attachment.travelBookName ?? 'Travel book'}</StretchText>
+                  <View style={styles.titleRow}>
+                    <StretchText type="headline" fill>{attachment.travelBookName ?? 'Travel book'}</StretchText>
+                    <ThemedText type="headline">›</ThemedText>
+                  </View>
                 </Pressable>
               );
             }
@@ -119,7 +127,17 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   onPress={() => router.push({ pathname: '/place/[id]', params: { id: attachment.placeId! } })}
                   style={styles.borderedBox}>
                   <ThemedText type="sectionLabel">{promptLabel(prompt.promptSlug)}</ThemedText>
-                  <StretchText type="headline" fill>{attachment.placeName ?? 'Unknown place'}</StretchText>
+                  {photoUrls[attachment.id] && (
+                    <LoadableImage
+                      source={{ uri: photoUrls[attachment.id] }}
+                      style={styles.photo}
+                      contentFit="cover"
+                    />
+                  )}
+                  <View style={styles.titleRow}>
+                    <StretchText type="headline" fill>{attachment.placeName ?? 'Unknown place'}</StretchText>
+                    <ThemedText type="headline">›</ThemedText>
+                  </View>
                 </Pressable>
               );
             }
@@ -150,5 +168,13 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 1.5,
     borderRadius: Spacing.two,
+  },
+  // Trailing "›" makes it obvious the whole card is a tap target, matching
+  // the chevron convention used everywhere else in this app for a
+  // navigates-somewhere row (e.g. user-collections-section.tsx).
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
 });

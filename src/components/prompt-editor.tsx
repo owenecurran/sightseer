@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
@@ -7,8 +7,9 @@ import { PlaceSearchInput } from '@/components/place-search-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing } from '@/constants/theme';
+import { BrandColors, Spacing } from '@/constants/theme';
 import {
   PROFILE_PROMPT_CATEGORY_LABELS,
   PROFILE_PROMPTS,
@@ -19,11 +20,13 @@ import type { Database } from '@/lib/database.types';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import {
   deletePrompt,
+  getVisitPhotoOptions,
   savePrompt,
   uploadPromptPhoto,
   type AttachmentInput,
   type AttachmentType,
   type ProfilePrompt,
+  type VisitPhotoOption,
 } from '@/lib/profile-prompts';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
@@ -51,6 +54,9 @@ type LocalAttachment = {
   existingPhotoR2Key: string | null;
   pendingPhotoUri: string | null;
   pendingPhotoMimeType?: string;
+  // 'review' only — which of the visit's photos to feature; null = default
+  // to the first one (see profile-prompts.ts's mapAttachment).
+  visitPhotoId: string | null;
 };
 
 function emptyAttachment(): LocalAttachment {
@@ -64,6 +70,7 @@ function emptyAttachment(): LocalAttachment {
     travelBookId: null,
     existingPhotoR2Key: null,
     pendingPhotoUri: null,
+    visitPhotoId: null,
   };
 }
 
@@ -117,12 +124,41 @@ export function PromptEditor({
           travelBookId: a.travelBookId,
           existingPhotoR2Key: a.photoR2Key,
           pendingPhotoUri: null,
+          visitPhotoId: a.visitPhotoId,
         }))
       : [emptyAttachment()]
   );
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [cropSource, setCropSource] = useState<{ uri: string; index: number } | null>(null);
+  // Keyed by visitId — fetched on demand the moment a review is picked (see
+  // handleSelectVisit), including for an already-attached prompt being
+  // reopened for edit, so the "which photo?" row always has something to
+  // show once a visit is selected.
+  const [visitPhotoOptions, setVisitPhotoOptions] = useState<Record<string, VisitPhotoOption[]>>({});
+
+  // Pre-fetch photo options for any 'review' attachment already carrying a
+  // visitId (reopening an existing prompt for edit) — otherwise the "which
+  // photo?" row would only ever appear after re-picking the same visit.
+  useEffect(() => {
+    for (const a of attachments) {
+      if (a.attachmentType === 'review' && a.visitId && !visitPhotoOptions[a.visitId]) {
+        getVisitPhotoOptions(a.visitId).then((options) =>
+          setVisitPhotoOptions((prev) => ({ ...prev, [a.visitId as string]: options }))
+        );
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleSelectVisit(index: number, visitId: string) {
+    updateAttachment(index, { visitId, visitPhotoId: null });
+    if (!visitPhotoOptions[visitId]) {
+      getVisitPhotoOptions(visitId).then((options) =>
+        setVisitPhotoOptions((prev) => ({ ...prev, [visitId]: options }))
+      );
+    }
+  }
 
   const availablePrompts = PROFILE_PROMPTS.filter(
     (p) => p.slug === existing?.promptSlug || !usedSlugs.includes(p.slug)
@@ -207,18 +243,22 @@ export function PromptEditor({
     try {
       const resolved: AttachmentInput[] = [];
       for (const a of attachments) {
+        // 'place' photos are optional, so a pending upload only happens if
+        // the user actually picked one — existingPhotoR2Key already covers
+        // "keep what was there" for both 'photo' (required) and 'place'.
         let photoR2Key = a.existingPhotoR2Key;
-        if (a.attachmentType === 'photo' && a.pendingPhotoUri) {
+        if ((a.attachmentType === 'photo' || a.attachmentType === 'place') && a.pendingPhotoUri) {
           photoR2Key = await uploadPromptPhoto(a.pendingPhotoUri, a.pendingPhotoMimeType);
         }
         resolved.push({
           attachmentType: a.attachmentType,
           textValue: a.attachmentType === 'text' ? a.textValue.trim() : null,
-          photoR2Key: a.attachmentType === 'photo' ? photoR2Key : null,
+          photoR2Key: a.attachmentType === 'photo' || a.attachmentType === 'place' ? photoR2Key : null,
           visitId: a.attachmentType === 'review' ? a.visitId : null,
           boardId: a.attachmentType === 'board' ? a.boardId : null,
           placeId: a.attachmentType === 'place' ? a.placeId : null,
           travelBookId: a.attachmentType === 'travel_book' ? a.travelBookId : null,
+          visitPhotoId: a.attachmentType === 'review' ? a.visitPhotoId : null,
         });
       }
 
@@ -392,25 +432,51 @@ export function PromptEditor({
           )}
 
           {attachment.attachmentType === 'review' && (
-            <View style={styles.chipRow}>
-              {ownVisits.length === 0 && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  No reviews yet.
-                </ThemedText>
+            <>
+              <View style={styles.chipRow}>
+                {ownVisits.length === 0 && (
+                  <ThemedText type="small" themeColor="textSecondary">
+                    No reviews yet.
+                  </ThemedText>
+                )}
+                {ownVisits.map((v) => (
+                  <Pressable key={v.id} onPress={() => handleSelectVisit(index, v.id)}>
+                    <ThemedView
+                      type={attachment.visitId === v.id ? 'backgroundSelected' : 'background'}
+                      style={styles.chip}>
+                      <ThemedText type="small">
+                        {v.placeName}
+                        {v.rating != null ? ` · ${v.rating.toFixed(1)} ★` : ''}
+                      </ThemedText>
+                    </ThemedView>
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* Only worth showing a choice once there's actually more
+                  than one photo to choose between. */}
+              {attachment.visitId && (visitPhotoOptions[attachment.visitId]?.length ?? 0) > 1 && (
+                <View style={styles.photoOptionRow}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Photo to feature
+                  </ThemedText>
+                  <View style={styles.chipRow}>
+                    {visitPhotoOptions[attachment.visitId]!.map((photo) => (
+                      <Pressable key={photo.id} onPress={() => updateAttachment(index, { visitPhotoId: photo.id })}>
+                        <LoadableImage
+                          source={{ uri: photo.url }}
+                          style={[
+                            styles.photoOptionThumb,
+                            (attachment.visitPhotoId ?? visitPhotoOptions[attachment.visitId!]![0].id) === photo.id &&
+                              styles.photoOptionThumbSelected,
+                          ]}
+                        />
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
               )}
-              {ownVisits.map((v) => (
-                <Pressable key={v.id} onPress={() => updateAttachment(index, { visitId: v.id })}>
-                  <ThemedView
-                    type={attachment.visitId === v.id ? 'backgroundSelected' : 'background'}
-                    style={styles.chip}>
-                    <ThemedText type="small">
-                      {v.placeName}
-                      {v.rating != null ? ` · ${v.rating.toFixed(1)} ★` : ''}
-                    </ThemedText>
-                  </ThemedView>
-                </Pressable>
-              ))}
-            </View>
+            </>
           )}
 
           {attachment.attachmentType === 'board' && (
@@ -461,6 +527,17 @@ export function PromptEditor({
               <PlaceSearchInput
                 placeholder="Search for a place"
                 onSelect={(place: PlaceRow) => updateAttachment(index, { placeId: place.id, placeName: place.name })}
+              />
+              <Button
+                label={
+                  attachment.pendingPhotoUri
+                    ? 'Photo selected ✓'
+                    : attachment.existingPhotoR2Key
+                      ? 'Change photo'
+                      : 'Add a photo (optional)'
+                }
+                variant="secondary"
+                onPress={() => handlePickPhoto(index)}
               />
             </View>
           )}
@@ -528,6 +605,19 @@ const styles = StyleSheet.create({
   placePicker: {
     gap: Spacing.two,
     alignItems: 'flex-start',
+  },
+  photoOptionRow: {
+    gap: Spacing.two,
+  },
+  photoOptionThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: Spacing.one,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  photoOptionThumbSelected: {
+    borderColor: BrandColors.sage,
   },
   dragHandle: {
     marginLeft: 'auto',

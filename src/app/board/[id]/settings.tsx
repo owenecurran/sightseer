@@ -47,11 +47,13 @@ export default function BoardSettingsScreen() {
 
   async function handleSetListStyle(listStyle: ListStyle) {
     if (!board) return;
+    const previous = board.list_style;
     setBoard({ ...board, list_style: listStyle });
     try {
       await updateBoardListStyle(board.id, listStyle);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update the ranking type.');
+      setBoard((prev) => (prev ? { ...prev, list_style: previous } : prev));
     }
   }
 
@@ -63,6 +65,7 @@ export default function BoardSettingsScreen() {
       await updateBoardPrivacy(board.id, next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update privacy.');
+      setBoard((prev) => (prev ? { ...prev, is_private: !next } : prev));
     }
   }
 

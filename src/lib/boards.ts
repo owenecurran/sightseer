@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
+type BoardUpdate = Database['public']['Tables']['boards']['Update'];
 
 type PlaceWithLatLng = { name: string; lat: number | null; lng: number | null };
 
@@ -315,25 +316,36 @@ export async function uncheckBoardItem(userId: string, boardItemId: string): Pro
   if (error) throw error;
 }
 
+// A bare .update() with no .select() would silently "succeed" even if RLS
+// matched zero rows (PostgREST returns no error for that — it just means
+// nothing was written) — the caller couldn't tell "updated" from "silently
+// no-op'd due to a permission mismatch." Appending .select('id') and
+// checking the returned row count turns that into a real, thrown error.
+// Matters most for setBoardFeatured below (an admin writing to a row they
+// don't own — a genuine permission boundary, not just "is this my own
+// row"), but applied to all three here since they share the same shape.
+async function updateBoardOrThrow(boardId: string, patch: BoardUpdate, failureMessage: string): Promise<void> {
+  const { data, error } = await supabase.from('boards').update(patch).eq('id', boardId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error(failureMessage);
+}
+
 // Board settings — see board/[id]/settings.tsx. Both columns already existed
 // (20260803120200_travel_book_rating_and_board_list_style.sql) but were
 // never writable from the app until now.
 export async function updateBoardListStyle(boardId: string, listStyle: 'collection' | 'ranked'): Promise<void> {
-  const { error } = await supabase.from('boards').update({ list_style: listStyle }).eq('id', boardId);
-  if (error) throw error;
+  await updateBoardOrThrow(boardId, { list_style: listStyle }, 'Could not update the ranking type.');
 }
 
 export async function updateBoardPrivacy(boardId: string, isPrivate: boolean): Promise<void> {
-  const { error } = await supabase.from('boards').update({ is_private: isPrivate }).eq('id', boardId);
-  if (error) throw error;
+  await updateBoardOrThrow(boardId, { is_private: isPrivate }, 'Could not update privacy.');
 }
 
 // Admin-only in practice — authorized by the additive boards_update_admin
 // RLS policy (full-row grant, same trust model as visits_delete_admin),
 // not by anything this function checks client-side.
 export async function setBoardFeatured(boardId: string, featured: boolean): Promise<void> {
-  const { error } = await supabase.from('boards').update({ is_featured: featured }).eq('id', boardId);
-  if (error) throw error;
+  await updateBoardOrThrow(boardId, { is_featured: featured }, 'Could not update featured status — you may not have permission.');
 }
 
 // No RPC needed — boards_select RLS already scopes results correctly per

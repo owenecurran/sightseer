@@ -1,4 +1,5 @@
 import { getCachedUrls } from '@/lib/media-url-cache';
+import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
@@ -16,6 +17,9 @@ export type PromptAttachment = {
   visitPlaceName: string | null;
   visitRating: number | null;
   visitNote: string | null;
+  // Resolved display photo: the explicit visit_photo_id override if one was
+  // chosen, else the visit's first photo by position — preserves today's
+  // default for every attachment saved before this choice existed.
   visitPhotoId: string | null;
   boardName: string | null;
   placeName: string | null;
@@ -39,6 +43,7 @@ type RawAttachment = {
   board_id: string | null;
   place_id: string | null;
   travel_book_id: string | null;
+  visit_photo_id: string | null;
   visits: {
     rating: number | null;
     note: string | null;
@@ -58,10 +63,11 @@ type RawPrompt = {
 };
 
 const PROMPT_SELECT =
-  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
+  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visit_photo_id, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
 
 function mapAttachment(r: RawAttachment): PromptAttachment {
-  const firstPhoto = [...(r.visits?.photos ?? [])].sort((a, b) => a.position - b.position)[0];
+  const photos = [...(r.visits?.photos ?? [])].sort((a, b) => a.position - b.position);
+  const explicitPhoto = r.visit_photo_id ? photos.find((p) => p.id === r.visit_photo_id) : undefined;
   return {
     id: r.id,
     attachmentType: r.attachment_type,
@@ -74,7 +80,7 @@ function mapAttachment(r: RawAttachment): PromptAttachment {
     visitPlaceName: r.visits?.places?.name ?? null,
     visitRating: r.visits?.rating ?? null,
     visitNote: r.visits?.note ?? null,
-    visitPhotoId: firstPhoto?.id ?? null,
+    visitPhotoId: (explicitPhoto ?? photos[0])?.id ?? null,
     boardName: r.boards?.name ?? null,
     placeName: r.places?.name ?? null,
     travelBookName: r.travel_books?.title ?? null,
@@ -105,6 +111,9 @@ export type AttachmentInput = {
   boardId?: string | null;
   placeId?: string | null;
   travelBookId?: string | null;
+  // 'review' only — an explicit choice of which of the visit's photos to
+  // feature; null falls back to the first photo by position.
+  visitPhotoId?: string | null;
 };
 
 type SavePromptParams = {
@@ -155,6 +164,7 @@ export async function savePrompt(params: SavePromptParams): Promise<void> {
         board_id: a.boardId ?? null,
         place_id: a.placeId ?? null,
         travel_book_id: a.travelBookId ?? null,
+        visit_photo_id: a.visitPhotoId ?? null,
       }))
     );
     if (insertError) throw insertError;
@@ -215,4 +225,23 @@ export async function getPromptPhotoUrls(attachmentIds: string[]): Promise<Recor
     const { urls } = data as { urls: { attachmentId: string; url: string }[] };
     return Object.fromEntries(urls.map((u) => [u.attachmentId, u.url]));
   });
+}
+
+export type VisitPhotoOption = { id: string; url: string };
+
+// Powers the "which photo?" picker in prompt-editor.tsx once a review has
+// been picked for a 'review' attachment — separate from the read path's
+// PROMPT_SELECT join since that only ever covers a visit already attached
+// to an existing prompt, not an arbitrary one just picked in the editor.
+export async function getVisitPhotoOptions(visitId: string): Promise<VisitPhotoOption[]> {
+  const { data, error } = await supabase
+    .from('photos')
+    .select('id, position')
+    .eq('visit_id', visitId)
+    .order('position');
+  if (error) throw error;
+  if (data.length === 0) return [];
+
+  const urls = await getPhotoViewUrls(data.map((p) => p.id));
+  return data.map((p) => ({ id: p.id, url: urls[p.id] })).filter((p): p is VisitPhotoOption => p.url != null);
 }

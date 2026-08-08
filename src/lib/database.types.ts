@@ -655,6 +655,7 @@ export type Database = {
           text_value: string | null
           travel_book_id: string | null
           visit_id: string | null
+          visit_photo_id: string | null
         }
         Insert: {
           attachment_type: string
@@ -668,6 +669,7 @@ export type Database = {
           text_value?: string | null
           travel_book_id?: string | null
           visit_id?: string | null
+          visit_photo_id?: string | null
         }
         Update: {
           attachment_type?: string
@@ -681,6 +683,7 @@ export type Database = {
           text_value?: string | null
           travel_book_id?: string | null
           visit_id?: string | null
+          visit_photo_id?: string | null
         }
         Relationships: [
           {
@@ -716,6 +719,13 @@ export type Database = {
             columns: ["visit_id"]
             isOneToOne: false
             referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_prompt_attachments_visit_photo_id_fkey"
+            columns: ["visit_photo_id"]
+            isOneToOne: false
+            referencedRelation: "photos"
             referencedColumns: ["id"]
           },
         ]
