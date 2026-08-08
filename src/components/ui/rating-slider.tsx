@@ -7,6 +7,7 @@ import { Easing, runOnJS, useSharedValue, withRepeat, withTiming } from 'react-n
 import { ThemedText } from '@/components/themed-text';
 import { LiquidGlassTrackGated } from '@/components/ui/liquid-glass-track-gated';
 import { Spacing } from '@/constants/theme';
+import { RATING_GRADIENT_COLORS, RATING_GRADIENT_STOPS } from '@/lib/rating-gradient';
 
 const MAX_VALUE = 10;
 const THUMB_SIZE = 32;
@@ -24,25 +25,6 @@ const TRACK_HEIGHT = THUMB_SIZE;
 const ICON_SIZE = TRACK_HEIGHT * 2.625;
 const CANVAS_HEIGHT = ICON_SIZE;
 const MAX_SHAKE_PX = 1;
-// Value-space stops (0-10), converted to 0-1 progress below. More stops,
-// irregular spacing, and a couple of deliberately "off" hues (burnt orange,
-// chartreuse) rather than a clean spectral sweep — a plain 5-stop
-// red-yellow-green-teal ramp read as a generated rainbow, not a designed one.
-// Sampled directly inside the liquid-glass shader now (see
-// liquid-glass-track.tsx's track() function) — this is the one place these
-// are defined, not duplicated.
-const GRADIENT_STOPS = [0, 0.08, 0.22, 0.4, 0.55, 0.7, 0.85, 1];
-const GRADIENT_COLORS = [
-  '#3a0142',
-  '#8c0d2f',
-  '#d4491f',
-  '#e8a71c',
-  '#c9d41c',
-  '#4a9c3f',
-  '#0f8a72',
-  '#05e8b7',
-];
-
 function clamp(n: number, min: number, max: number) {
   'worklet';
   return Math.min(Math.max(n, min), max);
@@ -172,8 +154,8 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
               shakePhase={shakePhase}
               shakeIntensity={shakeIntensity}
               maxShakePx={MAX_SHAKE_PX}
-              gradientStops={GRADIENT_STOPS}
-              gradientColors={GRADIENT_COLORS}
+              gradientStops={RATING_GRADIENT_STOPS}
+              gradientColors={RATING_GRADIENT_COLORS}
             />
           )}
         </View>

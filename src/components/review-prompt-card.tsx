@@ -10,6 +10,7 @@ import {
 
 import { ThemedText } from "@/components/themed-text";
 import { LoadableImage } from "@/components/ui/loadable-image";
+import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
 import { StretchText } from "@/components/ui/stretch-text";
 import { CARD_RADIUS } from "@/components/ui/teaser-card";
 import { BrandColors, Spacing } from "@/constants/theme";
@@ -168,26 +169,7 @@ export function ReviewPromptCard({
           </View>
         </View>
         <View style={[styles.info, isHorizontal ? styles.infoStacked : null]}>
-          {rating != null && (
-            <View
-              style={[
-                styles.ratingBadge,
-                {
-                  width: badgeSize,
-                  height: badgeSize,
-                  borderRadius: badgeSize / 2,
-                },
-              ]}
-            >
-              <ThemedText
-                type="roundedStat"
-                themeColor="background"
-                style={{ fontSize: clamp(badgeSize * 0.32, 14, 28) }}
-              >
-                {rating.toFixed(1)}
-              </ThemedText>
-            </View>
-          )}
+          {rating != null && <RatingGlassBadgeGated rating={rating} size={badgeSize} />}
           {note &&
             (isHorizontal ? (
               <ThemedText type="default" themeColor="background">
@@ -307,10 +289,5 @@ const styles = StyleSheet.create({
   // shrinking instead of staying pinned to the full-size value.
   noteText: {
     lineHeight: undefined,
-  },
-  ratingBadge: {
-    backgroundColor: BrandColors.cream,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

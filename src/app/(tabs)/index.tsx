@@ -14,6 +14,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
 import { VisitActionsRow } from '@/components/visit-actions-row';
 import { VisitMenu } from '@/components/visit-menu';
@@ -359,11 +360,18 @@ function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLik
             ))}
           </ThemedText>
         )}
-        <ThemedText type="small" themeColor="textSecondary">
-          {visit.rating != null ? `${visit.rating.toFixed(1)} ★` : 'Visited'}
-          {visit.visitNumber > 1 ? ` · ${ordinal(visit.visitNumber)} visit` : ''}
-          {visit.note ? ` · ${visit.note}` : ''}
-        </ThemedText>
+        <View style={styles.ratingRow}>
+          {visit.rating != null && <RatingGlassBadgeGated rating={visit.rating} size={32} />}
+          <ThemedText type="small" themeColor="textSecondary" style={styles.ratingRowText}>
+            {[
+              visit.rating == null ? 'Visited' : null,
+              visit.visitNumber > 1 ? `${ordinal(visit.visitNumber)} visit` : null,
+              visit.note || null,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </ThemedText>
+        </View>
       </Pressable>
     </>
   );
@@ -448,11 +456,7 @@ function RecapCard({ recap, avatarUrl, coverUrl }: { recap: FeedRecap; avatarUrl
         </View>
         {coverUrl && <LoadableImage source={{ uri: coverUrl }} style={styles.recapCover} />}
         <ThemedText type="headline">{recap.title}</ThemedText>
-        {recap.rating != null && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {recap.rating.toFixed(1)} ★
-          </ThemedText>
-        )}
+        {recap.rating != null && <RatingGlassBadgeGated rating={recap.rating} size={32} />}
         {recap.body && (
           <ThemedText type="small" numberOfLines={3}>
             {recap.body}
@@ -480,6 +484,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  ratingRowText: {
+    flex: 1,
   },
   dividerText: {
     textAlign: 'center',
