@@ -361,7 +361,6 @@ function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLik
           </ThemedText>
         )}
         <View style={styles.ratingRow}>
-          {visit.rating != null && <RatingGlassBadgeGated rating={visit.rating} size={32} />}
           <ThemedText type="small" themeColor="textSecondary" style={styles.ratingRowText}>
             {[
               visit.rating == null ? 'Visited' : null,
@@ -371,6 +370,7 @@ function VisitCard({ visit, photoUrls, avatarUrl, isOwner, isCopied, onToggleLik
               .filter(Boolean)
               .join(' · ')}
           </ThemedText>
+          {visit.rating != null && <RatingGlassBadgeGated rating={visit.rating} size={44} />}
         </View>
       </Pressable>
     </>
@@ -456,7 +456,7 @@ function RecapCard({ recap, avatarUrl, coverUrl }: { recap: FeedRecap; avatarUrl
         </View>
         {coverUrl && <LoadableImage source={{ uri: coverUrl }} style={styles.recapCover} />}
         <ThemedText type="headline">{recap.title}</ThemedText>
-        {recap.rating != null && <RatingGlassBadgeGated rating={recap.rating} size={32} />}
+        {recap.rating != null && <RatingGlassBadgeGated rating={recap.rating} size={44} />}
         {recap.body && (
           <ThemedText type="small" numberOfLines={3}>
             {recap.body}

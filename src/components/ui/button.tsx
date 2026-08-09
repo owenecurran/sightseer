@@ -24,7 +24,7 @@ export function Button({ label, variant = 'primary', loading, disabled, style, .
           {loading ? (
             <ActivityIndicator color={isPrimary ? theme.background : theme.text} />
           ) : (
-            <ThemedText type="smallBold" themeColor={isPrimary ? 'background' : 'text'}>
+            <ThemedText type="roundedStat" style={styles.label} themeColor={isPrimary ? 'background' : 'text'}>
               {label}
             </ThemedText>
           )}
@@ -37,9 +37,17 @@ export function Button({ label, variant = 'primary', loading, disabled, style, .
 const styles = StyleSheet.create({
   button: {
     paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.five,
     borderRadius: Spacing.three,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // roundedStat (HelveticaRoundedBold) reads noticeably larger than
+  // smallBold's plain-sans 14px at the same nominal size — bumped up a
+  // couple px so it doesn't look undersized next to the button's own
+  // (now wider, see `button.paddingHorizontal`) padding.
+  label: {
+    fontSize: 16,
   },
   pressed: {
     opacity: 0.7,

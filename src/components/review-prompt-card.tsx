@@ -14,6 +14,7 @@ import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated"
 import { StretchText } from "@/components/ui/stretch-text";
 import { CARD_RADIUS } from "@/components/ui/teaser-card";
 import { BrandColors, Spacing } from "@/constants/theme";
+import { STAMP_VIEWBOX_HEIGHT, STAMP_VIEWBOX_WIDTH } from "@/lib/stamp-shape";
 
 type ReviewPromptCardProps = {
   label: string;
@@ -22,6 +23,10 @@ type ReviewPromptCardProps = {
   rating: number | null;
   note: string | null;
   photoUrl?: string;
+  // Set by the prompt editor's live preview, which renders this exact
+  // component against in-progress (possibly unsaved) attachment data — a
+  // preview should never actually navigate to /visit/[id] on tap.
+  disabled?: boolean;
 };
 
 // Small, even sage border around the photo, matching the card's own
@@ -100,11 +105,18 @@ export function ReviewPromptCard({
   rating,
   note,
   photoUrl,
+  disabled,
 }: ReviewPromptCardProps) {
   const [photoBox, setPhotoBox] = useState({ width: 0, height: 0 });
   const [photoAspectRatio, setPhotoAspectRatio] = useState(DEFAULT_PHOTO_ASPECT_RATIO);
   const isHorizontal = photoAspectRatio > 1;
-  const badgeSize = clamp(photoBox.height * 0.24, 40, 72);
+  const badgeSize = clamp(photoBox.height * 0.3, 48, 88);
+  // RatingGlassBadge's `size` prop is a *width* — its real rendered height
+  // follows the stamp asset's own portrait aspect ratio (stamp-shape.ts),
+  // taller than badgeSize itself. Needed here, not just inside that
+  // component, since availableNoteHeight below has to budget for the
+  // badge's actual footprint.
+  const badgeHeight = badgeSize * (STAMP_VIEWBOX_HEIGHT / STAMP_VIEWBOX_WIDTH);
   // adjustsFontSizeToFit shrinks to fit *this many lines*, not a pixel
   // height directly — derived from the actual space left in `info` once the
   // badge and padding are accounted for, so a short/tall photo gets a
@@ -115,7 +127,7 @@ export function ReviewPromptCard({
   // rendered below it) and sometimes way less. Only meaningful in row mode
   // — stacked mode's note isn't fitted into anything.
   const availableNoteHeight =
-    photoBox.height - Spacing.three * 2 - (rating != null ? badgeSize + Spacing.two : 0);
+    photoBox.height - Spacing.three * 2 - (rating != null ? badgeHeight + Spacing.two : 0);
   const noteMaxLines = clamp(Math.floor(availableNoteHeight / NOTE_LINE_HEIGHT), 1, 12);
 
   function handlePhotoLoad(event: ImageLoadEventData) {
@@ -127,6 +139,7 @@ export function ReviewPromptCard({
     <View style={styles.wrap}>
       <ThemedText type="sectionLabel">{label}</ThemedText>
       <Pressable
+        disabled={disabled}
         onPress={() =>
           router.push({ pathname: "/visit/[id]", params: { id: visitId } })
         }

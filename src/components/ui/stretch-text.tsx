@@ -27,6 +27,16 @@ type StretchTextProps = ThemedTextProps & {
   // of the row's actual available width instead of the intended edge-to-edge
   // fit.
   fill?: boolean;
+  // `fill`-only modifier: stretches to the container's real *height* too
+  // (like `outline`'s own real rawScaleY), instead of `fill`'s default
+  // aspect-ratio compensation (fillScaleY, which only grows tall enough to
+  // keep letterforms from looking squashed, not to actually fill a
+  // pre-existing box). Only meaningful when the surrounding layout gives
+  // this component a real height independent of its own content (e.g. a
+  // `flex:1` row) — unlike `outline`'s band, this doesn't grow the
+  // container to match, so a fixed-height container is what makes this mode
+  // coherent at all.
+  fillHeight?: boolean;
 };
 
 // Measures the text's true single-line intrinsic width, then scales it
@@ -211,6 +221,7 @@ export function StretchText({
   children,
   outline,
   fill,
+  fillHeight,
   style,
   ...rest
 }: StretchTextProps) {
@@ -238,7 +249,9 @@ export function StretchText({
   const scaleY = outline
     ? Math.max(rawScaleY, OUTLINE_MIN_SCALE)
     : fill
-      ? fillScaleY(scaleX)
+      ? fillHeight
+        ? Math.max(rawScaleY, FILL_MIN_SCALE)
+        : fillScaleY(scaleX)
       : 1;
   // fill's vertical compensation grows the *visible* text past its natural
   // single-line height via transform, which (unlike outline's band, sized by
@@ -248,8 +261,11 @@ export function StretchText({
   // doesn't) visually overlaps whatever sits below it in the surrounding
   // layout. Reserving the real scaled height here keeps sibling spacing
   // (row gaps, etc.) correct instead of just hoping it doesn't collide.
+  // `fillHeight` skips this entirely — there, the container's height is the
+  // *given* (a real, externally-established box, e.g. a flex:1 row), not
+  // something to grow from the text's own pre-transform size.
   const containerHeightOverride =
-    fill && contentHeight > 0 && scaleY > 1 ? contentHeight * scaleY : undefined;
+    fill && !fillHeight && contentHeight > 0 && scaleY > 1 ? contentHeight * scaleY : undefined;
   // See OUTLINE_STROKE_RADIUS above: shrink the pre-transform radius as the
   // applied scale grows, so the outline's *rendered* size stays constant
   // instead of growing right along with the text and swallowing thin
@@ -274,7 +290,15 @@ export function StretchText({
       }}
       style={[
         styles.container,
-        outline ? styles.fillHeight : null,
+        outline ? styles.fillHeightBand : null,
+        // `fillHeight` needs its own height to be the real, externally-given
+        // one (see the prop's own comment) — without this, an ordinary
+        // block child (no flex/height of its own) just shrinks to its
+        // content's natural height regardless of how much room its `flex:1`
+        // *parent* (categoryTextWrap, in the one current caller) actually
+        // has, and `containerHeight` below would measure that same
+        // self-referential natural size instead of the real box.
+        fill && fillHeight ? styles.fillHeightSelf : null,
         // fill's vertical compensation (containerHeightOverride above) grows
         // this box past the text's natural height — bottom-anchoring it here
         // means that extra room accumulates *above* the text instead of
@@ -368,9 +392,14 @@ export function StretchText({
           // but offset from each other by several px). scaleY is always 1
           // outside fill/outline (see scaleY above), so this is a no-op
           // for every other case — safe to apply unconditionally here.
+          // `fillHeight` is deliberately excluded from the bottom-anchored
+          // group: its container stays centered (containerHeightOverride is
+          // always skipped for it, see that comment), so a plain "left"
+          // (= "left center") pivot is what grows the text symmetrically
+          // from its own already-centered position instead of shifting it.
           {
             transform: [{ scaleX }, { scaleY }],
-            transformOrigin: outline || fill ? "left bottom" : "left",
+            transformOrigin: outline || (fill && !fillHeight) ? "left bottom" : "left",
           },
         ];
         // strokeRadius is an OutlinedText-only prop (unknown to ThemedText),
@@ -440,13 +469,23 @@ const styles = StyleSheet.create({
   // fill — `height:'100%'` makes it actually stretch to match `placeOverlay`
   // (which has a real resolved height via its own `height:'33%'`), so
   // `containerHeight` reflects the true available space to fill vertically.
-  fillHeight: {
+  fillHeightBand: {
     position: "absolute",
     top: 0,
     bottom: 0,
     left: 0,
     right: 0,
     justifyContent: "flex-end",
+  },
+  // `fillHeight` prop's mode: same underlying problem as fillHeightBand
+  // above (a plain block child ignoring its flex parent's real height) but
+  // a plain in-flow `height:'100%'` fix instead of that one's
+  // absolute-positioned band, since this mode's container isn't meant to
+  // grow past or overlay anything — its parent already *is* the real box
+  // (a flex:1 row), so this only needs to claim 100% of what that parent
+  // already gives it.
+  fillHeightSelf: {
+    height: "100%",
   },
   measure: {
     position:

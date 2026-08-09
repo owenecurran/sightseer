@@ -22,7 +22,11 @@ export const BrandColors = {
 // used only by ThemedView's `type="screen"` for each screen's outermost
 // wrapper, not by nested cards/boxes (those stay flat `BrandColors.background`
 // via the regular `background` theme color, so content boxes don't each
-// render their own mini gradient).
+// render their own mini gradient). Restored to the original, visibly
+// brighter start color after a near-identical pair (#031009→#03100a) turned
+// out to look the same as not fixing anything — see ThemedView's own
+// comment for the real gradient-not-rendering bug that made *any* color
+// choice here look unchanging on mobile.
 export const GradientColors = {
   screenStart: '#07120a',
   screenEnd: '#031009',

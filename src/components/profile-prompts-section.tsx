@@ -1,9 +1,10 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { ReviewPromptCard } from '@/components/review-prompt-card';
 import { ThemedText } from '@/components/themed-text';
+import { GridPromptCard } from '@/components/ui/grid-prompt-card';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { StretchText } from '@/components/ui/stretch-text';
 import { CARD_PADDING, CARD_PADDING_LEFT, CARD_RADIUS, TeaserCard, TIGHT_GAP, TITLE_FONT_SIZE } from '@/components/ui/teaser-card';
@@ -19,47 +20,6 @@ function promptLabel(slug: string): string {
 type ProfilePromptsSectionProps = {
   userId: string;
 };
-
-// 'board'/'travel_book' in 'grid' mode — the only prompt card that can't
-// use the shared TeaserCard as-is (that's built around exactly one square
-// photo beside the title; a grid of up to 4 needs its own photo layout),
-// so it reuses TeaserCard's own style tokens directly to still read as the
-// same family of card.
-function GridPromptCard({
-  label,
-  title,
-  photoIds,
-  photoUrls,
-  onPress,
-}: {
-  label: string;
-  title: string;
-  photoIds: string[];
-  photoUrls: Record<string, string>;
-  onPress: () => void;
-}) {
-  const withUrls = photoIds.filter((id) => photoUrls[id]);
-  return (
-    <Pressable onPress={onPress} style={styles.gridCard}>
-      <ThemedText type="sectionLabel">{label}</ThemedText>
-      {withUrls.length > 0 && (
-        <View style={styles.gridContainer}>
-          {withUrls.map((id) => (
-            <LoadableImage key={id} source={{ uri: photoUrls[id] }} style={styles.gridPhoto} contentFit="cover" />
-          ))}
-        </View>
-      )}
-      <View style={styles.gridTitleRow}>
-        <View style={styles.gridTitle}>
-          <StretchText type="headline" fill style={styles.titleText}>
-            {title}
-          </StretchText>
-        </View>
-        <ThemedText type="headline">›</ThemedText>
-      </View>
-    </Pressable>
-  );
-}
 
 export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
@@ -237,30 +197,5 @@ const styles = StyleSheet.create({
   },
   titleText: {
     fontSize: TITLE_FONT_SIZE,
-  },
-  gridCard: {
-    borderWidth: 1,
-    borderColor: 'rgba(234,231,207,0.35)',
-    borderRadius: CARD_RADIUS,
-    padding: CARD_PADDING,
-    gap: TIGHT_GAP,
-  },
-  gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: TIGHT_GAP,
-  },
-  gridPhoto: {
-    width: '48%',
-    aspectRatio: 1,
-    borderRadius: Spacing.one,
-  },
-  gridTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  gridTitle: {
-    flex: 1,
   },
 });

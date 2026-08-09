@@ -3,9 +3,12 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AttachmentPreview, type PreviewData } from '@/components/attachment-preview';
+import { AttachmentTypePicker } from '@/components/attachment-type-picker';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
 import { PlaceSearchInput } from '@/components/place-search-input';
+import { PromptQuestionPicker } from '@/components/prompt-question-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -13,11 +16,7 @@ import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
 import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
-import {
-  PROFILE_PROMPT_CATEGORY_LABELS,
-  PROFILE_PROMPTS,
-  type ProfilePromptCategory,
-} from '@/constants/profile-prompts';
+import { PROFILE_PROMPT_CATEGORY_LABELS, PROFILE_PROMPTS, type ProfilePromptCategory } from '@/constants/profile-prompts';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useAuth } from '@/lib/auth-context';
 import { listMyBoards } from '@/lib/boards';
@@ -27,6 +26,7 @@ import {
   deletePrompt,
   getBoardPhotoOptions,
   getPlacePhotoOptions,
+  getPromptPhotoUrls,
   getTravelBookPhotoOptions,
   getVisitPhotoOptions,
   listPrompts,
@@ -42,20 +42,22 @@ import { listUserTravelBooks } from '@/lib/travel-books';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
-const ANSWER_TYPES: { value: AttachmentType; label: string }[] = [
-  { value: 'text', label: 'Text' },
-  { value: 'photo', label: 'Photo' },
-  { value: 'review', label: 'Review' },
-  { value: 'board', label: 'Board' },
-  { value: 'place', label: 'Place' },
-  { value: 'travel_book', label: 'Travel book' },
-];
-
 const TEXT_ANSWER_MAX_LENGTH = 200;
 const MAX_ATTACHMENTS = 5;
 const MAX_GRID_PHOTOS = 4;
 
 type LocalAttachment = {
+  // Only set for an attachment loaded from an existing saved prompt — used
+  // to look up its already-uploaded photo URL for the live preview (a
+  // brand-new attachment has no id yet, and previews from pendingPhotoUri
+  // instead — see previewDataFor below).
+  id: string | null;
+  // Whether AttachmentTypePicker's format-list box is expanded (choosing a
+  // format) or collapsed to a compact header (format already chosen,
+  // showing that format's own editor below it instead) — see
+  // emptyAttachment/the existing-attachment load mapping for the two
+  // different defaults.
+  formatExpanded: boolean;
   attachmentType: AttachmentType;
   textValue: string;
   visitId: string | null;
@@ -80,6 +82,11 @@ type LocalAttachment = {
 
 function emptyAttachment(): LocalAttachment {
   return {
+    id: null,
+    // A fresh attachment has no format chosen yet, so its picker starts
+    // expanded — an existing one loaded from a saved prompt already has a
+    // real format and starts collapsed instead (see the load effect below).
+    formatExpanded: true,
     attachmentType: 'text',
     textValue: '',
     visitId: null,
@@ -96,7 +103,7 @@ function emptyAttachment(): LocalAttachment {
   };
 }
 
-type OwnVisitOption = { id: string; placeName: string; rating: number | null };
+type OwnVisitOption = { id: string; placeName: string; rating: number | null; note: string | null };
 type OwnBoardOption = { id: string; name: string };
 type OwnTravelBookOption = { id: string; title: string };
 
@@ -131,6 +138,11 @@ export default function PromptEditorScreen() {
   const [placePhotoOptions, setPlacePhotoOptions] = useState<Record<string, VisitPhotoOption[]>>({});
   const [boardPhotoOptions, setBoardPhotoOptions] = useState<Record<string, VisitPhotoOption[]>>({});
   const [travelBookPhotoOptions, setTravelBookPhotoOptions] = useState<Record<string, VisitPhotoOption[]>>({});
+  // Existing 'photo'-attachment previews (keyed by attachment id, not index —
+  // see LocalAttachment.id) — a brand-new 'photo' attachment previews from
+  // its own pendingPhotoUri directly instead, so this only ever needs to
+  // cover attachments loaded from a saved prompt.
+  const [photoAttachmentUrls, setPhotoAttachmentUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!session) return;
@@ -144,7 +156,7 @@ export default function PromptEditorScreen() {
         listUserTravelBooks(session.user.id),
         supabase
           .from('visits')
-          .select('id, rating, places!place_id(name)')
+          .select('id, rating, note, places!place_id(name)')
           .eq('user_id', session.user.id)
           .order('created_at', { ascending: false }),
       ]);
@@ -156,7 +168,12 @@ export default function PromptEditorScreen() {
       setOwnBoards(boards.map((b) => ({ id: b.id, name: b.name })));
       setOwnTravelBooks(travelBooks.map((b) => ({ id: b.id, title: b.title })));
       setOwnVisits(
-        (visitsRes.data ?? []).map((v) => ({ id: v.id, rating: v.rating, placeName: v.places?.name ?? 'Unknown place' }))
+        (visitsRes.data ?? []).map((v) => ({
+          id: v.id,
+          rating: v.rating,
+          note: v.note,
+          placeName: v.places?.name ?? 'Unknown place',
+        }))
       );
 
       setPromptSlug(existing?.promptSlug ?? '');
@@ -164,6 +181,9 @@ export default function PromptEditorScreen() {
       setAttachments(
         existing && existing.attachments.length > 0
           ? existing.attachments.map((a) => ({
+              id: a.id,
+              // Already has a real format — start collapsed, not mid-pick.
+              formatExpanded: false,
               attachmentType: a.attachmentType,
               textValue: a.textValue ?? '',
               visitId: a.visitId,
@@ -180,6 +200,15 @@ export default function PromptEditorScreen() {
             }))
           : [emptyAttachment()]
       );
+
+      // Preview URLs for any already-saved 'photo' attachments (a
+      // freshly-picked one previews from pendingPhotoUri directly instead).
+      const photoAttachmentIds = (existing?.attachments ?? [])
+        .filter((a) => a.attachmentType === 'photo' && a.photoR2Key)
+        .map((a) => a.id);
+      if (photoAttachmentIds.length > 0) {
+        getPromptPhotoUrls(photoAttachmentIds).then(setPhotoAttachmentUrls);
+      }
 
       // Pre-fetch photo options for any attachment already carrying a
       // visit/place/board/travel-book id, so the pickers have something to
@@ -343,6 +372,48 @@ export default function PromptEditorScreen() {
     ? availablePrompts.filter((p) => p.category === selectedCategory)
     : [];
 
+  // Resolves one in-progress attachment into exactly what AttachmentPreview
+  // needs to render it the same way profile-prompts-section.tsx eventually
+  // will — from this screen's own already-loaded option lookups, never a
+  // fresh fetch, so the preview updates live as the user picks things.
+  function previewDataFor(a: LocalAttachment): PreviewData {
+    if (a.attachmentType === 'text') {
+      return a.textValue.trim() ? { kind: 'text', text: a.textValue.trim() } : { kind: 'empty' };
+    }
+
+    if (a.attachmentType === 'photo') {
+      const url = a.pendingPhotoUri ?? (a.id ? photoAttachmentUrls[a.id] : undefined);
+      return url ? { kind: 'photo', url } : { kind: 'empty' };
+    }
+
+    if (a.attachmentType === 'review') {
+      if (!a.visitId) return { kind: 'empty' };
+      const visit = ownVisits.find((v) => v.id === a.visitId);
+      if (!visit) return { kind: 'empty' };
+      const options = visitPhotoOptions[a.visitId] ?? [];
+      const photoUrl = (a.visitPhotoId ? options.find((o) => o.id === a.visitPhotoId) : options[0])?.url;
+      return { kind: 'review', visitId: a.visitId, placeName: visit.placeName, rating: visit.rating, note: visit.note, photoUrl };
+    }
+
+    if (a.attachmentType === 'board' || a.attachmentType === 'travel_book') {
+      const id = a.attachmentType === 'board' ? a.boardId : a.travelBookId;
+      if (!id) return { kind: 'empty' };
+      const title = a.attachmentType === 'board' ? ownBoards.find((b) => b.id === id)?.name : ownTravelBooks.find((b) => b.id === id)?.title;
+      if (!title) return { kind: 'empty' };
+      const options = a.attachmentType === 'board' ? (boardPhotoOptions[id] ?? []) : (travelBookPhotoOptions[id] ?? []);
+      if (a.displayMode === 'grid') {
+        if (a.gridPhotoIds.length === 0) return { kind: 'empty' };
+        return { kind: 'grid', title, photoIds: a.gridPhotoIds, photoUrls: Object.fromEntries(options.map((o) => [o.id, o.url])) };
+      }
+      return { kind: 'cover', title, thumbnailUrl: a.coverPhotoId ? options.find((o) => o.id === a.coverPhotoId)?.url : undefined };
+    }
+
+    // 'place'
+    if (!a.placeId || !a.placeName) return { kind: 'empty' };
+    const options = placePhotoOptions[a.placeId] ?? [];
+    return { kind: 'cover', title: a.placeName, thumbnailUrl: a.coverPhotoId ? options.find((o) => o.id === a.coverPhotoId)?.url : undefined };
+  }
+
   function updateAttachment(index: number, patch: Partial<LocalAttachment>) {
     setAttachments((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)));
   }
@@ -482,44 +553,14 @@ export default function PromptEditorScreen() {
             </ThemedText>
           )}
 
-          <ThemedText type="small" themeColor="textSecondary">
-            Category
-          </ThemedText>
-          <View style={styles.chipRow}>
-            {categories.map((category) => (
-              <Pressable
-                key={category}
-                onPress={() => setSelectedCategory((prev) => (prev === category ? null : category))}>
-                <ThemedView
-                  type={selectedCategory === category ? 'backgroundSelected' : 'background'}
-                  style={styles.chip}>
-                  <ThemedText type="small">{PROFILE_PROMPT_CATEGORY_LABELS[category]}</ThemedText>
-                </ThemedView>
-              </Pressable>
-            ))}
-          </View>
-
-          {selectedCategory && (
-            <>
-              <ThemedText type="small" themeColor="textSecondary">
-                Prompt
-              </ThemedText>
-              <View style={styles.chipRow}>
-                {promptsInSelectedCategory.length === 0 && (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    No prompts left in this category.
-                  </ThemedText>
-                )}
-                {promptsInSelectedCategory.map((p) => (
-                  <Pressable key={p.slug} onPress={() => setPromptSlug(p.slug)}>
-                    <ThemedView type={promptSlug === p.slug ? 'backgroundSelected' : 'background'} style={styles.chip}>
-                      <ThemedText type="small">{p.label}</ThemedText>
-                    </ThemedView>
-                  </Pressable>
-                ))}
-              </View>
-            </>
-          )}
+          <PromptQuestionPicker
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onSelectCategory={(category) => setSelectedCategory((prev) => (prev === category ? null : category))}
+            promptsInCategory={promptsInSelectedCategory}
+            selectedSlug={promptSlug}
+            onSelectPrompt={setPromptSlug}
+          />
 
           {attachments.map((attachment, index) => (
             <View key={index} style={styles.attachmentBlock}>
@@ -536,19 +577,14 @@ export default function PromptEditorScreen() {
                 )}
               </View>
 
-              <View style={styles.chipRow}>
-                {ANSWER_TYPES.map((t) => (
-                  <Pressable key={t.value} onPress={() => updateAttachment(index, { attachmentType: t.value })}>
-                    <ThemedView
-                      type={attachment.attachmentType === t.value ? 'backgroundSelected' : 'background'}
-                      style={styles.chip}>
-                      <ThemedText type="small">{t.label}</ThemedText>
-                    </ThemedView>
-                  </Pressable>
-                ))}
-              </View>
+              <AttachmentTypePicker
+                value={attachment.attachmentType}
+                expanded={attachment.formatExpanded}
+                onSelect={(type) => updateAttachment(index, { attachmentType: type, formatExpanded: false })}
+                onToggleExpanded={() => updateAttachment(index, { formatExpanded: !attachment.formatExpanded })}
+              />
 
-              {attachment.attachmentType === 'text' && (
+              {!attachment.formatExpanded && attachment.attachmentType === 'text' && (
                 <TextField
                   placeholder="Your answer"
                   value={attachment.textValue}
@@ -557,7 +593,7 @@ export default function PromptEditorScreen() {
                 />
               )}
 
-              {attachment.attachmentType === 'photo' && (
+              {!attachment.formatExpanded && attachment.attachmentType === 'photo' && (
                 <Button
                   label={
                     attachment.pendingPhotoUri
@@ -571,7 +607,7 @@ export default function PromptEditorScreen() {
                 />
               )}
 
-              {attachment.attachmentType === 'review' && (
+              {!attachment.formatExpanded && attachment.attachmentType === 'review' && (
                 <>
                   <View style={styles.chipRow}>
                     {ownVisits.length === 0 && (
@@ -619,7 +655,7 @@ export default function PromptEditorScreen() {
                 </>
               )}
 
-              {attachment.attachmentType === 'board' && (
+              {!attachment.formatExpanded && attachment.attachmentType === 'board' && (
                 <>
                   <View style={styles.chipRow}>
                     {ownBoards.length === 0 && (
@@ -642,7 +678,7 @@ export default function PromptEditorScreen() {
                 </>
               )}
 
-              {attachment.attachmentType === 'travel_book' && (
+              {!attachment.formatExpanded && attachment.attachmentType === 'travel_book' && (
                 <>
                   <View style={styles.chipRow}>
                     {ownTravelBooks.length === 0 && (
@@ -665,7 +701,7 @@ export default function PromptEditorScreen() {
                 </>
               )}
 
-              {attachment.attachmentType === 'place' && (
+              {!attachment.formatExpanded && attachment.attachmentType === 'place' && (
                 <View style={styles.placePicker}>
                   {attachment.placeId && attachment.placeName && (
                     <ThemedView type="backgroundSelected" style={styles.chip}>
@@ -680,6 +716,18 @@ export default function PromptEditorScreen() {
                     renderCoverPhotoPicker(placePhotoOptions[attachment.placeId] ?? [], attachment.coverPhotoId, (photoId) =>
                       updateAttachment(index, { coverPhotoId: photoId })
                     )}
+                </View>
+              )}
+
+              {!attachment.formatExpanded && (
+                <View style={styles.previewSection}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Preview
+                  </ThemedText>
+                  <AttachmentPreview
+                    label={PROFILE_PROMPTS.find((p) => p.slug === promptSlug)?.label ?? 'Preview'}
+                    data={previewDataFor(attachment)}
+                  />
                 </View>
               )}
             </View>
@@ -770,6 +818,10 @@ const styles = StyleSheet.create({
   placePicker: {
     gap: Spacing.two,
     alignItems: 'flex-start',
+  },
+  previewSection: {
+    gap: Spacing.two,
+    marginTop: Spacing.one,
   },
   photoOptionRow: {
     gap: Spacing.two,

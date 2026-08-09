@@ -17,7 +17,7 @@
     "android": {
       "package": "com.owenecurran.alienapp",
       "adaptiveIcon": {
-        "backgroundColor": "#0b1410",
+        "backgroundColor": "#031009",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -37,7 +37,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0b1410",
+          "backgroundColor": "#031009",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
