@@ -1,24 +1,12 @@
-import { useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useMemo } from "react";
+import { StyleSheet, View } from "react-native";
 
-import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
-import { Spacing } from '@/constants/theme';
-import { STAMP_VIEWBOX_HEIGHT, STAMP_VIEWBOX_WIDTH } from '@/lib/stamp-shape';
+import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
+import { STAMP_VIEWBOX_HEIGHT, STAMP_VIEWBOX_WIDTH } from "@/lib/stamp-shape";
 
-// Matches cardTop/card's own paddingHorizontal in (tabs)/index.tsx (and
-// visit/[id].tsx's card) — this block sits inset from the card's true right
-// edge by exactly this much, so any rightOffset magnitude *smaller* than
-// this never clears the card's own edge at all, regardless of how the
-// random draw looks on paper. This was the actual bug behind "still isn't
-// seeping off the post" surviving an earlier range-widening attempt: a
-// wider *range* still left roughly a third of random draws (whenever
-// magnitude < this) landing entirely inside the card, with nothing visibly
-// wrong about that specific draw to notice — it just silently never
-// seeped. Used as a hard floor below, not just a typical/average value.
-const CARD_HORIZONTAL_PADDING = Spacing.three;
-
-export const STAMP_SIZE = 72;
-export const STAMP_HEIGHT = STAMP_SIZE * (STAMP_VIEWBOX_HEIGHT / STAMP_VIEWBOX_WIDTH);
+export const STAMP_SIZE = 92;
+export const STAMP_HEIGHT =
+  STAMP_SIZE * (STAMP_VIEWBOX_HEIGHT / STAMP_VIEWBOX_WIDTH);
 // A rotated rectangle's bounding box is taller than the rectangle itself —
 // at the ±15° extreme this mode ever tilts to, roughly 15-16px taller for
 // this stamp's proportions (W·sin θ + H·cos θ vs. H). Baked in as a flat
@@ -31,6 +19,15 @@ export const STAMP_HEIGHT = STAMP_SIZE * (STAMP_VIEWBOX_HEIGHT / STAMP_VIEWBOX_W
 const ROTATION_BOUNDING_BUFFER = 16;
 export const STAMP_EFFECTIVE_HEIGHT = STAMP_HEIGHT + ROTATION_BOUNDING_BUFFER;
 
+// The stamp's horizontal anchor: how far its *left* edge sits from this
+// block's own right edge, randomized within this range (same ~25px spread
+// as the previous card-edge-relative version, just translated) so it lands
+// close to the review text itself — per direct feedback, not isolated off
+// in the corner past the card's own padding anymore. MAX is the near
+// (further-left) end, MIN the far (further-right, closer to the edge) end.
+const STAMP_LEFT_EDGE_MIN = STAMP_SIZE * 0.7;
+const STAMP_LEFT_EDGE_MAX = STAMP_SIZE * 1.25;
+
 // How much horizontal room text sharing a row with the stamp should give up
 // on its right edge — exported so FeedCardHeaderText's note/tagged-places
 // text can reserve it, an approximation of "wrap around the stamp": React
@@ -39,8 +36,10 @@ export const STAMP_EFFECTIVE_HEIGHT = STAMP_HEIGHT + ROTATION_BOUNDING_BUFFER;
 // fixed right-side margin on the text sharing the stamp's corner is what's
 // actually achievable here, not true dynamic reflow. It reads as "the text
 // stops short to make room for the stamp" rather than hugging its tilted
-// silhouette line-by-line.
-export const STAMP_TEXT_RESERVE = STAMP_SIZE * 0.85;
+// silhouette line-by-line. Matches STAMP_LEFT_EDGE_MAX (the stamp's own
+// worst-case — furthest left — reach) so text always stops clear of it,
+// not just on typical draws.
+export const STAMP_TEXT_RESERVE = STAMP_LEFT_EDGE_MAX;
 
 // Deterministic (not Math.random()) so a given post's stamp placement/tilt
 // stays put across re-renders and re-scrolls instead of reshuffling every
@@ -88,12 +87,13 @@ type FeedRatingStampProps = {
   maxBottomOffset?: number;
 };
 
-// The rating badge, anchored to the bottom-right corner of the post's own
-// header block (not floating anywhere in the card) like a real postage
-// stamp stuck slightly crooked on an envelope corner — per-post randomized
-// how far it sits from that corner and how tilted (-15° to 15°), but
-// deterministic per post (see hashSeed above) so it doesn't jitter between
-// renders. Absolutely positioned and non-interactive
+// The rating badge, anchored near the bottom of the post's own header block
+// (not floating anywhere in the card), horizontally close to the review
+// text itself rather than pinned to the block's right edge — like a real
+// postage stamp stuck slightly crooked right next to the address it's
+// franking. Per-post randomized how far left/right, how far up, and how
+// tilted (-15° to 15°), but deterministic per post (see hashSeed above) so
+// it doesn't jitter between renders. Absolutely positioned and non-interactive
 // (pointerEvents:'none', so it never steals a tap meant for whatever's
 // underneath) — the caller's own wrapper must be `position:'relative'` and
 // must not clip overflow for the seeping-past-the-edge part to show, and
@@ -114,18 +114,23 @@ const RAW_MAX_RISE = STAMP_SIZE * 1.4;
 // headline above it in that case.
 const FALLBACK_MAX_RISE = STAMP_SIZE * 0.45;
 
-export function FeedRatingStamp({ rating, seed, canSeep, maxBottomOffset }: FeedRatingStampProps) {
+export function FeedRatingStamp({
+  rating,
+  seed,
+  canSeep,
+  maxBottomOffset,
+}: FeedRatingStampProps) {
   const { rightOffset, bottomOffset, rotateDeg } = useMemo(() => {
     const next = mulberry32(hashSeed(seed));
-    // CARD_HORIZONTAL_PADDING is a flat floor, not folded into the same
-    // randomized multiplier as before — that let unlucky draws land
-    // entirely inside the card with nothing to notice about that specific
-    // draw. Every post now clears the card's own edge by at least a
-    // little, with the random part only controlling *how much further*
-    // past it (up to ~28px more, topping out well short of the literal
-    // screen edge — ~24px of screen padding beyond the card on a typical
-    // phone width).
-    const rightOffset = -(CARD_HORIZONTAL_PADDING + STAMP_SIZE * (0.05 + next() * 0.35));
+    // See STAMP_LEFT_EDGE_MIN/MAX above — random draw for how far left the
+    // stamp's own left edge sits, then converted to the `right` CSS value
+    // this component actually positions with (right = distance from *its*
+    // right edge, so a bigger leftEdgeFromRight means a bigger right value
+    // means further left).
+    const leftEdgeFromRight =
+      STAMP_LEFT_EDGE_MIN +
+      next() * (STAMP_LEFT_EDGE_MAX - STAMP_LEFT_EDGE_MIN);
+    const rightOffset = leftEdgeFromRight - STAMP_SIZE;
     // canSeep: allowed to dip below this block's own bottom edge into
     // whatever sits directly below (a photo). !canSeep: never negative —
     // structurally can't reach the footer/button row below, since that's
@@ -136,7 +141,10 @@ export function FeedRatingStamp({ rating, seed, canSeep, maxBottomOffset }: Feed
     const rotateDeg = -15 + next() * 30;
     return {
       rightOffset,
-      bottomOffset: Math.min(rawBottomOffset, maxBottomOffset ?? FALLBACK_MAX_RISE),
+      bottomOffset: Math.min(
+        rawBottomOffset,
+        maxBottomOffset ?? FALLBACK_MAX_RISE,
+      ),
       rotateDeg,
     };
   }, [seed, canSeep, maxBottomOffset]);
@@ -146,8 +154,13 @@ export function FeedRatingStamp({ rating, seed, canSeep, maxBottomOffset }: Feed
       pointerEvents="none"
       style={[
         styles.wrap,
-        { right: rightOffset, bottom: bottomOffset, transform: [{ rotate: `${rotateDeg}deg` }] },
-      ]}>
+        {
+          right: rightOffset,
+          bottom: bottomOffset,
+          transform: [{ rotate: `${rotateDeg}deg` }],
+        },
+      ]}
+    >
       <RatingGlassBadgeGated rating={rating} size={STAMP_SIZE} />
     </View>
   );
@@ -155,7 +168,7 @@ export function FeedRatingStamp({ rating, seed, canSeep, maxBottomOffset }: Feed
 
 const styles = StyleSheet.create({
   wrap: {
-    position: 'absolute',
+    position: "absolute",
     zIndex: 5,
   },
 });

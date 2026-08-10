@@ -1,13 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -252,7 +246,7 @@ export default function HomeScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.screenHeaderRow}>
+        <View style={[styles.screenHeaderRow, styles.gutter]}>
           <ThemedText type="displaySerif">Feed</ThemedText>
           <Pressable
             onPress={() => router.push("/notifications")}
@@ -278,34 +272,57 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <FeedSwitcher active={viewMode} onChange={setViewMode} />
+        <View style={styles.gutter}>
+          <FeedSwitcher active={viewMode} onChange={setViewMode} />
+        </View>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText
+            type="small"
+            themeColor="textSecondary"
+            style={styles.gutter}
+          >
             {error}
           </ThemedText>
         )}
 
         {viewMode === "discover" ? (
-          <DiscoverView />
+          <View style={[styles.discoverWrap, styles.gutter]}>
+            <DiscoverView />
+          </View>
         ) : (
           <>
             {!isLoading && items.length === 0 && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText
+                type="small"
+                themeColor="textSecondary"
+                style={styles.gutter}
+              >
                 No visits yet from people you follow. Follow someone from the
                 People tab, or check back once they log a visit.
               </ThemedText>
             )}
 
-            <Animated.FlatList
-              data={displayItems}
-              keyExtractor={(item: FeedItem) =>
-                item.type === "visit"
-                  ? `visit-${item.visit.id}`
-                  : item.type === "recap"
-                    ? `recap-${item.recap.id}`
-                    : "divider"
-              }
+            {
+              // Plain ScrollView + .map(), not FlatList — deliberately.
+              // FlatList virtualizes/recycles cells, which on Android
+              // structurally requires clipping each cell to its own
+              // measured rect (so recycled views don't visually bleed into
+              // a neighbor during scroll) — that's a real clipping layer
+              // inside FlatList's own cell wrapper, not reachable via
+              // styles on cardTop/cardWrap, and (confirmed live) not
+              // avoidable via a custom CellRendererComponent either:
+              // reanimated's Animated.FlatList didn't actually forward it
+              // through to the real FlatList at runtime, despite
+              // compiling fine. A plain ScrollView never recycles views,
+              // so nothing here structurally needs to clip — the same
+              // reason the stamp's overflow already works correctly on
+              // visit/[id].tsx's plain ScrollView. Fine performance-wise
+              // at this app's current feed scale (a personal social feed,
+              // not an infinite-scroll timeline); worth revisiting if the
+              // feed ever needs to hold hundreds+ of items at once.
+            }
+            <Animated.ScrollView
               contentContainerStyle={[
                 styles.list,
                 { paddingBottom: bottomInset },
@@ -320,19 +337,26 @@ export default function HomeScreen() {
                   tintColor={theme.sage}
                 />
               }
-              renderItem={({ item }: { item: FeedItem }) =>
+            >
+              {displayItems.map((item: FeedItem) =>
                 item.type === "divider" ? (
-                  <ThemedText type="sectionLabel" style={styles.dividerText}>
+                  <ThemedText
+                    key="divider"
+                    type="sectionLabel"
+                    style={styles.dividerText}
+                  >
                     Already seen
                   </ThemedText>
                 ) : item.type === "recap" ? (
                   <RecapCard
+                    key={`recap-${item.recap.id}`}
                     recap={item.recap}
                     avatarUrl={avatarUrls[item.recap.authorId]}
                     coverUrl={recapCoverUrls[item.recap.id]}
                   />
                 ) : (
                   <VisitCard
+                    key={`visit-${item.visit.id}`}
                     visit={item.visit}
                     photoUrls={photoUrls}
                     avatarUrl={avatarUrls[item.visit.user_id]}
@@ -343,8 +367,8 @@ export default function HomeScreen() {
                     onDeleted={() => handleVisitDeleted(item.visit.id)}
                   />
                 )
-              }
-            />
+              )}
+            </Animated.ScrollView>
           </>
         )}
       </SafeAreaView>
@@ -373,16 +397,6 @@ function VisitCard({
   onShare,
   onDeleted,
 }: VisitCardProps) {
-  const { width: windowWidth } = useWindowDimensions();
-  // Pulls the photo out past the centered content column and the safeArea's
-  // own horizontal padding so it reaches the literal screen edges — the
-  // header/actions stay in their own padded, rounded card segments above and
-  // below it. On typical phone widths (windowWidth <= MaxContentWidth) this
-  // is just Spacing.four; on wide viewports it also cancels the column's own
-  // centering offset.
-  const photoBreakout =
-    (windowWidth - Math.min(windowWidth, MaxContentWidth)) / 2 + Spacing.four;
-
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(visit.commentCount);
 
@@ -498,10 +512,9 @@ function VisitCard({
     </>
   );
 
-  // No photo to bleed to the screen edges — keep the old single rounded card
-  // wrapping everything. With a photo, the card splits into a top/bottom
-  // pair so the photo between them can reach past the card's own rounded
-  // edges (see photoBreakout above).
+  // No photo — one plain rounded card wrapping everything. With a photo,
+  // the card splits into a top/bottom pair so the photo sits between them
+  // with square edges instead of being inset inside a single rounded box.
   if (!hasPhotos) {
     return (
       <ThemedView type="backgroundElement" style={styles.card} collapsable={false}>
@@ -526,7 +539,16 @@ function VisitCard({
         {header}
       </ThemedView>
 
-      <View style={{ marginHorizontal: -photoBreakout }}>
+      {/* Photos stay at the card's own width — no negative margin pulling
+          them out to the screen edges. That full-bleed treatment existed
+          here for a long time but never actually rendered (the scroll
+          container clipped it at card width, same bug that pinned the
+          rating stamp); once the clip was lifted it started bleeding for
+          real, which read as photos spilling into the screen gutter. The
+          stamp still overflows into that gutter deliberately — the point
+          of this being a plain sibling View with no clipping is that the
+          two are independent. */}
+      <View>
         {(() => {
           const photos = visit.photoIds
             .map((id, i) => ({
@@ -611,14 +633,34 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  // Deliberately NO paddingHorizontal here — that inset lives on each child
+  // instead (`gutter` below, and `list` for the scroll content). Putting it
+  // here pushed the *ScrollView's own bounds* inward to exactly the cards'
+  // edges, and Android clips a scroll container's content to its bounds —
+  // so anything designed to extend past a card (the rating stamp leaning
+  // off the corner, and `photoBreakout`'s full-bleed photos, which were
+  // silently rendering at plain card width the whole time) got cut off at
+  // precisely the card edge. With the inset moved inside, the ScrollView
+  // spans the full column and that 24px gutter is ordinary in-bounds space
+  // those elements can legitimately overflow into.
   safeArea: {
     flex: 1,
     alignSelf: "center",
     width: "100%",
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
+  },
+  // The horizontal inset safeArea used to apply to everything at once —
+  // now applied per-child so the scroll container itself can stay
+  // full-width (see safeArea above).
+  gutter: {
+    paddingHorizontal: Spacing.four,
+  },
+  // DiscoverView used to be a direct flex child of safeArea; wrapping it to
+  // apply the gutter would otherwise collapse it to its content height.
+  discoverWrap: {
+    flex: 1,
   },
   screenHeaderRow: {
     flexDirection: "row",
@@ -654,6 +696,10 @@ const styles = StyleSheet.create({
   // floating nav bar once you scrolled all the way down.
   list: {
     gap: Spacing.three,
+    // See safeArea — the cards' horizontal inset lives here, inside the
+    // ScrollView's own clip bounds, so overflow past a card edge lands in
+    // ordinary in-bounds space instead of being clipped away.
+    paddingHorizontal: Spacing.four,
   },
   // position:'relative' on this and cardTop below: FeedRatingStamp
   // positions itself absolutely against whichever of these is its nearest
