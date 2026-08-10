@@ -366,7 +366,7 @@ export default function HomeScreen() {
                     onShare={() => handleShareVisit(item.visit)}
                     onDeleted={() => handleVisitDeleted(item.visit.id)}
                   />
-                )
+                ),
               )}
             </Animated.ScrollView>
           </>
@@ -517,7 +517,11 @@ function VisitCard({
   // with square edges instead of being inset inside a single rounded box.
   if (!hasPhotos) {
     return (
-      <ThemedView type="backgroundElement" style={styles.card} collapsable={false}>
+      <ThemedView
+        type="backgroundElement"
+        style={styles.card}
+        collapsable={false}
+      >
         {header}
         {footer}
       </ThemedView>
@@ -535,7 +539,11 @@ function VisitCard({
     // exact same seed/position math seeps correctly on the visit detail
     // page, seeded identically, so the *math* was never the difference.
     <View style={styles.cardWrap} collapsable={false}>
-      <ThemedView type="backgroundElement" style={styles.cardTop} collapsable={false}>
+      <ThemedView
+        type="backgroundElement"
+        style={styles.cardTop}
+        collapsable={false}
+      >
         {header}
       </ThemedView>
 
@@ -738,10 +746,13 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Spacing.three,
     gap: Spacing.two,
   },
+  // paddingVertical (not a smaller top / bigger bottom split) — the split
+  // version left the actions row sitting visibly closer to its top edge
+  // than its bottom whenever comments aren't open (its only content most
+  // of the time), reading as off-center within this segment.
   cardBottom: {
-    paddingTop: Spacing.two,
+    paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
-    paddingBottom: Spacing.three,
     borderBottomLeftRadius: Spacing.three,
     borderBottomRightRadius: Spacing.three,
     gap: Spacing.two,

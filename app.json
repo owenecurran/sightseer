@@ -56,6 +56,12 @@
         {
           "contactsPermission": "Sightseer uses your contacts to help you find friends who are already using the app."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Sightseer uses your camera so you can take a photo directly for a review."
+        }
       ]
     ],
     "experiments": {

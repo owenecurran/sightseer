@@ -1,7 +1,7 @@
 import { Camera, MapView, MarkerView, PointAnnotation, type MapState } from '@rnmapbox/maps';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NearbyPlacePreviewCard } from '@/components/nearby-place-preview-card';
@@ -57,6 +57,12 @@ const SELECTED_ZOOM = 13;
 // doesn't immediately fall off the edge of the visible map.
 const CURRENT_LOCATION_ZOOM = 14;
 const VIEWPORT_DEBOUNCE_MS = 500;
+// Enough options to choose from without the list ever needing to scroll —
+// see the results View's own comment for why "never needs to scroll" is
+// the point (a scroll container's bounds are a drag-capturing dead zone
+// wherever they exceed its content, which is what kept blocking map
+// panning under the results area).
+const MAX_VISIBLE_RESULTS = 5;
 
 // The real map — only rendered on iOS/Android (see location-search-modal.tsx
 // for why web falls back to plain text search). Google Places stays the only
@@ -406,49 +412,39 @@ export function LocationSearchModal({
             { paddingTop: insets.top + Spacing.three, paddingBottom: insets.bottom + Spacing.three },
           ]}
           pointerEvents="box-none">
-          {/* Back button + the scrollable search/results are grouped in one
-              plain View so the overlay's own justifyContent:'space-between'
-              still only separates two things — this top group vs. the
-              confirm bar — instead of also prying the back button and
-              ScrollView apart from each other (which pushed the ScrollView
-              down toward the middle/bottom of the screen when no confirm bar
-              was rendered to fill the third slot). */}
-          <View>
-          {/* Back button lives outside the scroll region — always reachable
-              regardless of how far the results list has scrolled, unlike the
-              search bar/results below it (see resultsScroll's own comment
-              for why those scroll away). */}
+          {/* Back button + search bar + results grouped in one flex:1 View
+              so the overlay's own justifyContent:'space-between' only
+              separates two things — this top group vs. the confirm bar —
+              instead of also prying these apart from each other. */}
+          <View style={styles.topSection} pointerEvents="box-none">
           <Pressable onPress={onCancel} hitSlop={8} style={styles.backButton}>
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
 
-          {/* Search bar + results scroll together as one region, capped at a
-              generous but bounded height (not flex:1) rather than the search
-              bar sitting permanently pinned above a small fixed-height
-              results box — lets the bar itself scroll out of view once
-              there's enough content to want that, while an untouched map
-              area still remains below for center-pin dragging when results
-              are short. The confirm bar stays outside this scroll, still
-              pinned at the very bottom via the overlay's own
-              justifyContent:'space-between' — losing sight of the primary
-              "Use X" action while scrolling candidates would be worse than
-              the permanence this is otherwise fixing. */}
-          <ScrollView
-            style={styles.resultsScroll}
-            keyboardDismissMode="on-drag"
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}>
-            <View style={styles.searchBar}>
-              <TextField
-                placeholder="Search for a place"
-                value={query}
-                onChangeText={setQuery}
-                onSubmitEditing={handleSearchSubmit}
-                returnKeyType="search"
-                style={styles.input}
-              />
-            </View>
+          <View style={styles.searchBar}>
+            <TextField
+              placeholder="Search for a place"
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={handleSearchSubmit}
+              returnKeyType="search"
+              style={styles.input}
+            />
+          </View>
 
+          {/* A plain, content-sized View — deliberately NOT a ScrollView
+              anymore. Any scroll container here is a drag-capturing
+              region: wherever its bounds exceed its actual content it
+              becomes a dead zone that neither scrolls (nothing to scroll)
+              nor lets the map pan underneath, and sizing those bounds to
+              always match the content exactly turned out to be the thing
+              that kept not quite working. Capping the list at
+              MAX_VISIBLE_RESULTS instead removes the need to scroll at
+              all, so this box is always exactly as tall as the rows it
+              actually renders and every pixel outside it belongs to the
+              map. box-none so the gaps *between* result groups pass
+              through too; the rows themselves still take their taps. */}
+          <View pointerEvents="box-none">
             {suggestions.length === 0 && !selectedDetails && !selectedCenterPlace && !previewPlaceId && (
               <ThemedText type="small" themeColor="text" style={styles.hintText}>
                 Drag the map to find nearby places
@@ -468,7 +464,7 @@ export function LocationSearchModal({
 
             {suggestions.length > 0 && (
               <ThemedView type="backgroundElement" style={styles.suggestions}>
-                {suggestions.map((s) => (
+                {suggestions.slice(0, MAX_VISIBLE_RESULTS).map((s) => (
                   <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
                     <ThemedText type="small">{s.primaryText}</ThemedText>
                     {s.secondaryText && (
@@ -483,7 +479,7 @@ export function LocationSearchModal({
 
             {mode === 'pick' && !selectedDetails && !selectedCenterPlace && centerCandidates.length > 0 && (
               <ThemedView type="backgroundElement" style={styles.suggestions}>
-                {centerCandidates.map((place) => (
+                {centerCandidates.slice(0, MAX_VISIBLE_RESULTS).map((place) => (
                   <Pressable
                     key={place.id}
                     onPress={() => handleCenterCandidatePress(place)}
@@ -522,7 +518,7 @@ export function LocationSearchModal({
 
             {mode === 'browse' && !previewPlaceId && centerCandidates.length > 0 && (
               <ThemedView type="backgroundElement" style={styles.suggestions}>
-                {centerCandidates.map((place) => (
+                {centerCandidates.slice(0, MAX_VISIBLE_RESULTS).map((place) => (
                   <Pressable
                     key={place.id}
                     onPress={() => handleCenterCandidatePress(place)}
@@ -537,7 +533,7 @@ export function LocationSearchModal({
                 ))}
               </ThemedView>
             )}
-          </ScrollView>
+          </View>
           </View>
 
           {mode === 'pick' && (selectedDetails || selectedCenterPlace) && (
@@ -597,6 +593,18 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.cream,
     transform: [{ translateY: -10 }],
   },
+  // Everything above the confirm bar (back button, search bar, results).
+  // flex:1 makes this span the whole area down to the confirm bar, which
+  // is why the JSX pairs it with pointerEvents="box-none": without that,
+  // this transparent, mostly-empty View is a plain `auto` view spanning
+  // most of the screen, so it swallows every touch that lands in its
+  // empty space — blocking map panning nearly everywhere (the overlay
+  // above it already sets box-none for exactly this reason; this View
+  // needs its own). Its real children (back button, search bar, results
+  // scroll) still receive touches normally under box-none.
+  topSection: {
+    flex: 1,
+  },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: Spacing.two,
@@ -605,17 +613,11 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.five,
     backgroundColor: Colors.backgroundElement,
   },
-  // Bounded but generous — not flex:1 — so the search bar + results can
-  // genuinely scroll (the bar moving out of view as results grow) while a
-  // short results list still leaves map area below available for center-pin
-  // dragging, rather than always claiming the whole screen.
-  resultsScroll: {
-    maxHeight: '65%',
-  },
   searchBar: {
     flexDirection: 'row',
     gap: Spacing.two,
     alignItems: 'center',
+    marginBottom: Spacing.two,
   },
   input: {
     flex: 1,

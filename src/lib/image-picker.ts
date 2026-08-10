@@ -15,6 +15,19 @@ export async function pickImageFromLibrary(): Promise<PickImageResult> {
   return result.assets[0];
 }
 
+// Same null/'denied' shape as pickImageFromLibrary — no web branch needed
+// here (unlike the library picker) since expo-image-picker's own
+// launchCameraAsync already throws a clear "not available on web" error on
+// that platform; the review flow's own camera option only ever renders on
+// native (see PhotoSourceModal).
+export async function takePhotoWithCamera(): Promise<PickImageResult> {
+  const permission = await ImagePicker.requestCameraPermissionsAsync();
+  if (!permission.granted) return 'denied';
+  const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+  if (result.canceled || !result.assets[0]) return null;
+  return result.assets[0];
+}
+
 export type PickMultipleImagesResult = ImagePicker.ImagePickerAsset[] | 'denied' | null;
 
 // One bulk-import batch's worth — bounds how many drafts a single pick can

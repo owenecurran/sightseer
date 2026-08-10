@@ -10,15 +10,15 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import {
   FeedRatingStamp,
+  getStampTextReserve,
   STAMP_EFFECTIVE_HEIGHT,
-  STAMP_TEXT_RESERVE,
 } from "@/components/ui/feed-rating-stamp";
 import { StretchText } from "@/components/ui/stretch-text";
 import { useTheme } from "@/hooks/use-theme";
 
 // How much of the location line the stamp's top edge is allowed to cover,
 // at most — per direct feedback, effectively "basically none."
-const LOCATION_OVERLAP_ALLOWANCE = 2;
+const LOCATION_OVERLAP_ALLOWANCE = 30;
 
 export type FeedTaggedPlace = { name: string; category: string | null };
 
@@ -81,9 +81,13 @@ export function FeedCardHeaderText({
   // FeedRatingStamp), not the outer card's — reserving space on the text
   // most likely to actually share that corner (the last couple of lines
   // this component renders) is what approximates "wraps around it"; see
-  // STAMP_TEXT_RESERVE's own comment for why it's an approximation and not
-  // true per-line reflow.
-  const reserveForStamp = rating != null;
+  // getStampTextReserve's own comment for why it's an approximation and
+  // not true per-line reflow. Computed per-post (not a flat worst-case
+  // constant) so text runs right up to where *this* post's own stamp
+  // actually starts, not stopping short by the same amount regardless of
+  // where the random draw landed.
+  const stampTextReserve =
+    rating != null && stampSeed != null ? getStampTextReserve(stampSeed) : 0;
 
   // Measured (not assumed) so the stamp's ceiling — see maxBottomOffset
   // below — reflects this specific post's real layout: how tall this
@@ -139,7 +143,7 @@ export function FeedCardHeaderText({
       {taggedPlaces.length > 0 && (
         <ThemedText
           type="small"
-          style={reserveForStamp && styles.reserveForStamp}
+          style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}
         >
           {taggedPlaces.map((place, index) => (
             <ThemedText
@@ -163,7 +167,7 @@ export function FeedCardHeaderText({
         <ThemedText
           type="small"
           themeColor="text"
-          style={reserveForStamp && styles.reserveForStamp}
+          style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}
         >
           {visitedLine}
         </ThemedText>
@@ -194,8 +198,5 @@ const styles = StyleSheet.create({
     position: "relative",
     zIndex: 2,
     gap: 4,
-  },
-  reserveForStamp: {
-    paddingRight: STAMP_TEXT_RESERVE,
   },
 });

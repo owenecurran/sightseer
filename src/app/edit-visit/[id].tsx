@@ -13,7 +13,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
 import { PageLoader } from '@/components/ui/page-loader';
-import { RatingSlider } from '@/components/ui/rating-slider';
+import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -175,7 +175,7 @@ export default function EditVisitScreen() {
             <View style={styles.form}>
               <ThemedText type="smallBold">{visit.placeName}</ThemedText>
 
-              <RatingSlider value={rating} onChange={setRating} />
+              <RatingSliderWithPreview value={rating} onChange={setRating} />
 
               <View style={styles.photoSection}>
                 {photoSlots.length > 0 && (

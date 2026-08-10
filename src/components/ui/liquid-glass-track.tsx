@@ -57,6 +57,12 @@ const MAX_STOPS = 8;
 const SKSL = `
 uniform shader heightmap;
 uniform float2 resolution;
+// The canvas (resolution.x) is wider than the visible track itself now —
+// see xOffset's own comment below for why — so every track-relative
+// calculation (the pill mask, the gradient sample position) needs to work
+// in *track-local* coordinates, not raw canvas ones.
+uniform float  xOffset;
+uniform float  trackWidth;
 uniform float  thumbX;
 uniform float  thumbSize;
 uniform float  trackHeight;
@@ -90,17 +96,23 @@ float heightAt(float2 p) {
 }
 
 half4 main(float2 xy) {
-  // The canvas is taller than the visible track (see CANVAS_HEIGHT in
-  // rating-slider.tsx) so the icon overlay — drawn separately, after this
-  // Fill — can poke out above/below it. The gradient itself has to stay
-  // pill-shaped at trackHeight regardless of the taller canvas: standard
-  // rounded-rect/stadium SDF (clamp x to the straight-side core range, then
-  // measure Euclidean distance to that clamped point) — outside the
-  // radius, this Fill contributes nothing and the (transparent) canvas
-  // background shows through instead.
+  // The canvas is both taller *and* wider than the visible track now: the
+  // extra height (see CANVAS_HEIGHT in rating-slider.tsx) lets the icon
+  // overlay poke out above/below it, and the extra width (xOffset padding
+  // on each side) lets it poke out past the *left/right* ends too, at the
+  // rating extremes — the icon (iconSize) is deliberately drawn bigger
+  // than the glass bulge/thumb it sits on (thumbSize), so at progress 0 or
+  // 1 it used to hang off the edge of a canvas sized to exactly the
+  // visible track and get clipped there (a real Skia Canvas always clips
+  // to its own pixel bounds — there's no overflow:visible equivalent for
+  // canvas content itself, unlike a plain RN View). The gradient pill
+  // itself still has to stay confined to the true track bounds regardless
+  // of the padded canvas — standard rounded-rect/stadium SDF in
+  // track-local coordinates (xy.x - xOffset), clamped to trackWidth.
+  float localX = xy.x - xOffset;
   float radius = trackHeight * 0.5;
   float midY = resolution.y * 0.5;
-  float2 pillCenter = float2(clamp(xy.x, radius, resolution.x - radius), midY);
+  float2 pillCenter = float2(xOffset + clamp(localX, radius, trackWidth - radius), midY);
   if (length(xy - pillCenter) > radius) {
     return half4(0.0, 0.0, 0.0, 0.0);
   }
@@ -109,7 +121,7 @@ half4 main(float2 xy) {
   float2 local = (xy - origin) / thumbSize * hmSize;
 
   float h = heightAt(local);
-  float t0 = xy.x / resolution.x;
+  float t0 = localX / trackWidth;
 
   if (h < 0.004) {
     return half4(half3(track(t0)), 1.0);
@@ -120,9 +132,9 @@ half4 main(float2 xy) {
   float dy = heightAt(local + e.yx) - heightAt(local - e.yx);
 
   float shift = dx * refraction;
-  float r = track((xy.x - shift * (1.0 + dispersion)) / resolution.x).r;
-  float g = track((xy.x - shift) / resolution.x).g;
-  float b = track((xy.x - shift * (1.0 - dispersion)) / resolution.x).b;
+  float r = track((localX - shift * (1.0 + dispersion)) / trackWidth).r;
+  float g = track((localX - shift) / trackWidth).g;
+  float b = track((localX - shift * (1.0 - dispersion)) / trackWidth).b;
   float3 col = float3(r, g, b);
 
   col = mix(col, col * 1.06 + 0.05, h * 0.55);
@@ -193,6 +205,18 @@ export function LiquidGlassTrack({
   const overlayPath = useMemo(() => fitBrandMarkPath(buildBrandMarkPath(), iconSize), [iconSize]);
   const iconStrokeWidth = Math.max(2, iconSize * 0.045);
 
+  // How far the icon can hang off either end of the *visible* track (`width`)
+  // at the rating extremes — the icon is deliberately drawn bigger than the
+  // thumb it sits on, so at progress 0 or 1 its edge sits this far outside
+  // `width` itself. The canvas is padded by this much on each side (below)
+  // so that overflow has real pixels to draw into instead of getting clipped
+  // by the canvas's own bounds — same reasoning CANVAS_HEIGHT already
+  // applies vertically, just for the horizontal extremes too. Derived, not a
+  // separate prop: always exactly the icon's own overhang, never a value a
+  // caller could get out of sync with iconSize/thumbSize.
+  const xOffset = Math.max(0, (iconSize - thumbSize) / 2);
+  const canvasWidth = width + xOffset * 2;
+
   const flatColors = useMemo(() => {
     const padded = [...gradientColors];
     while (padded.length < MAX_STOPS) padded.push(padded[padded.length - 1]);
@@ -206,11 +230,14 @@ export function LiquidGlassTrack({
   }, [gradientStops]);
 
   const thumbCenterX = useDerivedValue(
-    () => progress.value * usableWidth + thumbSize / 2 + shakePhase.value * shakeIntensity.value * maxShakePx
+    () =>
+      xOffset + progress.value * usableWidth + thumbSize / 2 + shakePhase.value * shakeIntensity.value * maxShakePx
   );
 
   const uniforms = useDerivedValue(() => ({
-    resolution: [width, height],
+    resolution: [canvasWidth, height],
+    xOffset,
+    trackWidth: width,
     thumbX: thumbCenterX.value,
     thumbSize,
     trackHeight,
@@ -229,7 +256,15 @@ export function LiquidGlassTrack({
   if (!effect || !heightmap) return <View style={{ width, height }} />;
 
   return (
-    <Canvas style={{ width, height }}>
+    // marginHorizontal: -xOffset — the canvas itself is wider than its
+    // layout slot (canvasWidth vs. the `width` the parent/gesture-detector
+    // still measures and hit-tests against), and this negative margin lets
+    // it overflow symmetrically without pushing that slot — or anything
+    // else in the surrounding layout — wider. The parent View (rating-
+    // slider.tsx's `track`) doesn't clip overflow (no overflow:'hidden' in
+    // its own style chain), which is what actually lets this show instead
+    // of being cut off there too.
+    <Canvas style={{ width: canvasWidth, height, marginHorizontal: -xOffset }}>
       <Fill>
         <Shader source={effect} uniforms={uniforms}>
           <ImageShader

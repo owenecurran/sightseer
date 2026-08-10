@@ -1,5 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { StyleSheet, TextInput, type NativeSyntheticEvent, type TextInputContentSizeChangeEventData, type TextInputProps } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View, type NativeSyntheticEvent, type TextInputContentSizeChangeEventData, type TextInputProps } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -18,30 +19,49 @@ import { useTheme } from '@/hooks/use-theme';
 // to handle it.
 const MIN_MULTILINE_HEIGHT = 96;
 
-export function TextField({ style, multiline, onContentSizeChange, ...rest }: TextInputProps) {
+export function TextField({ style, multiline, onContentSizeChange, secureTextEntry, ...rest }: TextInputProps) {
   const theme = useTheme();
   const [contentHeight, setContentHeight] = useState(MIN_MULTILINE_HEIGHT);
+  // Only meaningful when a caller actually requests secureTextEntry — this
+  // flips the *effective* value passed to the real TextInput below, not the
+  // prop itself, so every password field in the app (sign-in, sign-up,
+  // reset-password, settings) gets a reveal toggle for free without each
+  // call site managing its own show/hide state.
+  const [isRevealed, setIsRevealed] = useState(false);
 
   function handleContentSizeChange(event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) {
     setContentHeight(Math.max(MIN_MULTILINE_HEIGHT, event.nativeEvent.contentSize.height));
     onContentSizeChange?.(event);
   }
 
-  return (
+  const input = (
     <TextInput
       placeholderTextColor={theme.textSecondary}
       style={[
         styles.input,
         { color: theme.text, backgroundColor: theme.backgroundElement },
         multiline ? { height: contentHeight } : null,
+        secureTextEntry ? styles.inputWithToggle : null,
         style,
       ]}
       autoCapitalize="none"
       autoCorrect={false}
       multiline={multiline}
       onContentSizeChange={multiline ? handleContentSizeChange : onContentSizeChange}
+      secureTextEntry={secureTextEntry && !isRevealed}
       {...rest}
     />
+  );
+
+  if (!secureTextEntry) return input;
+
+  return (
+    <View style={styles.wrap}>
+      {input}
+      <Pressable onPress={() => setIsRevealed((prev) => !prev)} hitSlop={8} style={styles.toggle}>
+        <Ionicons name={isRevealed ? 'eye-off-outline' : 'eye-outline'} size={20} color={theme.textSecondary} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -51,5 +71,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
     fontSize: 16,
+  },
+  wrap: {
+    justifyContent: 'center',
+  },
+  // Room for the toggle so typed text never renders underneath it.
+  inputWithToggle: {
+    paddingRight: Spacing.three + 28,
+  },
+  toggle: {
+    position: 'absolute',
+    right: Spacing.three,
   },
 });

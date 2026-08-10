@@ -9,12 +9,11 @@ import {
 } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
+import { FeedRatingStamp, getStampMaxReach } from "@/components/ui/feed-rating-stamp";
 import { LoadableImage } from "@/components/ui/loadable-image";
-import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
 import { StretchText } from "@/components/ui/stretch-text";
 import { CARD_RADIUS } from "@/components/ui/teaser-card";
 import { BrandColors, Spacing } from "@/constants/theme";
-import { STAMP_VIEWBOX_HEIGHT, STAMP_VIEWBOX_WIDTH } from "@/lib/stamp-shape";
 
 type ReviewPromptCardProps = {
   label: string;
@@ -110,24 +109,22 @@ export function ReviewPromptCard({
   const [photoBox, setPhotoBox] = useState({ width: 0, height: 0 });
   const [photoAspectRatio, setPhotoAspectRatio] = useState(DEFAULT_PHOTO_ASPECT_RATIO);
   const isHorizontal = photoAspectRatio > 1;
+  // Same scaling the stamp used as an inline badge — now sizes the
+  // floating corner stamp instead (see the FeedRatingStamp call below), so
+  // it still tracks the photo's own size instead of a fixed constant.
   const badgeSize = clamp(photoBox.height * 0.3, 48, 88);
-  // RatingGlassBadge's `size` prop is a *width* — its real rendered height
-  // follows the stamp asset's own portrait aspect ratio (stamp-shape.ts),
-  // taller than badgeSize itself. Needed here, not just inside that
-  // component, since availableNoteHeight below has to budget for the
-  // badge's actual footprint.
-  const badgeHeight = badgeSize * (STAMP_VIEWBOX_HEIGHT / STAMP_VIEWBOX_WIDTH);
   // adjustsFontSizeToFit shrinks to fit *this many lines*, not a pixel
-  // height directly — derived from the actual space left in `info` once the
-  // badge and padding are accounted for, so a short/tall photo gets a
-  // correspondingly generous/tight line budget instead of one fixed number
-  // that's sometimes way more room than the box actually has (silently
-  // never shrinking, confirmed live: an 8-line cap let a long note overflow
+  // height directly — derived from the actual space left in `info` once
+  // padding is accounted for, so a short/tall photo gets a correspondingly
+  // generous/tight line budget instead of one fixed number that's
+  // sometimes way more room than the box actually has (silently never
+  // shrinking, confirmed live: an 8-line cap let a long note overflow
   // straight through the card's own fixed height and into whatever
   // rendered below it) and sometimes way less. Only meaningful in row mode
-  // — stacked mode's note isn't fitted into anything.
-  const availableNoteHeight =
-    photoBox.height - Spacing.three * 2 - (rating != null ? badgeHeight + Spacing.two : 0);
+  // — stacked mode's note isn't fitted into anything. No longer budgets for
+  // the rating badge's own footprint — that's a floating corner stamp now
+  // (see below), not a flow child sharing this column with the note.
+  const availableNoteHeight = photoBox.height - Spacing.three * 2;
   const noteMaxLines = clamp(Math.floor(availableNoteHeight / NOTE_LINE_HEIGHT), 1, 12);
 
   function handlePhotoLoad(event: ImageLoadEventData) {
@@ -182,7 +179,6 @@ export function ReviewPromptCard({
           </View>
         </View>
         <View style={[styles.info, isHorizontal ? styles.infoStacked : null]}>
-          {rating != null && <RatingGlassBadgeGated rating={rating} size={badgeSize} />}
           {note &&
             (isHorizontal ? (
               <ThemedText type="default" themeColor="background">
@@ -205,6 +201,9 @@ export function ReviewPromptCard({
               </ThemedText>
             ))}
         </View>
+        {rating != null && (
+          <FeedRatingStamp rating={rating} seed={visitId} canSeep={false} size={badgeSize} corner="top-right" />
+        )}
       </Pressable>
     </View>
   );
@@ -214,10 +213,17 @@ const styles = StyleSheet.create({
   wrap: {
     gap: Spacing.one,
   },
+  // position:'relative' on both — FeedRatingStamp positions itself
+  // absolutely against this Pressable directly (top-right corner of the
+  // whole card, not just the photo or info column), and neither this nor
+  // any ancestor here clips overflow (see the component's own comment), so
+  // the stamp is free to sit slightly past the card's true edge.
   cardRow: {
+    position: "relative",
     flexDirection: "row",
   },
   cardStacked: {
+    position: "relative",
     flexDirection: "column",
   },
   // Separate from `card` itself (see the component's own comment) so this

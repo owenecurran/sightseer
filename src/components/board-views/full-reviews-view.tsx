@@ -4,6 +4,7 @@ import Animated from 'react-native-reanimated';
 
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -49,10 +50,12 @@ export function FullReviewsView({ items, photoUrls, viewerId, ownRatings }: Full
                     {item.stateCountry}
                   </ThemedText>
                 )}
-                <ThemedText type="small" themeColor="textSecondary">
-                  {item.authorName}
-                  {item.rating != null ? ` · ${item.rating.toFixed(1)} ★` : ''}
-                </ThemedText>
+                <View style={styles.authorRatingRow}>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {item.authorName}
+                  </ThemedText>
+                  {item.rating != null && <RatingGlassBadgeGated rating={item.rating} size={40} />}
+                </View>
                 {showOwnRating && (
                   <ThemedText type="small" themeColor="textSecondary">
                     Your rating: {ownRating.toFixed(1)} ★
@@ -91,5 +94,10 @@ const styles = StyleSheet.create({
   },
   header: {
     gap: Spacing.half,
+  },
+  authorRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
 });

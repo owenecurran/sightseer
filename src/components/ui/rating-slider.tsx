@@ -59,9 +59,14 @@ type RatingSliderProps = {
   // into an actual value.
   value: number | null;
   onChange: (value: number) => void;
+  // RatingSliderWithPreview renders the stamp preview in this same "value
+  // readout" slot instead — false there so the two don't both show at
+  // once. Defaults true so every other existing caller (anything not
+  // going through the preview wrapper) is unaffected.
+  showValueText?: boolean;
 };
 
-export function RatingSlider({ value, onChange }: RatingSliderProps) {
+export function RatingSlider({ value, onChange, showValueText = true }: RatingSliderProps) {
   const [trackWidth, setTrackWidth] = useState(0);
   const progress = useSharedValue((value ?? MAX_VALUE / 2) / MAX_VALUE);
   // Continuous background wobble, always running; its amplitude (shakeIntensity)
@@ -136,9 +141,11 @@ export function RatingSlider({ value, onChange }: RatingSliderProps) {
 
   return (
     <View style={styles.container}>
-      <ThemedText type="title" style={styles.valueText}>
-        {value != null ? value.toFixed(1) : 'Rate it'}
-      </ThemedText>
+      {showValueText && (
+        <ThemedText type="title" style={styles.valueText}>
+          {value != null ? value.toFixed(1) : 'Rate it'}
+        </ThemedText>
+      )}
 
       <GestureDetector gesture={pan}>
         <View style={styles.track} onLayout={handleLayout}>

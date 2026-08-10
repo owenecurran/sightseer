@@ -2,7 +2,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { NearbyPlacePreviewCard } from '@/components/nearby-place-preview-card';
 import { ThemedText } from '@/components/themed-text';
@@ -41,6 +41,9 @@ const DEFAULT_ZOOM = 2;
 const SELECTED_ZOOM = 13;
 const CURRENT_LOCATION_ZOOM = 14;
 const VIEWPORT_DEBOUNCE_MS = 500;
+// See location-search-modal.native.tsx's identical constant — capping the
+// list is what lets the results render without a scroll container at all.
+const MAX_VISIBLE_RESULTS = 5;
 // Same style URL as location-search-modal.native.tsx's MAPBOX_STYLE_URL
 // (Mapbox.StyleURL.Dark resolves to this exact string) — kept as a literal
 // here rather than shared, since mapbox-gl-js and @rnmapbox/maps are two
@@ -379,27 +382,14 @@ export function LocationSearchModal({
         </View>
 
         <View style={styles.overlay} pointerEvents="box-none">
-          {/* Back button + the scrollable search/results are grouped in one
-              plain View so the overlay's own justifyContent:'space-between'
-              still only separates two things — this top group vs. the
-              confirm bar — instead of also prying the back button and
-              ScrollView apart from each other (which pushed the ScrollView
-              down toward the middle/bottom of the screen when no confirm bar
-              was rendered to fill the third slot). */}
-          <View>
-            {/* Back button lives outside the scroll region — always
-                reachable regardless of how far the results list has
-                scrolled, unlike the search bar/results below it (see
-                resultsScroll's own comment for why those scroll away). */}
+          {/* Back button + search bar + results grouped in one flex:1 View
+              so the overlay's own justifyContent:'space-between' only
+              separates two things — this top group vs. the confirm bar. */}
+          <View style={styles.topSection} pointerEvents="box-none">
             <Pressable onPress={onCancel} hitSlop={8} style={styles.backButton}>
               <ThemedText type="link">← Back</ThemedText>
             </Pressable>
 
-            {/* Search bar + results scroll together, bounded but generous —
-                not flex:1 — so the bar can move out of view once there's
-                enough content, matching location-search-modal.native.tsx.
-                Confirm bar stays outside this scroll, pinned at the bottom. */}
-            <ScrollView style={styles.resultsScroll} showsVerticalScrollIndicator={false}>
             <View style={styles.searchBar}>
               <TextField
                 placeholder="Search for a place"
@@ -409,6 +399,12 @@ export function LocationSearchModal({
               />
             </View>
 
+            {/* Plain content-sized View, not a ScrollView — see
+                location-search-modal.native.tsx's identical comment: a
+                scroll container's bounds are a drag-capturing dead zone
+                wherever they exceed its content, so the list is capped at
+                MAX_VISIBLE_RESULTS and never needs to scroll at all. */}
+            <View pointerEvents="box-none">
             {suggestions.length === 0 && !selectedDetails && !selectedCenterPlace && !previewPlaceId && (
               <ThemedText type="small" themeColor="text" style={styles.hintText}>
                 Drag the map to find nearby places
@@ -428,7 +424,7 @@ export function LocationSearchModal({
 
             {suggestions.length > 0 && (
               <ThemedView type="backgroundElement" style={styles.suggestions}>
-                {suggestions.map((s) => (
+                {suggestions.slice(0, MAX_VISIBLE_RESULTS).map((s) => (
                   <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
                     <ThemedText type="small">{s.primaryText}</ThemedText>
                     {s.secondaryText && (
@@ -443,7 +439,7 @@ export function LocationSearchModal({
 
             {mode === 'pick' && !selectedDetails && !selectedCenterPlace && centerCandidates.length > 0 && (
               <ThemedView type="backgroundElement" style={styles.suggestions}>
-                {centerCandidates.map((place) => (
+                {centerCandidates.slice(0, MAX_VISIBLE_RESULTS).map((place) => (
                   <Pressable
                     key={place.id}
                     onPress={() => handleCenterCandidatePress(place)}
@@ -482,7 +478,7 @@ export function LocationSearchModal({
 
             {mode === 'browse' && !previewPlaceId && centerCandidates.length > 0 && (
               <ThemedView type="backgroundElement" style={styles.suggestions}>
-                {centerCandidates.map((place) => (
+                {centerCandidates.slice(0, MAX_VISIBLE_RESULTS).map((place) => (
                   <Pressable
                     key={place.id}
                     onPress={() => handleCenterCandidatePress(place)}
@@ -497,7 +493,7 @@ export function LocationSearchModal({
                 ))}
               </ThemedView>
             )}
-          </ScrollView>
+          </View>
           </View>
 
           {mode === 'pick' && (selectedDetails || selectedCenterPlace) && (
@@ -565,6 +561,14 @@ const styles = StyleSheet.create({
     borderColor: BrandColors.cream,
     transform: [{ translateY: -10 }],
   },
+  // See location-search-modal.native.tsx's identical style — flex:1 makes
+  // this span down to the confirm bar, which is why the JSX pairs it with
+  // pointerEvents="box-none": otherwise this transparent, mostly-empty
+  // View swallows touches across most of the screen and blocks map
+  // panning.
+  topSection: {
+    flex: 1,
+  },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: Spacing.two,
@@ -573,15 +577,11 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.five,
     backgroundColor: Colors.backgroundElement,
   },
-  // Bounded but generous — not flex:1 — matches
-  // location-search-modal.native.tsx's resultsScroll.
-  resultsScroll: {
-    maxHeight: '65%',
-  },
   searchBar: {
     flexDirection: 'row',
     gap: Spacing.two,
     alignItems: 'center',
+    marginBottom: Spacing.two,
   },
   input: {
     flex: 1,

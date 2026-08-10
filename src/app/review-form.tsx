@@ -11,14 +11,14 @@ import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { MAX_VISIT_PHOTOS, PhotoGrid } from '@/components/photo-grid';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
+import { PhotoSourceModal } from '@/components/photo-source-modal';
 import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
-import { FeedRatingStamp } from '@/components/ui/feed-rating-stamp';
-import { RatingSlider } from '@/components/ui/rating-slider';
+import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -28,7 +28,7 @@ import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import type { Database } from '@/lib/database.types';
 import { deleteDraftPhoto, getDraftForEdit, publishDraft, updateDraftFields, uploadPhotoForDraft } from '@/lib/drafts';
-import { pickImageFromLibrary } from '@/lib/image-picker';
+import { pickImageFromLibrary, takePhotoWithCamera } from '@/lib/image-picker';
 import { cachePlaceHierarchy, getPlaceBreadcrumb, resolveStateCountries } from '@/lib/places-cache';
 import { uploadPhotoForVisit } from '@/lib/photo-upload';
 import { searchUsers, type SearchUserResult } from '@/lib/search';
@@ -118,6 +118,7 @@ export default function ReviewFormScreen() {
   const [uploadedPhotoUris, setUploadedPhotoUris] = useState<string[]>([]);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [cropSource, setCropSource] = useState<{ uri: string; target: CropTarget } | null>(null);
+  const [isPhotoSourceModalOpen, setIsPhotoSourceModalOpen] = useState(false);
 
   // Tag-specific-spots now goes through the same map picker as the review's
   // own place (LocationSearchModal), not a separate text-only autocomplete
@@ -310,13 +311,42 @@ export default function ReviewFormScreen() {
     setPhotoSlots((prev) => swapAdjacent(prev, index, direction));
   }
 
-  async function pickImage(): Promise<ImagePicker.ImagePickerAsset | null> {
-    const result = await pickImageFromLibrary();
+  // Every caller below still just does `const asset = await pickImage()` —
+  // unchanged from before the camera option existed. What changed is
+  // internal: instead of going straight to the library, this now opens
+  // PhotoSourceModal and waits for a source choice, resolving the very
+  // same promise once handlePhotoSourceChoice (or a cancel) actually picks
+  // one — a manual resolver via ref, since the choice arrives later from a
+  // separate event handler, not synchronously within this function.
+  const pickImageResolveRef = useRef<((asset: ImagePicker.ImagePickerAsset | null) => void) | null>(null);
+
+  function pickImage(): Promise<ImagePicker.ImagePickerAsset | null> {
+    return new Promise((resolve) => {
+      pickImageResolveRef.current = resolve;
+      setIsPhotoSourceModalOpen(true);
+    });
+  }
+
+  async function handlePhotoSourceChoice(source: 'camera' | 'library') {
+    setIsPhotoSourceModalOpen(false);
+    const result = source === 'camera' ? await takePhotoWithCamera() : await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required to add photos.');
-      return null;
+      setError(
+        source === 'camera'
+          ? 'Camera permission is required to take photos.'
+          : 'Photo library permission is required to add photos.'
+      );
+      pickImageResolveRef.current?.(null);
+    } else {
+      pickImageResolveRef.current?.(result);
     }
-    return result;
+    pickImageResolveRef.current = null;
+  }
+
+  function handlePhotoSourceCancel() {
+    setIsPhotoSourceModalOpen(false);
+    pickImageResolveRef.current?.(null);
+    pickImageResolveRef.current = null;
   }
 
   async function handlePickPhoto() {
@@ -612,7 +642,7 @@ export default function ReviewFormScreen() {
                     </Pressable>
                   )}
                 </View>
-                <RatingSlider value={rating} onChange={setRating} />
+                <RatingSliderWithPreview value={rating} onChange={setRating} />
               </View>
 
               <View style={styles.section}>
@@ -855,6 +885,13 @@ export default function ReviewFormScreen() {
               ? { lat: selectedPlace.lat, lng: selectedPlace.lng }
               : undefined
           }
+        />
+
+        <PhotoSourceModal
+          visible={isPhotoSourceModalOpen}
+          onCancel={handlePhotoSourceCancel}
+          onPickCamera={() => handlePhotoSourceChoice('camera')}
+          onPickLibrary={() => handlePhotoSourceChoice('library')}
         />
       </SafeAreaView>
     </ThemedView>

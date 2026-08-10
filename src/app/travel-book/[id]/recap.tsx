@@ -10,7 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
-import { RatingSlider } from '@/components/ui/rating-slider';
+import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -163,7 +163,7 @@ export default function TravelBookRecapScreen() {
 
           <TextField placeholder="Recap title" value={title} onChangeText={setTitle} />
           <TextField placeholder="How was the trip?" value={body} onChangeText={setBody} multiline />
-          <RatingSlider value={rating} onChange={setRating} />
+          <RatingSliderWithPreview value={rating} onChange={setRating} />
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">

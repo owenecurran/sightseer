@@ -7,6 +7,8 @@ import { CollectionsSwitcher, type CollectionMode } from '@/components/collectio
 import { CollectionsSortControl, type CollectionSortMode } from '@/components/collections-sort-control';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { FeedRatingStamp, getStampTextReserve } from '@/components/ui/feed-rating-stamp';
+import { StretchText } from '@/components/ui/stretch-text';
 import { Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -15,6 +17,12 @@ import type { Database } from '@/lib/database.types';
 import type { TravelBookListItem } from '@/lib/travel-books';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
+
+// Smaller than the main feed's stamp (STAMP_SIZE, 92) — "same placement
+// strategy, just smaller and more contained" per direct feedback: these
+// rows are a fraction of a feed card's size, so the stamp needs to be
+// scaled down to match rather than dominating a compact row.
+const ROW_STAMP_SIZE = 40;
 
 type CollectionsListProps = {
   mode: CollectionMode;
@@ -92,12 +100,12 @@ export function CollectionsList({
       </View>
 
       {mode === 'boards' && !isLoading && boards.length === 0 && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="textSecondary" style={styles.gutter}>
           {emptyBoardsMessage}
         </ThemedText>
       )}
       {mode === 'travel_books' && !isLoading && travelBooks.length === 0 && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="textSecondary" style={styles.gutter}>
           {emptyTravelBooksMessage}
         </ThemedText>
       )}
@@ -112,6 +120,7 @@ export function CollectionsList({
           scrollEventThrottle={16}
           renderItem={({ item }: { item: BoardRow }) => {
             const stats = boardStats[item.id];
+            const stampTextReserve = stats?.avgRating != null ? getStampTextReserve(item.id, ROW_STAMP_SIZE) : 0;
             return (
               <Pressable
                 onPress={() => router.push({ pathname: '/board/[id]', params: { id: item.id } })}
@@ -123,14 +132,19 @@ export function CollectionsList({
                     <View style={styles.thumbnailPlaceholder} />
                   )}
                   <View style={styles.rowLeading}>
-                    <ThemedText type="headline">{item.name}</ThemedText>
+                    <View style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}>
+                      <StretchText type="headline" fill>
+                        {item.name}
+                      </StretchText>
+                    </View>
                     <ThemedText type="small" themeColor="textSecondary">
-                      {stats?.avgRating != null ? `${stats.avgRating.toFixed(1)} ★ · ` : ''}
                       {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
                       {item.is_private ? ' · Private' : ''}
                     </ThemedText>
                   </View>
-                  <ThemedText type="headline">›</ThemedText>
+                  {stats?.avgRating != null && (
+                    <FeedRatingStamp rating={stats.avgRating} seed={item.id} canSeep={false} size={ROW_STAMP_SIZE} />
+                  )}
                 </ThemedView>
               </Pressable>
             );
@@ -146,6 +160,7 @@ export function CollectionsList({
           scrollEventThrottle={16}
           renderItem={({ item }: { item: TravelBookListItem }) => {
             const stats = travelBookStats[item.id];
+            const stampTextReserve = item.rating != null ? getStampTextReserve(item.id, ROW_STAMP_SIZE) : 0;
             return (
               <Pressable
                 onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: item.id } })}
@@ -157,15 +172,20 @@ export function CollectionsList({
                     <View style={styles.thumbnailPlaceholder} />
                   )}
                   <View style={styles.rowLeading}>
-                    <ThemedText type="headline">{item.title}</ThemedText>
+                    <View style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}>
+                      <StretchText type="headline" fill>
+                        {item.title}
+                      </StretchText>
+                    </View>
                     <ThemedText type="small" themeColor="textSecondary">
-                      {item.rating != null ? `${item.rating.toFixed(1)} ★ · ` : ''}
                       {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
                       {item.locationName ? ` · ${item.locationName}` : ''}
                       {item.is_private ? ' · Private' : ''}
                     </ThemedText>
                   </View>
-                  <ThemedText type="headline">›</ThemedText>
+                  {item.rating != null && (
+                    <FeedRatingStamp rating={item.rating} seed={item.id} canSeep={false} size={ROW_STAMP_SIZE} />
+                  )}
                 </ThemedView>
               </Pressable>
             );
@@ -181,13 +201,34 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.three,
   },
+  // Screen-edge inset applied here (content) rather than on the host
+  // screen's own safeArea (frame) — same clipping bug/fix as the main
+  // feed's ScrollView: Android clips a scroll container's content to its
+  // OWN bounds, so if the host screen padded its safeArea horizontally,
+  // the FlatList below inherited that narrower frame and clipped off
+  // FeedRatingStamp's deliberate overflow past each row's right edge
+  // before it ever got the chance to render. controlsRow/gutter (not
+  // scrolling, so not a clip boundary) need the same visual inset applied
+  // directly since they no longer get it for free from the host screen.
   controlsRow: {
     gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
+  },
+  gutter: {
+    paddingHorizontal: Spacing.four,
   },
   list: {
     gap: Spacing.two,
+    paddingHorizontal: Spacing.four,
   },
+  // position:'relative' — FeedRatingStamp positions itself absolutely
+  // against this row (bottom-right corner), not in the normal flex flow
+  // like the old inline badge-plus-chevron was. No arrow anymore either
+  // (removed per direct feedback, freeing more width for the title/save
+  // line — the stamp's own corner placement plus the row itself being
+  // tappable already make it clear these rows lead somewhere).
   row: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,

@@ -6,6 +6,8 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
+import { FeedAuthorLine } from '@/components/feed-author-line';
+import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { PhotoGrid } from '@/components/photo-grid';
 import { SaveCollectionButton } from '@/components/save-collection-button';
@@ -15,7 +17,8 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
-import { RatingSlider } from '@/components/ui/rating-slider';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
+import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { StretchText } from '@/components/ui/stretch-text';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -357,9 +360,9 @@ export default function TravelBookDetailScreen() {
             <View style={styles.ratingSection}>
               <ThemedText type="sectionLabel">Trip rating</ThemedText>
               {isOwner ? (
-                <RatingSlider value={book?.rating ?? null} onChange={handleRatingChange} />
+                <RatingSliderWithPreview value={book?.rating ?? null} onChange={handleRatingChange} />
               ) : (
-                <ThemedText type="default">{book?.rating?.toFixed(1)} ★</ThemedText>
+                book?.rating != null && <RatingGlassBadgeGated rating={book.rating} size={48} />
               )}
             </View>
           )}
@@ -415,6 +418,7 @@ export default function TravelBookDetailScreen() {
               const isChecked = checkedItemIds.has(item.itemId);
               const ownRating = ownRatings[item.placeId];
               const showOwnRating = ownRating != null && !(item.kind === 'visit' && item.user_id === session?.user.id);
+              const canManage = Boolean(session && (item.addedBy === session.user.id || book?.user_id === session.user.id));
               return (
               <Pressable
                 key={item.itemId}
@@ -434,14 +438,43 @@ export default function TravelBookDetailScreen() {
                   <View style={styles.itemInfo}>
                     {item.kind === 'visit' ? (
                       <>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {item.visited_on} · {item.authorName}
-                        </ThemedText>
-                        <StretchText type="headline" fill>{item.placeName}</StretchText>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {item.rating != null ? `${item.rating.toFixed(1)} ★` : 'Visited'}
-                          {item.note ? ` · ${item.note}` : ''}
-                        </ThemedText>
+                        <View style={styles.headerRow}>
+                          <View style={styles.headerAuthor}>
+                            <Pressable
+                              onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.user_id } })}>
+                              <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />
+                            </Pressable>
+                            <FeedAuthorLine
+                              authorId={item.user_id}
+                              authorName={item.authorName}
+                              taggedUsers={item.taggedUsers}
+                              style={styles.headerText}
+                            />
+                          </View>
+                          <ThemedText type="small" themeColor="textSecondary">
+                            {item.visited_on}
+                          </ThemedText>
+                          {canManage && (
+                            <Pressable
+                              onPress={() => setConfirmingItem(item)}
+                              hitSlop={12}
+                              style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
+                              <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
+                            </Pressable>
+                          )}
+                        </View>
+                        <FeedCardHeaderText
+                          placeName={item.placeName}
+                          placeId={item.placeId}
+                          stateCountry={item.stateCountry}
+                          taggedPlaces={item.taggedPlaces}
+                          visitedLine={[item.rating == null ? 'Visited' : null, item.note || null]
+                            .filter(Boolean)
+                            .join(' · ')}
+                          rating={item.rating}
+                          stampSeed={item.itemId}
+                          stampCanSeep={item.photoIds.length > 0}
+                        />
                         {showOwnRating && (
                           <ThemedText type="small" themeColor="textSecondary">
                             Your rating: {ownRating.toFixed(1)} ★
@@ -470,7 +503,7 @@ export default function TravelBookDetailScreen() {
                       </>
                     )}
                   </View>
-                  {session && (item.addedBy === session.user.id || book?.user_id === session.user.id) && (
+                  {canManage && item.kind === 'place' && (
                     <Pressable
                       onPress={() => setConfirmingItem(item)}
                       hitSlop={12}
@@ -501,9 +534,13 @@ export default function TravelBookDetailScreen() {
                     <Pressable key={visit.id} onPress={() => handleAddVisit(visit)}>
                       <ThemedView type="backgroundSelected" style={styles.eligibleRow}>
                         <ThemedText type="small">{visit.placeName}</ThemedText>
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {visit.rating != null ? `${visit.rating.toFixed(1)} ★` : 'Visited'}
-                        </ThemedText>
+                        {visit.rating != null ? (
+                          <RatingGlassBadgeGated rating={visit.rating} size={24} />
+                        ) : (
+                          <ThemedText type="small" themeColor="textSecondary">
+                            Visited
+                          </ThemedText>
+                        )}
                       </ThemedView>
                     </Pressable>
                   ))}
@@ -610,6 +647,21 @@ const styles = StyleSheet.create({
   itemInfo: {
     flex: 1,
     gap: Spacing.half,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  headerAuthor: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  headerText: {
+    flex: 1,
   },
   checkbox: {
     width: 24,

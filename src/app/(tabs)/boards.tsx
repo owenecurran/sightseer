@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CollectionsList } from '@/components/collections-list';
@@ -77,18 +77,20 @@ export default function BoardsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="displaySerif">{mode === 'boards' ? 'Your boards' : 'Your travel books'}</ThemedText>
+        <View style={styles.gutter}>
+          <ThemedText type="displaySerif">{mode === 'boards' ? 'Your boards' : 'Your travel books'}</ThemedText>
 
-        <Button
-          label={mode === 'boards' ? 'New board' : 'New travel book'}
-          onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
-        />
+          <Button
+            label={mode === 'boards' ? 'New board' : 'New travel book'}
+            onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
+          />
 
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-        )}
+          {error && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
+          )}
+        </View>
 
         <CollectionsList
           mode={mode}
@@ -119,8 +121,17 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+    gap: Spacing.three,
+  },
+  // Applied here instead of safeArea's own paddingHorizontal — CollectionsList's
+  // FlatList needs to render at safeArea's full (unclipped) width so
+  // FeedRatingStamp's deliberate overflow past a row's right edge isn't
+  // clipped at a narrower ancestor frame (same root cause/fix as the main
+  // feed's ScrollView). CollectionsList insets its own controls/rows to
+  // match via its own contentContainerStyle/gutter.
+  gutter: {
+    paddingHorizontal: Spacing.four,
     gap: Spacing.three,
   },
 });

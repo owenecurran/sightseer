@@ -33,9 +33,13 @@ type SaveToBoardProps = {
   // tagged in it — the same eligibility rule travel_book_items' insert RLS
   // enforces (see getEligibleVisitsForTravelBook).
   isOwnerOrTagged: boolean;
+  // Lets VisitActionsRow size this to match the row's other icons exactly
+  // — standalone call sites (review-form.tsx, after saving a visit) keep
+  // the original default.
+  size?: number;
 };
 
-export function SaveToBoard({ visitId, isOwnerOrTagged }: SaveToBoardProps) {
+export function SaveToBoard({ visitId, isOwnerOrTagged, size = 26 }: SaveToBoardProps) {
   const theme = useTheme();
   const { session } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -134,7 +138,7 @@ export function SaveToBoard({ visitId, isOwnerOrTagged }: SaveToBoardProps) {
         onPress={() => setIsOpen(true)}
         hitSlop={12}
         style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}>
-        <Ionicons name="add-circle-outline" size={26} color={theme.text} />
+        <Ionicons name="add-circle-outline" size={size} color={theme.text} />
       </Pressable>
 
       <Modal visible={isOpen} transparent animationType="fade" onRequestClose={() => setIsOpen(false)}>

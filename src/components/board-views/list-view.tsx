@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -80,9 +81,7 @@ export function ListView({
                 <StretchText type="headline" fill>{item.placeName}</StretchText>
                 {isVisit ? (
                   <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                    {item.stateCountry ? `${item.stateCountry} · ` : ''}
-                    {item.rating != null ? `${item.rating.toFixed(1)} ★` : 'Visited'}
-                    {item.note ? ` · ${item.note}` : ''}
+                    {[item.stateCountry, item.rating == null ? 'Visited' : null, item.note].filter(Boolean).join(' · ')}
                   </ThemedText>
                 ) : (
                   <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
@@ -95,6 +94,7 @@ export function ListView({
                   </ThemedText>
                 )}
               </View>
+              {isVisit && item.rating != null && <RatingGlassBadgeGated rating={item.rating} size={32} />}
             </ThemedView>
           </Pressable>
         );

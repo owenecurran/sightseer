@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CollectionsList } from '@/components/collections-list';
@@ -85,26 +85,28 @@ export default function UserCollectionsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Pressable onPress={() => router.back()}>
-          <ThemedText type="link">← Back</ThemedText>
-        </Pressable>
+        <View style={styles.gutter}>
+          <Pressable onPress={() => router.back()}>
+            <ThemedText type="link">← Back</ThemedText>
+          </Pressable>
 
-        <ThemedText type="displaySerif">
-          {isSelf ? 'Your boards' : userName ? `${userName}’s boards` : 'Boards'}
-        </ThemedText>
-
-        {isSelf && (
-          <Button
-            label={mode === 'boards' ? 'New board' : 'New travel book'}
-            onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
-          />
-        )}
-
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
+          <ThemedText type="displaySerif">
+            {isSelf ? 'Your boards' : userName ? `${userName}’s boards` : 'Boards'}
           </ThemedText>
-        )}
+
+          {isSelf && (
+            <Button
+              label={mode === 'boards' ? 'New board' : 'New travel book'}
+              onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
+            />
+          )}
+
+          {error && (
+            <ThemedText type="small" themeColor="textSecondary">
+              {error}
+            </ThemedText>
+          )}
+        </View>
 
         <CollectionsList
           mode={mode}
@@ -135,8 +137,15 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+    gap: Spacing.three,
+  },
+  // Applied here instead of safeArea's own paddingHorizontal — see the
+  // matching comment in (tabs)/boards.tsx for why (CollectionsList's
+  // FlatList needs safeArea's full unclipped width for FeedRatingStamp's
+  // overflow to render instead of being clipped at a padded ancestor frame).
+  gutter: {
+    paddingHorizontal: Spacing.four,
     gap: Spacing.three,
   },
 });
