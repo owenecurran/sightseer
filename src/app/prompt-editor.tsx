@@ -77,6 +77,10 @@ type LocalAttachment = {
   displayMode: AttachmentDisplayMode;
   // 'board'/'travel_book' in 'grid' mode: up to MAX_GRID_PHOTOS photos.
   gridPhotoIds: string[];
+  // 'review' only — whether the note text/rating stamp show at all (see
+  // review-prompt-card.tsx).
+  showNote: boolean;
+  showRatingStamp: boolean;
 };
 
 function emptyAttachment(): LocalAttachment {
@@ -99,6 +103,8 @@ function emptyAttachment(): LocalAttachment {
     coverPhotoId: null,
     displayMode: 'cover',
     gridPhotoIds: [],
+    showNote: true,
+    showRatingStamp: true,
   };
 }
 
@@ -196,6 +202,8 @@ export default function PromptEditorScreen() {
               coverPhotoId: a.coverPhotoId,
               displayMode: a.displayMode ?? 'cover',
               gridPhotoIds: a.gridPhotoIds,
+              showNote: a.showNote,
+              showRatingStamp: a.showRatingStamp,
             }))
           : [emptyAttachment()]
       );
@@ -391,7 +399,16 @@ export default function PromptEditorScreen() {
       if (!visit) return { kind: 'empty' };
       const options = visitPhotoOptions[a.visitId] ?? [];
       const photoUrl = (a.visitPhotoId ? options.find((o) => o.id === a.visitPhotoId) : options[0])?.url;
-      return { kind: 'review', visitId: a.visitId, placeName: visit.placeName, rating: visit.rating, note: visit.note, photoUrl };
+      return {
+        kind: 'review',
+        visitId: a.visitId,
+        placeName: visit.placeName,
+        rating: visit.rating,
+        note: visit.note,
+        photoUrl,
+        showNote: a.showNote,
+        showRatingStamp: a.showRatingStamp,
+      };
     }
 
     if (a.attachmentType === 'board' || a.attachmentType === 'travel_book') {
@@ -498,6 +515,8 @@ export default function PromptEditorScreen() {
           coverPhotoId: isCoverType && !usesGrid ? a.coverPhotoId : null,
           displayMode: a.attachmentType === 'board' || a.attachmentType === 'travel_book' ? a.displayMode : null,
           gridPhotoIds: usesGrid ? a.gridPhotoIds : null,
+          showNote: a.attachmentType === 'review' ? a.showNote : undefined,
+          showRatingStamp: a.attachmentType === 'review' ? a.showRatingStamp : undefined,
         });
       }
 
@@ -645,6 +664,30 @@ export default function PromptEditorScreen() {
                           </Pressable>
                         ))}
                       </View>
+                    </View>
+                  )}
+
+                  {/* Text off drops the note/photo-sidebar split entirely
+                      and lets the photo take the whole card instead — see
+                      review-prompt-card.tsx's useSidebarLayout. Rating off
+                      just hides the floating corner stamp. Independent of
+                      each other. */}
+                  {attachment.visitId && (
+                    <View style={styles.chipRow}>
+                      <Pressable onPress={() => updateAttachment(index, { showNote: !attachment.showNote })}>
+                        <ThemedView type={attachment.showNote ? 'backgroundSelected' : 'background'} style={styles.chip}>
+                          <ThemedText type="small">{attachment.showNote ? 'Review text ✓' : 'Review text hidden'}</ThemedText>
+                        </ThemedView>
+                      </Pressable>
+                      <Pressable onPress={() => updateAttachment(index, { showRatingStamp: !attachment.showRatingStamp })}>
+                        <ThemedView
+                          type={attachment.showRatingStamp ? 'backgroundSelected' : 'background'}
+                          style={styles.chip}>
+                          <ThemedText type="small">
+                            {attachment.showRatingStamp ? 'Rating stamp ✓' : 'Rating stamp hidden'}
+                          </ThemedText>
+                        </ThemedView>
+                      </Pressable>
                     </View>
                   )}
                 </>

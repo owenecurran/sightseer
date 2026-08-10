@@ -21,10 +21,18 @@ export const STAMP_EFFECTIVE_HEIGHT = STAMP_HEIGHT + ROTATION_BOUNDING_BUFFER;
 
 // How far, at most, the stamp may rise from its anchored edge when nothing
 // else (no maxBottomOffset ceiling) reels it in first — shared between the
-// component's own useMemo below and getStampMaxReach's worst-case
+// component's own useMemo below and getStampCornerReach's worst-case
 // prediction of it, so the two can't silently drift out of sync the way two
 // separately-hardcoded copies of the same ratio could.
 const FALLBACK_MAX_RISE_RATIO = 0.35;
+
+// placement:'corner' only — how much (px) the stamp's inset from its corner
+// varies per seed, on each axis. Deliberately a small FIXED pixel amount
+// rather than a ratio of `size`: the whole point of corner placement is that
+// the stamp lands in the same visual spot regardless of how big the stamp
+// itself is or how big/what shape its container is, so only the tilt and a
+// few px of jitter should differ between instances.
+const CORNER_JITTER = 6;
 
 // Deterministic (not Math.random()) so a given post's stamp placement/tilt
 // stays put across re-renders and re-scrolls instead of reshuffling every
@@ -53,17 +61,19 @@ function mulberry32(seed: number) {
   };
 }
 
-// How far this specific post's stamp's *left* edge sits from the block's
-// own right edge — the exact same first draw FeedRatingStamp's own useMemo
-// below makes internally (a PRNG seeded identically always produces the
-// same first value, so this doesn't need to share state with that
-// instance, just call the same math). Exported so FeedCardHeaderText's
-// note/tagged-places text can reserve exactly *this* post's real stamp
-// position instead of a flat worst-case constant — letting text run right
-// up to where the stamp actually starts on whichever posts' random draw
-// happened to land closer to the edge, not stopping short by the same
-// amount on every post regardless of where its own stamp landed. Still an
-// approximation of "wrap around the stamp," not true dynamic reflow — see
+// How far this specific post's stamp's near edge sits from whichever edge
+// of the block it's anchored to — a pure magnitude, meaningful as either a
+// paddingRight reserve (stamp on the right) or a paddingLeft reserve (stamp
+// on the left); see getStampSide below for which. The exact same first draw
+// FeedRatingStamp's own useMemo below makes internally (a PRNG seeded
+// identically always produces the same first value, so this doesn't need to
+// share state with that instance, just call the same math). Exported so
+// FeedCardHeaderText's note/tagged-places text can reserve exactly *this*
+// post's real stamp position instead of a flat worst-case constant — letting
+// text run right up to where the stamp actually starts on whichever posts'
+// random draw happened to land closer to the edge, not stopping short by the
+// same amount on every post regardless of where its own stamp landed. Still
+// an approximation of "wrap around the stamp," not true dynamic reflow — see
 // the reserve's own call site in feed-place-photo-block.tsx for why that's
 // the real ceiling on this (React Native has no CSS `shape-outside`/float
 // equivalent). `size` defaults to the main feed's own STAMP_SIZE but takes
@@ -81,25 +91,30 @@ export function getStampTextReserve(
   return leftEdgeMin + next() * (leftEdgeMax - leftEdgeMin);
 }
 
-// The worst-case *vertical* footprint a FeedRatingStamp instance can reach
-// — its own fallback ceiling (see FALLBACK_MAX_RISE_RATIO) plus its
-// rendered height, worst-case rotation included — when it has no
-// maxBottomOffset ceiling of its own to lean on instead (i.e. the exact
-// path a `canSeep={false}` stamp with no location line takes, see the
-// component's own clamp below). Exported so a caller whose stamp shares its
-// corner with real text it must never cover (see review-prompt-card.tsx)
-// can reserve exactly this much space deterministically, rather than
-// guessing or duplicating this ratio locally. `insetRatio` must match
-// whatever the real FeedRatingStamp instance is given (see that prop) —
-// this is a prediction of that instance's own ceiling, not a shared
-// computation.
-export function getStampMaxReach(
-  size: number = STAMP_SIZE,
-  insetRatio: number = 1,
-): number {
-  const fallbackMaxRise = size * FALLBACK_MAX_RISE_RATIO * insetRatio;
+// Which side of the block a given seed's stamp lands on — an entirely
+// separate PRNG instance from the one FeedRatingStamp's own useMemo creates
+// (same seed, but its own fresh `mulberry32(hashSeed(seed))`, drawing
+// exactly once), so this doesn't need to replicate FeedRatingStamp's whole
+// draw sequence in order the way getStampTextReserve's "same first draw"
+// trick does — it's simply its own independent coin flip keyed off the same
+// seed, always landing the same way for a given post. Callers that align
+// text around the stamp (see feed-place-photo-block.tsx) call this once to
+// decide both which edge to reserve space on and which way to align text.
+export function getStampSide(seed: string): "left" | "right" {
+  const next = mulberry32(hashSeed(seed));
+  return next() < 0.5 ? "left" : "right";
+}
+
+// How far, at most, a placement:'corner' stamp's far edge can reach from
+// the corner it's anchored to — its worst-case inset (see CORNER_JITTER)
+// plus its own rendered height, worst-case rotation included. Exported so a
+// caller whose stamp shares space with real text it must never cover (see
+// review-prompt-card.tsx) can reserve exactly this much, deterministically,
+// rather than guessing. Pass the same `cornerInset` given to the real
+// FeedRatingStamp instance or this prediction drifts from it.
+export function getStampCornerReach(size: number, cornerInset: number): number {
   const effectiveHeight = size * (STAMP_EFFECTIVE_HEIGHT / STAMP_SIZE);
-  return fallbackMaxRise + effectiveHeight;
+  return cornerInset + CORNER_JITTER + effectiveHeight;
 }
 
 type FeedRatingStampProps = {
@@ -134,15 +149,33 @@ type FeedRatingStampProps = {
   // clamping logic are identical either way — a "ceiling" is just measured
   // from whichever edge this anchors to.
   corner?: "bottom-right" | "top-right";
-  // Multiplies every placement ratio below — 1 (default) is every existing
-  // caller's look, tight against the corner (close to the text it franks,
-  // by design — see leftEdgeMin/leftEdgeMax below). A caller that wants the
-  // stamp to read as sitting nearer the middle of its corner's own
-  // quadrant instead of jammed into the literal pixel corner (see
-  // review-prompt-card.tsx) passes something larger. Keep getStampMaxReach's
-  // own `insetRatio` argument matching whatever's passed here, or its
-  // reserve prediction will drift from this instance's real ceiling.
-  insetRatio?: number;
+  // How the stamp picks its spot within that corner:
+  //
+  // 'text-adjacent' (default, the feed and everything modeled on it): the
+  // offsets are ratios of `size`, tuned to land the stamp right next to the
+  // review text it franks. Deliberately variable — it's anchored to the
+  // *text*, not the box.
+  //
+  // 'corner' (review-prompt-card.tsx): a flat `cornerInset` from the corner
+  // on both axes, plus a few px of per-seed jitter. Because the inset is
+  // fixed pixels rather than a ratio of `size`, the stamp lands in the same
+  // visual spot no matter how big the stamp is, how big the container is, or
+  // what shape it is — which 'text-adjacent' can't promise, since its own
+  // offsets scale with `size` (and `size` itself usually tracks the
+  // container). `maxBottomOffset` is ignored here; the inset already bounds
+  // it far more tightly than any ceiling would.
+  placement?: "text-adjacent" | "corner";
+  // placement:'corner' only — px from the container's corner to the stamp's
+  // own corner, before CORNER_JITTER. Keep in sync with whatever's handed to
+  // getStampCornerReach.
+  cornerInset?: number;
+  // Which side of the block the stamp anchors to horizontally — defaults
+  // 'right', every existing caller's look, and the `corner` prop's own
+  // "-right" naming is only ever accurate when this stays at the default.
+  // A caller that randomizes this per post (see getStampSide) must mirror
+  // whatever it lands on into its own text alignment/reserve — this prop
+  // only controls where the stamp itself sits, not the surrounding text.
+  side?: "left" | "right";
 };
 
 // The rating badge, anchored near a corner of the post's own header block
@@ -165,19 +198,31 @@ export function FeedRatingStamp({
   maxBottomOffset,
   size = STAMP_SIZE,
   corner = "bottom-right",
-  insetRatio = 1,
+  placement = "text-adjacent",
+  cornerInset = 0,
+  side = "right",
 }: FeedRatingStampProps) {
-  const { rightOffset, bottomOffset, rotateDeg } = useMemo(() => {
+  const { horizontalOffset, bottomOffset, rotateDeg } = useMemo(() => {
+    const next = mulberry32(hashSeed(seed));
+
+    // Flat inset from the corner on both axes — see the `placement` prop.
+    // Nothing here scales with `size` or the container, which is exactly
+    // what makes this land in the same visual spot every time.
+    if (placement === "corner") {
+      return {
+        horizontalOffset: cornerInset + next() * CORNER_JITTER,
+        bottomOffset: cornerInset + next() * CORNER_JITTER,
+        rotateDeg: -15 + next() * 30,
+      };
+    }
+
     // Every ratio below is the exact same one the module-level
     // STAMP_LEFT_EDGE_MIN/MAX etc. used to hardcode against STAMP_SIZE —
     // recomputed here per-instance against whatever `size` this particular
     // stamp is actually drawn at, so a smaller caller gets the same
     // placement *logic*, proportionally, not a differently-tuned look.
-    // `insetRatio` scales all four uniformly, pulling the whole range
-    // toward the center of the corner's own quadrant without changing its
-    // *shape* (still the same relative spread, just bigger).
-    const leftEdgeMin = size * 0.7 * insetRatio;
-    const leftEdgeMax = size * 1.05 * insetRatio;
+    const leftEdgeMin = size * 0.7;
+    const leftEdgeMax = size * 1.05;
     // How far the stamp may rise before maxBottomOffset (the caller's
     // per-post, actually-measured ceiling) reels it back in — deliberately
     // generous, well past any real ceiling that shows up in practice, so
@@ -186,23 +231,22 @@ export function FeedRatingStamp({
     // meant the stamp consistently sat well below what maxBottomOffset
     // would've actually allowed, reading as "too much empty space above
     // it" (confirmed live).
-    const rawMaxRise = size * 1.4 * insetRatio;
+    const rawMaxRise = size * 1.4;
     // Only matters when there's no real ceiling to lean on yet — no
     // location line on this post at all (or, for a caller like
     // collections-list.tsx with no location line in the first place, ever)
     // — so the stamp still has *some* bound and doesn't rise into
-    // whatever sits above it. See FALLBACK_MAX_RISE_RATIO/getStampMaxReach
-    // above — this must stay the same ratio that helper predicts.
-    const fallbackMaxRise = size * FALLBACK_MAX_RISE_RATIO * insetRatio;
+    // whatever sits above it.
+    const fallbackMaxRise = size * FALLBACK_MAX_RISE_RATIO;
 
-    const next = mulberry32(hashSeed(seed));
-    // Random draw for how far left the stamp's own left edge sits, then
-    // converted to the `right` CSS value this component actually positions
-    // with (right = distance from *its* right edge, so a bigger
-    // leftEdgeFromRight means a bigger right value means further left).
+    // Random draw for how far in from the anchored side the stamp's near
+    // edge sits, then converted to the CSS offset this component actually
+    // positions with (a bigger leftEdgeFromRight means a bigger offset means
+    // further from that edge — "right" in the name refers to the draw's own
+    // reference point, not which CSS property it ends up applied to below).
     const leftEdgeFromRight =
       leftEdgeMin + next() * (leftEdgeMax - leftEdgeMin);
-    const rightOffset = leftEdgeFromRight - size;
+    const horizontalOffset = leftEdgeFromRight - size;
     // canSeep: allowed to dip below this block's own bottom edge into
     // whatever sits directly below (a photo). !canSeep: never negative —
     // structurally can't reach the footer/button row below, since that's
@@ -212,14 +256,14 @@ export function FeedRatingStamp({
       : next() * rawMaxRise;
     const rotateDeg = -15 + next() * 30;
     return {
-      rightOffset,
+      horizontalOffset,
       bottomOffset: Math.min(
         rawBottomOffset,
         maxBottomOffset ?? fallbackMaxRise,
       ),
       rotateDeg,
     };
-  }, [seed, canSeep, maxBottomOffset, size, insetRatio]);
+  }, [seed, canSeep, maxBottomOffset, size, placement, cornerInset]);
 
   return (
     <View
@@ -227,8 +271,8 @@ export function FeedRatingStamp({
       style={[
         styles.wrap,
         corner === "top-right" ? { top: bottomOffset } : { bottom: bottomOffset },
+        side === "left" ? { left: horizontalOffset } : { right: horizontalOffset },
         {
-          right: rightOffset,
           transform: [{ rotate: `${rotateDeg}deg` }],
         },
       ]}

@@ -19,7 +19,16 @@ export type PreviewData =
   | { kind: 'empty' }
   | { kind: 'text'; text: string }
   | { kind: 'photo'; url?: string }
-  | { kind: 'review'; visitId: string; placeName: string; rating: number | null; note: string | null; photoUrl?: string }
+  | {
+      kind: 'review';
+      visitId: string;
+      placeName: string;
+      rating: number | null;
+      note: string | null;
+      photoUrl?: string;
+      showNote: boolean;
+      showRatingStamp: boolean;
+    }
   | { kind: 'cover'; title: string; thumbnailUrl?: string }
   | { kind: 'grid'; title: string; photoIds: string[]; photoUrls: Record<string, string> };
 
@@ -79,6 +88,8 @@ export function AttachmentPreview({ label, data }: AttachmentPreviewProps) {
         rating={data.rating}
         note={data.note}
         photoUrl={data.photoUrl}
+        showNote={data.showNote}
+        showRatingStamp={data.showRatingStamp}
         disabled
       />
     );

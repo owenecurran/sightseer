@@ -655,6 +655,8 @@ export type Database = {
           place_id: string | null
           position: number
           prompt_id: string
+          show_note: boolean
+          show_rating_stamp: boolean
           text_value: string | null
           travel_book_id: string | null
           visit_id: string | null
@@ -672,6 +674,8 @@ export type Database = {
           place_id?: string | null
           position?: number
           prompt_id: string
+          show_note?: boolean
+          show_rating_stamp?: boolean
           text_value?: string | null
           travel_book_id?: string | null
           visit_id?: string | null
@@ -689,6 +693,8 @@ export type Database = {
           place_id?: string | null
           position?: number
           prompt_id?: string
+          show_note?: boolean
+          show_rating_stamp?: boolean
           text_value?: string | null
           travel_book_id?: string | null
           visit_id?: string | null

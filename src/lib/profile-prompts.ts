@@ -38,6 +38,11 @@ export type PromptAttachment = {
   displayMode: AttachmentDisplayMode | null;
   // 'board'/'travel_book' in 'grid' mode: up to 4 chosen photos.
   gridPhotoIds: string[];
+  // 'review' only — whether the note text/rating stamp show at all (see
+  // review-prompt-card.tsx). Both default true at the DB column level, so
+  // every attachment saved before these existed keeps its current look.
+  showNote: boolean;
+  showRatingStamp: boolean;
 };
 
 export type ProfilePrompt = {
@@ -61,6 +66,8 @@ type RawAttachment = {
   cover_photo_id: string | null;
   display_mode: string | null;
   grid_photo_ids: string[] | null;
+  show_note: boolean;
+  show_rating_stamp: boolean;
   visits: {
     rating: number | null;
     note: string | null;
@@ -80,7 +87,7 @@ type RawPrompt = {
 };
 
 const PROMPT_SELECT =
-  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visit_photo_id, cover_photo_id, display_mode, grid_photo_ids, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
+  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visit_photo_id, cover_photo_id, display_mode, grid_photo_ids, show_note, show_rating_stamp, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
 
 function mapAttachment(r: RawAttachment): PromptAttachment {
   const photos = [...(r.visits?.photos ?? [])].sort((a, b) => a.position - b.position);
@@ -104,6 +111,8 @@ function mapAttachment(r: RawAttachment): PromptAttachment {
     coverPhotoId: r.cover_photo_id,
     displayMode: r.display_mode === 'grid' ? 'grid' : r.display_mode === 'cover' ? 'cover' : null,
     gridPhotoIds: r.grid_photo_ids ?? [],
+    showNote: r.show_note,
+    showRatingStamp: r.show_rating_stamp,
   };
 }
 
@@ -141,6 +150,11 @@ export type AttachmentInput = {
   displayMode?: AttachmentDisplayMode | null;
   // 'board'/'travel_book' in 'grid' mode: up to 4 chosen photos.
   gridPhotoIds?: string[] | null;
+  // 'review' only — see PromptAttachment.showNote/showRatingStamp. Undefined
+  // (like every other new attachment) falls back to the column default
+  // (true) via `?? true` below, not a hand-written default here.
+  showNote?: boolean;
+  showRatingStamp?: boolean;
 };
 
 type SavePromptParams = {
@@ -195,6 +209,8 @@ export async function savePrompt(params: SavePromptParams): Promise<void> {
         cover_photo_id: a.coverPhotoId ?? null,
         display_mode: a.displayMode ?? null,
         grid_photo_ids: a.gridPhotoIds && a.gridPhotoIds.length > 0 ? a.gridPhotoIds : null,
+        show_note: a.showNote ?? true,
+        show_rating_stamp: a.showRatingStamp ?? true,
       }))
     );
     if (insertError) throw insertError;

@@ -3,13 +3,15 @@ import { router } from "expo-router";
 import { useState } from "react";
 import {
   type LayoutChangeEvent,
+  type NativeSyntheticEvent,
   Pressable,
   StyleSheet,
+  type TextLayoutEventData,
   View,
 } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
-import { FeedRatingStamp, getStampMaxReach } from "@/components/ui/feed-rating-stamp";
+import { FeedRatingStamp, getStampCornerReach, getStampSide } from "@/components/ui/feed-rating-stamp";
 import { LoadableImage } from "@/components/ui/loadable-image";
 import { StretchText } from "@/components/ui/stretch-text";
 import { CARD_RADIUS } from "@/components/ui/teaser-card";
@@ -22,6 +24,15 @@ type ReviewPromptCardProps = {
   rating: number | null;
   note: string | null;
   photoUrl?: string;
+  // Both default true, matching the DB column defaults — every caller that
+  // hasn't been threaded through the new prompt-editor toggles yet (or an
+  // attachment saved before they existed) keeps today's look unchanged.
+  // showNote off drops the side/below info column entirely — no reserved
+  // "siding" for text at all — and the photo takes the whole card instead
+  // (see useSidebarLayout below), rather than just hiding empty text in a
+  // column that's still there.
+  showNote?: boolean;
+  showRatingStamp?: boolean;
   // Set by the prompt editor's live preview, which renders this exact
   // component against in-progress (possibly unsaved) attachment data — a
   // preview should never actually navigate to /visit/[id] on tap.
@@ -53,6 +64,14 @@ const OVERLAY_OVERSHOOT = Spacing.two;
 // instead relies on the platform's own per-fontSize default, which scales
 // with fontSize the way a fixed pixel value can't.
 const NOTE_LINE_HEIGHT = 20;
+// How far in from the card's top-right corner the stamp sits, on both axes.
+// A flat pixel value fed to FeedRatingStamp's placement:'corner' mode, NOT a
+// ratio of the stamp or the card: earlier rounds scaled these offsets by
+// `badgeSize` (which itself tracks photo height), so the stamp drifted to a
+// visibly different spot depending on the photo's orientation and the card's
+// size — the exact "it still isn't landing in the top right corner"
+// complaint. Fixed pixels are what make the placement actually invariant.
+const STAMP_CORNER_INSET = Spacing.two;
 
 // Text and the rating badge both scale with the card's actual size instead
 // of using fixed constants, clamped to sane bounds so a tiny card doesn't
@@ -104,15 +123,61 @@ export function ReviewPromptCard({
   rating,
   note,
   photoUrl,
+  showNote = true,
+  showRatingStamp = true,
   disabled,
 }: ReviewPromptCardProps) {
   const [photoBox, setPhotoBox] = useState({ width: 0, height: 0 });
   const [photoAspectRatio, setPhotoAspectRatio] = useState(DEFAULT_PHOTO_ASPECT_RATIO);
   const isHorizontal = photoAspectRatio > 1;
+  // Row-mode (photo+sidebar split) only makes sense when there's a note
+  // column to put beside the photo at all — showNote off skips it
+  // regardless of aspect ratio and falls through to the same full-width
+  // treatment a landscape photo already gets, "wrapping" the photo instead
+  // of reserving a siding for text that isn't there (per direct feedback).
+  const useSidebarLayout = showNote && !isHorizontal;
   // Same scaling the stamp used as an inline badge — now sizes the
   // floating corner stamp instead (see the FeedRatingStamp call below), so
   // it still tracks the photo's own size instead of a fixed constant.
   const badgeSize = clamp(photoBox.height * 0.3, 48, 88);
+  // How far down from the card's top edge this stamp's own bottom can reach,
+  // worst case — deterministic (not measured), matching the real instance's
+  // own placement math exactly so the reserve below can't drift from it.
+  const stampReach =
+    rating != null && showRatingStamp ? getStampCornerReach(badgeSize, STAMP_CORNER_INSET) : 0;
+  // showNote true keeps the stamp fixed to the right — the reach/reserve
+  // math above (and the note's own paddingTop reserve below) both assume a
+  // right corner, and generalizing them to a left-landing stamp would mean
+  // redoing the note's own text alignment the way feed-place-photo-block.tsx
+  // does for the feed, which isn't warranted here: this note already
+  // reserves the stamp's full height above it regardless of side, so a
+  // left/right flip wouldn't change how much room the note needs, just
+  // complicate the reserve math for no visible benefit. showNote false has
+  // no text to protect at all — per direct feedback, the corner is free to
+  // land on either side per post there.
+  const stampSide = !showNote && rating != null && showRatingStamp ? getStampSide(visitId) : "right";
+  // The stamp floats over the card's top-right corner, so what the note has
+  // to dodge depends entirely on where the note actually sits:
+  //
+  // - Sidebar layout: the note shares that corner (it's the top of the info
+  //   column beside the photo), so it reserves the stamp's full reach.
+  // - Stacked layout: the note sits BELOW a full-width photo, and the stamp
+  //   is up on that photo — they only collide at all if the photo is so
+  //   short that the stamp overhangs its bottom edge, so only that overhang
+  //   (usually zero) gets reserved. Reserving the full reach here — which is
+  //   what the previous version did in both modes — was dead space that grew
+  //   the whole card downward for nothing, the "pushes the box down way too
+  //   far on horizontal photos with review text" bug.
+  //
+  // The `> 0` guard is the pre-measurement case: photoBox starts at zero
+  // height, which would otherwise read as "the photo is infinitely short, so
+  // the stamp overhangs all of it" and reserve the full reach for one frame
+  // before collapsing to 0 — a visible jump on every mount.
+  const noteTopReserve = useSidebarLayout
+    ? stampReach
+    : photoBox.height > 0
+      ? Math.max(0, stampReach - photoBox.height)
+      : 0;
   // adjustsFontSizeToFit shrinks to fit *this many lines*, not a pixel
   // height directly — derived from the actual space left in `info` once
   // padding is accounted for, so a short/tall photo gets a correspondingly
@@ -122,14 +187,26 @@ export function ReviewPromptCard({
   // straight through the card's own fixed height and into whatever
   // rendered below it) and sometimes way less. Only meaningful in row mode
   // — stacked mode's note isn't fitted into anything. No longer budgets for
-  // the rating badge's own footprint — that's a floating corner stamp now
-  // (see below), not a flow child sharing this column with the note.
-  const availableNoteHeight = photoBox.height - Spacing.three * 2;
+  // the rating badge's own footprint as an inline flow sibling — see
+  // noteTopReserve above instead, now that it's a floating corner stamp.
+  const availableNoteHeight = photoBox.height - Spacing.three * 2 - noteTopReserve;
   const noteMaxLines = clamp(Math.floor(availableNoteHeight / NOTE_LINE_HEIGHT), 1, 12);
+  // Row mode only (see the note's own two branches below) — stacked mode's
+  // note has no numberOfLines cap at all, so it never truncates. adjustsFontSizeToFit
+  // already absorbs most "too long" cases by shrinking the font first; this
+  // only trips once even the shrunk text still needs more lines than the
+  // box has room for (RN always renders exactly up to numberOfLines when
+  // the content needs more, whether or not the truncated tail is visually
+  // ellipsized), signaling there's more to read than fits here.
+  const [isNoteTruncated, setIsNoteTruncated] = useState(false);
 
   function handlePhotoLoad(event: ImageLoadEventData) {
     const { width, height } = event.source;
     if (width > 0 && height > 0) setPhotoAspectRatio(width / height);
+  }
+
+  function handleNoteTextLayout(event: NativeSyntheticEvent<TextLayoutEventData>) {
+    setIsNoteTruncated(event.nativeEvent.lines.length >= noteMaxLines);
   }
 
   return (
@@ -141,14 +218,14 @@ export function ReviewPromptCard({
           router.push({ pathname: "/visit/[id]", params: { id: visitId } })
         }
         style={[
-          isHorizontal ? styles.cardStacked : styles.cardRow,
-          !isHorizontal && photoBox.height > 0 ? { height: photoBox.height } : null,
+          useSidebarLayout ? styles.cardRow : styles.cardStacked,
+          useSidebarLayout && photoBox.height > 0 ? { height: photoBox.height } : null,
         ]}
       >
         <View style={styles.cardBackground} />
         <View
           style={[
-            isHorizontal ? styles.photoWrapFull : styles.photoWrapPartial,
+            useSidebarLayout ? styles.photoWrapPartial : styles.photoWrapFull,
             { aspectRatio: photoAspectRatio },
           ]}
           onLayout={(e: LayoutChangeEvent) =>
@@ -178,31 +255,57 @@ export function ReviewPromptCard({
             </StretchText>
           </View>
         </View>
-        <View style={[styles.info, isHorizontal ? styles.infoStacked : null]}>
-          {note &&
-            (isHorizontal ? (
-              <ThemedText type="default" themeColor="background">
-                {note}
+        {showNote && (
+          <View style={[styles.info, !useSidebarLayout ? styles.infoStacked : null]}>
+            {note &&
+              (!useSidebarLayout ? (
+                <ThemedText
+                  type="default"
+                  themeColor="background"
+                  style={noteTopReserve > 0 && { paddingTop: noteTopReserve }}>
+                  {note}
+                </ThemedText>
+              ) : (
+                <ThemedText
+                  type="default"
+                  themeColor="background"
+                  // Overrides `default`'s own fixed lineHeight:24 back to
+                  // unset — see NOTE_LINE_HEIGHT's comment for why a fixed
+                  // pixel value can't track adjustsFontSizeToFit's own
+                  // shrinking. paddingTop reserves noteTopReserve (see above)
+                  // so the note never starts under the corner stamp.
+                  style={[styles.noteText, noteTopReserve > 0 && { paddingTop: noteTopReserve }]}
+                  numberOfLines={noteMaxLines}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.4}
+                  onTextLayout={handleNoteTextLayout}
+                >
+                  {note}
+                </ThemedText>
+              ))}
+            {/* Sidebar (fitted) mode only — see isNoteTruncated's own
+                comment. A plain affordance, not a separate tap target: the
+                whole card already navigates to /visit/[id] on press (see
+                the outer Pressable), this just signals there's more to
+                read there. */}
+            {useSidebarLayout && isNoteTruncated && (
+              <ThemedText type="headline" themeColor="background" style={styles.moreArrow}>
+                ›
               </ThemedText>
-            ) : (
-              <ThemedText
-                type="default"
-                themeColor="background"
-                // Overrides `default`'s own fixed lineHeight:24 back to
-                // unset — see NOTE_LINE_HEIGHT's comment for why a fixed
-                // pixel value can't track adjustsFontSizeToFit's own
-                // shrinking.
-                style={styles.noteText}
-                numberOfLines={noteMaxLines}
-                adjustsFontSizeToFit
-                minimumFontScale={0.4}
-              >
-                {note}
-              </ThemedText>
-            ))}
-        </View>
-        {rating != null && (
-          <FeedRatingStamp rating={rating} seed={visitId} canSeep={false} size={badgeSize} corner="top-right" />
+            )}
+          </View>
+        )}
+        {rating != null && showRatingStamp && (
+          <FeedRatingStamp
+            rating={rating}
+            seed={visitId}
+            canSeep={false}
+            size={badgeSize}
+            corner="top-right"
+            placement="corner"
+            cornerInset={STAMP_CORNER_INSET}
+            side={stampSide}
+          />
         )}
       </Pressable>
     </View>
@@ -283,8 +386,13 @@ const styles = StyleSheet.create({
     paddingRight: Spacing.one,
     paddingTop: Spacing.two,
   },
+  // position:'relative' — moreArrow (see below) positions itself absolutely
+  // against this box's own bottom-right corner, inset within its padding
+  // rather than a normal flex sibling, so it can't compete with noteMaxLines'
+  // own height budget or get clipped by this box's overflow:hidden safety net.
   info: {
     flex: 1,
+    position: "relative",
     padding: Spacing.three,
     gap: Spacing.two,
     justifyContent: "center",
@@ -308,5 +416,12 @@ const styles = StyleSheet.create({
   // shrinking instead of staying pinned to the full-size value.
   noteText: {
     lineHeight: undefined,
+  },
+  // Tucked into `info`'s own bottom-right corner (see its own comment) — a
+  // plain visual invitation to tap through, not a distinct tap target.
+  moreArrow: {
+    position: "absolute",
+    right: Spacing.two,
+    bottom: Spacing.two,
   },
 });

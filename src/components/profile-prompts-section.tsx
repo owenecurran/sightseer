@@ -97,6 +97,8 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
                   rating={attachment.visitRating}
                   note={attachment.visitNote}
                   photoUrl={attachment.visitPhotoId ? visitPhotoUrls[attachment.visitPhotoId] : undefined}
+                  showNote={attachment.showNote}
+                  showRatingStamp={attachment.showRatingStamp}
                 />
               );
             }

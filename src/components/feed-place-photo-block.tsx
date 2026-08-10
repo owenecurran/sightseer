@@ -10,6 +10,7 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import {
   FeedRatingStamp,
+  getStampSide,
   getStampTextReserve,
   STAMP_EFFECTIVE_HEIGHT,
 } from "@/components/ui/feed-rating-stamp";
@@ -88,6 +89,20 @@ export function FeedCardHeaderText({
   // where the random draw landed.
   const stampTextReserve =
     rating != null && stampSeed != null ? getStampTextReserve(stampSeed) : 0;
+  // Which side of the block this post's stamp lands on — per direct
+  // feedback, stamps shouldn't be stuck on the right forever, but text that
+  // shares a corner with a left-anchored stamp has to mirror it (right-align,
+  // reserve space on the left instead) or it'd run straight under the stamp.
+  // Defaults 'right' when there's no stamp at all, matching every line's
+  // plain untouched look in that case.
+  const stampSide = rating != null && stampSeed != null ? getStampSide(stampSeed) : "right";
+  const stampAlignStyle = stampSide === "left" ? styles.rightAlign : null;
+  const stampReserveStyle =
+    stampTextReserve > 0
+      ? stampSide === "left"
+        ? { paddingLeft: stampTextReserve }
+        : { paddingRight: stampTextReserve }
+      : null;
 
   // Measured (not assumed) so the stamp's ceiling — see maxBottomOffset
   // below — reflects this specific post's real layout: how tall this
@@ -135,16 +150,13 @@ export function FeedCardHeaderText({
           }
           hitSlop={4}
         >
-          <ThemedText type="roundedStat" themeColor="textSecondary">
+          <ThemedText type="roundedStat" themeColor="textSecondary" style={stampAlignStyle}>
             {stateCountry}
           </ThemedText>
         </Pressable>
       )}
       {taggedPlaces.length > 0 && (
-        <ThemedText
-          type="small"
-          style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}
-        >
+        <ThemedText type="small" style={[stampAlignStyle, stampReserveStyle]}>
           {taggedPlaces.map((place, index) => (
             <ThemedText
               key={place.name}
@@ -164,11 +176,7 @@ export function FeedCardHeaderText({
         // not the dimmer "textSecondary" this used before — per direct
         // feedback, the review itself should draw the eye, not read as a
         // muted afterthought under the location line.
-        <ThemedText
-          type="small"
-          themeColor="text"
-          style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}
-        >
+        <ThemedText type="small" themeColor="text" style={[stampAlignStyle, stampReserveStyle]}>
           {visitedLine}
         </ThemedText>
       )}
@@ -178,6 +186,7 @@ export function FeedCardHeaderText({
           seed={stampSeed}
           canSeep={stampCanSeep}
           maxBottomOffset={maxStampBottomOffset}
+          side={stampSide}
         />
       )}
     </View>
@@ -198,5 +207,11 @@ const styles = StyleSheet.create({
     position: "relative",
     zIndex: 2,
     gap: 4,
+  },
+  // Mirrors the location/tagged-places/note lines to the right when the
+  // stamp lands on the left instead (see stampSide) — plain left-aligned
+  // text would otherwise run straight under a left-anchored stamp.
+  rightAlign: {
+    textAlign: "right",
   },
 });
