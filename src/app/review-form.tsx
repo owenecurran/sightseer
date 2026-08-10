@@ -6,15 +6,18 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { LocationSearchModal } from '@/components/location-search-modal';
-import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
+import { MAX_VISIT_PHOTOS, PhotoGrid } from '@/components/photo-grid';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
 import { SaveToBoard } from '@/components/save-to-board';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
+import { FeedRatingStamp } from '@/components/ui/feed-rating-stamp';
 import { RatingSlider } from '@/components/ui/rating-slider';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -22,18 +25,13 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
+import { getAvatarViewUrls } from '@/lib/avatar';
 import type { Database } from '@/lib/database.types';
 import { deleteDraftPhoto, getDraftForEdit, publishDraft, updateDraftFields, uploadPhotoForDraft } from '@/lib/drafts';
-import {
-  autocompletePlaces,
-  createPlacesSessionToken,
-  fetchPlaceDetails,
-  type PlaceAutocompleteSuggestion,
-} from '@/lib/google-places';
 import { pickImageFromLibrary } from '@/lib/image-picker';
-import { cachePlaceHierarchy, getPlaceBreadcrumb } from '@/lib/places-cache';
+import { cachePlaceHierarchy, getPlaceBreadcrumb, resolveStateCountries } from '@/lib/places-cache';
 import { uploadPhotoForVisit } from '@/lib/photo-upload';
-import { searchUsers } from '@/lib/search';
+import { searchUsers, type SearchUserResult } from '@/lib/search';
 import { supabase } from '@/lib/supabase';
 
 // Mirrors edit-visit/[id].tsx's own PhotoSlot pattern — needed only for
@@ -46,9 +44,21 @@ type PhotoSlot =
 
 type CropTarget =
   | { kind: 'pending' }
+  | { kind: 'pending-recrop'; index: number }
   | { kind: 'after-save' }
   | { kind: 'draft-new' }
   | { kind: 'draft-recrop'; index: number };
+
+// Swaps the item at `index` with its neighbor in `direction` — used by both
+// photo-order controls below (pendingPhotos and photoSlots), which need
+// identical swap semantics but operate on differently-shaped arrays.
+function swapAdjacent<T>(items: T[], index: number, direction: -1 | 1): T[] {
+  const target = index + direction;
+  if (target < 0 || target >= items.length) return items;
+  const next = [...items];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+}
 
 const DEBOUNCE_MS = 300;
 
@@ -89,6 +99,12 @@ export default function ReviewFormScreen() {
 
   const [selectedPlace, setSelectedPlace] = useState<PlaceRow | null>(null);
   const [breadcrumb, setBreadcrumb] = useState('');
+  // "State, Country" — same `resolveStateCountries` RPC the real feed uses
+  // (feed.ts's mapRawFeedVisit), not derived from `breadcrumb` above (a
+  // different, full `>`-joined hierarchy string for the "Place" section),
+  // so the Preview card's location line matches the feed's own formatting
+  // exactly instead of just looking similar.
+  const [previewStateCountry, setPreviewStateCountry] = useState<string | null>(null);
   // null = no score set yet — see rating-slider.tsx's own comment. Replaces
   // the earlier separate "add without reviewing" button: saving with this
   // still null just logs a plain visit with no rating attached.
@@ -103,44 +119,19 @@ export default function ReviewFormScreen() {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [cropSource, setCropSource] = useState<{ uri: string; target: CropTarget } | null>(null);
 
-  const [tagQuery, setTagQuery] = useState('');
-  const [tagSuggestions, setTagSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
+  // Tag-specific-spots now goes through the same map picker as the review's
+  // own place (LocationSearchModal), not a separate text-only autocomplete
+  // list — see handleTagPlaceSelected below.
+  const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
   const [taggedPlaces, setTaggedPlaces] = useState<PlaceRow[]>([]);
-  const [isTagSearching, setIsTagSearching] = useState(false);
 
   const [peopleQuery, setPeopleQuery] = useState('');
-  const [peopleSuggestions, setPeopleSuggestions] = useState<UserRow[]>([]);
+  const [peopleSuggestions, setPeopleSuggestions] = useState<SearchUserResult[]>([]);
+  const [peopleAvatarUrls, setPeopleAvatarUrls] = useState<Record<string, string>>({});
   const [taggedUsers, setTaggedUsers] = useState<UserRow[]>([]);
   const [isPeopleSearching, setIsPeopleSearching] = useState(false);
 
-  const tagSessionTokenRef = useRef(createPlacesSessionToken());
-  const tagDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const peopleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current);
-
-    if (!tagQuery.trim()) {
-      setTagSuggestions([]);
-      return;
-    }
-
-    tagDebounceRef.current = setTimeout(async () => {
-      setIsTagSearching(true);
-      try {
-        const results = await autocompletePlaces(tagQuery, tagSessionTokenRef.current);
-        setTagSuggestions(results);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
-      } finally {
-        setIsTagSearching(false);
-      }
-    }, DEBOUNCE_MS);
-
-    return () => {
-      if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current);
-    };
-  }, [tagQuery]);
 
   useEffect(() => {
     if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
@@ -156,6 +147,7 @@ export default function ReviewFormScreen() {
       try {
         const results = await searchUsers(peopleQuery, session.user.id);
         setPeopleSuggestions(results);
+        setPeopleAvatarUrls(results.length > 0 ? await getAvatarViewUrls(results.map((u) => u.id)) : {});
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Search failed.');
       } finally {
@@ -167,6 +159,24 @@ export default function ReviewFormScreen() {
       if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     };
   }, [peopleQuery, session]);
+
+  useEffect(() => {
+    if (!selectedPlace) {
+      setPreviewStateCountry(null);
+      return;
+    }
+    let cancelled = false;
+    resolveStateCountries([selectedPlace.id])
+      .then((map) => {
+        if (!cancelled) setPreviewStateCountry(map.get(selectedPlace.id) ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewStateCountry(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlace]);
 
   // LocationSearchModal already runs the fetchPlaceDetails/cachePlaceHierarchy
   // steps internally (see its onSelect) before handing back the final
@@ -189,8 +199,6 @@ export default function ReviewFormScreen() {
       setSavedVisitId(null);
       setPendingPhotos([]);
       setUploadedPhotoUris([]);
-      setTagQuery('');
-      setTagSuggestions([]);
       setTaggedPlaces([]);
       setPeopleQuery('');
       setPeopleSuggestions([]);
@@ -260,24 +268,16 @@ export default function ReviewFormScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, session]);
 
-  async function handleSelectTag(suggestion: PlaceAutocompleteSuggestion) {
-    setError(null);
-    setIsTagSearching(true);
-    try {
-      const details = await fetchPlaceDetails(suggestion.placeId, tagSessionTokenRef.current);
-      const cached = await cachePlaceHierarchy(details);
-      setTaggedPlaces((prev) => {
-        if (cached.id === selectedPlace?.id || prev.some((p) => p.id === cached.id)) return prev;
-        return [...prev, cached];
-      });
-      setTagQuery('');
-      setTagSuggestions([]);
-      tagSessionTokenRef.current = createPlacesSessionToken();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that location.');
-    } finally {
-      setIsTagSearching(false);
-    }
+  // LocationSearchModal already runs fetchPlaceDetails/cachePlaceHierarchy
+  // internally (see its onSelect) before handing back the final PlaceRow —
+  // same as the review's own place picker (handlePlaceSelected above), just
+  // appending to taggedPlaces instead of replacing selectedPlace.
+  function handleTagPlaceSelected(place: PlaceRow) {
+    setIsTagPickerOpen(false);
+    setTaggedPlaces((prev) => {
+      if (place.id === selectedPlace?.id || prev.some((p) => p.id === place.id)) return prev;
+      return [...prev, place];
+    });
   }
 
   function handleRemoveTag(placeId: string) {
@@ -296,6 +296,18 @@ export default function ReviewFormScreen() {
 
   function handleRemovePendingPhoto(index: number) {
     setPendingPhotos((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleRecropPendingPhoto(index: number) {
+    setCropSource({ uri: pendingPhotos[index].uri, target: { kind: 'pending-recrop', index } });
+  }
+
+  function handleMovePendingPhoto(index: number, direction: -1 | 1) {
+    setPendingPhotos((prev) => swapAdjacent(prev, index, direction));
+  }
+
+  function handleMoveDraftSlot(index: number, direction: -1 | 1) {
+    setPhotoSlots((prev) => swapAdjacent(prev, index, direction));
   }
 
   async function pickImage(): Promise<ImagePicker.ImagePickerAsset | null> {
@@ -352,6 +364,12 @@ export default function ReviewFormScreen() {
 
     if (target.kind === 'pending') {
       setPendingPhotos((prev) => [...prev, result]);
+      return;
+    }
+
+    if (target.kind === 'pending-recrop') {
+      const recropIndex = target.index;
+      setPendingPhotos((prev) => prev.map((photo, i) => (i === recropIndex ? result : photo)));
       return;
     }
 
@@ -502,6 +520,25 @@ export default function ReviewFormScreen() {
 
   const totalPhotoCount = pendingPhotos.length + uploadedPhotoUris.length;
 
+  // Whichever photo model is currently active (draft slots vs. a fresh
+  // review's pending/uploaded pair) reduced to the same {url, aspectRatio}
+  // shape PhotoGrid itself wants — same component, same props shape as
+  // (tabs)/index.tsx's real feed card, so reordering/recropping above shows
+  // up here exactly as it will once posted, not as a guess at how it'll
+  // look. Existing (already-uploaded) photos have no width/height on hand
+  // here, so their aspect ratio is unknown (null, PhotoGrid's own
+  // documented fallback) rather than assumed square.
+  const previewPhotos: { url: string; aspectRatio: number | null }[] = currentDraftId
+    ? photoSlots.map((slot) =>
+        slot.kind === 'existing'
+          ? { url: slot.url, aspectRatio: null }
+          : { url: slot.uri, aspectRatio: slot.width / slot.height }
+      )
+    : [
+        ...pendingPhotos.map((p) => ({ url: p.uri, aspectRatio: p.width / p.height })),
+        ...uploadedPhotoUris.map((url) => ({ url, aspectRatio: null })),
+      ];
+
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -509,6 +546,7 @@ export default function ReviewFormScreen() {
           <Pressable onPress={() => router.back()}>
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
+          <ThemedText type="displaySerif">{draftId ? 'Finish draft' : 'Add a review'}</ThemedText>
         </View>
 
         <KeyboardAwareScroll
@@ -516,44 +554,105 @@ export default function ReviewFormScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
-        <ThemedText type="sectionLabel">Search places</ThemedText>
-
-        <Button label="Search for a place" variant="secondary" onPress={() => setIsPickerOpen(true)} />
-
         {error && (
           <ThemedText type="small" themeColor="textSecondary">
             {error}
           </ThemedText>
         )}
 
-        {selectedPlace && (
-          <ThemedView type="backgroundElement" style={styles.resultCard}>
-            <ThemedText type="smallBold">{selectedPlace.name}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {breadcrumb}
-            </ThemedText>
+        <View style={styles.box}>
+          <ThemedText type="sectionLabel">Place</ThemedText>
 
-            {!savedVisitId ? (
-              <ThemedView style={styles.form}>
+          {selectedPlace ? (
+            <Pressable onPress={() => setIsPickerOpen(true)} style={styles.placeRow}>
+              <View style={styles.placeRowText}>
+                <ThemedText type="smallBold">{selectedPlace.name}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {breadcrumb}
+                </ThemedText>
+              </View>
+              <ThemedText type="small" themeColor="textSecondary">
+                Change
+              </ThemedText>
+            </Pressable>
+          ) : (
+            <Button label="Search for a place" variant="secondary" onPress={() => setIsPickerOpen(true)} />
+          )}
+
+          {selectedPlace && !savedVisitId && (
+            <View style={styles.section}>
+              <ThemedText type="sectionLabel">Tag specific spots (optional)</ThemedText>
+              {taggedPlaces.length > 0 && (
+                <View style={styles.tagRow}>
+                  {taggedPlaces.map((place) => (
+                    <Pressable key={place.id} onPress={() => handleRemoveTag(place.id)}>
+                      <ThemedView type="backgroundSelected" style={styles.tagChip}>
+                        <ThemedText type="small">{place.name} ✕</ThemedText>
+                      </ThemedView>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              <Button label="Search for a spot" variant="secondary" onPress={() => setIsTagPickerOpen(true)} />
+            </View>
+          )}
+        </View>
+
+        {selectedPlace &&
+          (!savedVisitId ? (
+            <View style={styles.box}>
+              <View style={styles.section}>
+                <View style={styles.row}>
+                  <ThemedText type="sectionLabel">Rating</ThemedText>
+                  {rating != null && (
+                    <Pressable onPress={() => setRating(null)}>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Remove rating
+                      </ThemedText>
+                    </Pressable>
+                  )}
+                </View>
                 <RatingSlider value={rating} onChange={setRating} />
+              </View>
 
+              <View style={styles.section}>
+                <ThemedText type="sectionLabel">Photos</ThemedText>
                 {currentDraftId ? (
-                  <View style={styles.photoSection}>
+                  <>
                     {photoSlots.length > 0 && (
                       <View style={styles.photoRow}>
                         {photoSlots.map((slot, index) => (
-                          <Pressable
-                            key={slot.kind === 'existing' ? slot.id : slot.uri}
-                            onPress={() => handleRecropDraftSlot(index)}
-                            style={styles.photoTile}>
-                            <Image source={{ uri: slot.kind === 'existing' ? slot.url : slot.uri }} style={styles.photoThumbnail} />
+                          <View key={slot.kind === 'existing' ? slot.id : slot.uri} style={styles.photoTile}>
+                            <Pressable onPress={() => handleRecropDraftSlot(index)}>
+                              <Image source={{ uri: slot.kind === 'existing' ? slot.url : slot.uri }} style={styles.photoThumbnail} />
+                            </Pressable>
                             <Pressable
                               onPress={() => handleRemoveDraftSlot(index)}
                               hitSlop={8}
                               style={[styles.removeBadge, { backgroundColor: theme.background }]}>
                               <Ionicons name="close" size={14} color={theme.text} />
                             </Pressable>
-                          </Pressable>
+                            <View style={styles.reorderRow}>
+                              <Pressable
+                                onPress={() => handleMoveDraftSlot(index, -1)}
+                                disabled={index === 0}
+                                hitSlop={6}
+                                style={[styles.reorderBadge, { backgroundColor: theme.background }, index === 0 && styles.reorderBadgeDisabled]}>
+                                <Ionicons name="chevron-back" size={12} color={theme.text} />
+                              </Pressable>
+                              <Pressable
+                                onPress={() => handleMoveDraftSlot(index, 1)}
+                                disabled={index === photoSlots.length - 1}
+                                hitSlop={6}
+                                style={[
+                                  styles.reorderBadge,
+                                  { backgroundColor: theme.background },
+                                  index === photoSlots.length - 1 && styles.reorderBadgeDisabled,
+                                ]}>
+                                <Ionicons name="chevron-forward" size={12} color={theme.text} />
+                              </Pressable>
+                            </View>
+                          </View>
                         ))}
                       </View>
                     )}
@@ -566,18 +665,46 @@ export default function ReviewFormScreen() {
                     )}
                     {photoSlots.length > 0 && (
                       <ThemedText type="small" themeColor="textSecondary">
-                        Tap a photo to recrop it.
+                        Tap a photo to recrop it, or use the arrows to reorder.
                       </ThemedText>
                     )}
-                  </View>
+                  </>
                 ) : (
-                  <View style={styles.photoSection}>
+                  <>
                     {(pendingPhotos.length > 0 || uploadedPhotoUris.length > 0) && (
                       <View style={styles.photoRow}>
                         {pendingPhotos.map((asset, index) => (
-                          <Pressable key={asset.uri} onPress={() => handleRemovePendingPhoto(index)}>
-                            <Image source={{ uri: asset.uri }} style={styles.photoThumbnail} />
-                          </Pressable>
+                          <View key={asset.uri} style={styles.photoTile}>
+                            <Pressable onPress={() => handleRecropPendingPhoto(index)}>
+                              <Image source={{ uri: asset.uri }} style={styles.photoThumbnail} />
+                            </Pressable>
+                            <Pressable
+                              onPress={() => handleRemovePendingPhoto(index)}
+                              hitSlop={8}
+                              style={[styles.removeBadge, { backgroundColor: theme.background }]}>
+                              <Ionicons name="close" size={14} color={theme.text} />
+                            </Pressable>
+                            <View style={styles.reorderRow}>
+                              <Pressable
+                                onPress={() => handleMovePendingPhoto(index, -1)}
+                                disabled={index === 0}
+                                hitSlop={6}
+                                style={[styles.reorderBadge, { backgroundColor: theme.background }, index === 0 && styles.reorderBadgeDisabled]}>
+                                <Ionicons name="chevron-back" size={12} color={theme.text} />
+                              </Pressable>
+                              <Pressable
+                                onPress={() => handleMovePendingPhoto(index, 1)}
+                                disabled={index === pendingPhotos.length - 1}
+                                hitSlop={6}
+                                style={[
+                                  styles.reorderBadge,
+                                  { backgroundColor: theme.background },
+                                  index === pendingPhotos.length - 1 && styles.reorderBadgeDisabled,
+                                ]}>
+                                <Ionicons name="chevron-forward" size={12} color={theme.text} />
+                              </Pressable>
+                            </View>
+                          </View>
                         ))}
                       </View>
                     )}
@@ -588,114 +715,122 @@ export default function ReviewFormScreen() {
                         onPress={handlePickPhoto}
                       />
                     )}
-                  </View>
+                    {pendingPhotos.length > 0 && (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Tap a photo to recrop it, or use the arrows to reorder.
+                      </ThemedText>
+                    )}
+                  </>
                 )}
+              </View>
 
+              <View style={styles.section}>
+                <ThemedText type="sectionLabel">Review</ThemedText>
                 <TextField
-                  placeholder="Note (optional)"
+                  placeholder="Review (optional)"
                   value={note}
                   onChangeText={setNote}
                   multiline
                 />
+              </View>
+
+              <View style={styles.section}>
+                <ThemedText type="sectionLabel">Date visited</ThemedText>
                 <DateCarousel value={visitedOn} onChange={setVisitedOn} />
+              </View>
 
-                <View style={styles.tagSection}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Tag specific spots (optional)
-                  </ThemedText>
-                  {taggedPlaces.length > 0 && (
-                    <View style={styles.tagRow}>
-                      {taggedPlaces.map((place) => (
-                        <Pressable key={place.id} onPress={() => handleRemoveTag(place.id)}>
-                          <ThemedView type="backgroundSelected" style={styles.tagChip}>
-                            <ThemedText type="small">{place.name} ✕</ThemedText>
-                          </ThemedView>
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-                  <TextField
-                    placeholder="Search a trail, landmark, spot..."
-                    value={tagQuery}
-                    onChangeText={setTagQuery}
-                  />
-                  {tagSuggestions.map((item) => (
-                    <Pressable key={item.placeId} onPress={() => handleSelectTag(item)}>
-                      <ThemedView type="backgroundSelected" style={styles.suggestionRow}>
-                        <ThemedText type="small">{item.primaryText}</ThemedText>
-                        {item.secondaryText && (
-                          <ThemedText type="small" themeColor="textSecondary">
-                            {item.secondaryText}
+              <View style={styles.section}>
+                <ThemedText type="sectionLabel">Tag people (optional)</ThemedText>
+                {taggedUsers.length > 0 && (
+                  <View style={styles.tagRow}>
+                    {taggedUsers.map((user) => (
+                      <Pressable key={user.id} onPress={() => handleRemovePerson(user.id)}>
+                        <ThemedView type="backgroundSelected" style={styles.tagChip}>
+                          <ThemedText type="small">
+                            {user.name ?? user.handle ?? 'Someone'} ✕
                           </ThemedText>
-                        )}
-                      </ThemedView>
-                    </Pressable>
-                  ))}
-                </View>
-
-                <View style={styles.tagSection}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Tag people (optional)
-                  </ThemedText>
-                  {taggedUsers.length > 0 && (
-                    <View style={styles.tagRow}>
-                      {taggedUsers.map((user) => (
-                        <Pressable key={user.id} onPress={() => handleRemovePerson(user.id)}>
-                          <ThemedView type="backgroundSelected" style={styles.tagChip}>
-                            <ThemedText type="small">
-                              {user.name ?? user.handle ?? 'Someone'} ✕
-                            </ThemedText>
-                          </ThemedView>
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-                  <TextField
-                    placeholder="Search by name or username..."
-                    value={peopleQuery}
-                    onChangeText={setPeopleQuery}
-                  />
-                  {peopleSuggestions.map((user) => (
-                    <Pressable key={user.id} onPress={() => handleSelectPerson(user)}>
-                      <ThemedView type="backgroundSelected" style={styles.suggestionRow}>
-                        <ThemedText type="small">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
-                      </ThemedView>
-                    </Pressable>
-                  ))}
-                </View>
-
-                <Button
-                  label={currentDraftId ? 'Publish' : 'Save visit'}
-                  onPress={handleSaveVisit}
-                  loading={isSavingVisit}
-                />
-              </ThemedView>
-            ) : (
-              <ThemedView style={styles.form}>
-                <ThemedText type="small">Visit saved.</ThemedText>
-
-                {uploadedPhotoUris.length > 0 && (
-                  <View style={styles.photoRow}>
-                    {uploadedPhotoUris.map((uri) => (
-                      <Image key={uri} source={{ uri }} style={styles.photoThumbnail} />
+                        </ThemedView>
+                      </Pressable>
                     ))}
                   </View>
                 )}
+                <TextField
+                  placeholder="Search by name or username..."
+                  value={peopleQuery}
+                  onChangeText={setPeopleQuery}
+                />
+                {peopleSuggestions.map((user) => (
+                  <Pressable key={user.id} onPress={() => handleSelectPerson(user)}>
+                    <ThemedView type="backgroundSelected" style={styles.peopleSuggestionRow}>
+                      <Avatar uri={peopleAvatarUrls[user.id]} name={user.name ?? user.handle} size={36} />
+                      <View style={styles.peopleSuggestionInfo}>
+                        <ThemedText type="small">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
+                        {user.handle && (
+                          <ThemedText type="small" themeColor="textSecondary">
+                            @{user.handle}
+                          </ThemedText>
+                        )}
+                      </View>
+                    </ThemedView>
+                  </Pressable>
+                ))}
+              </View>
 
-                {uploadedPhotoUris.length < MAX_VISIT_PHOTOS && (
-                  <Button
-                    label={`Add photo (${uploadedPhotoUris.length}/${MAX_VISIT_PHOTOS})`}
-                    variant="secondary"
-                    onPress={handleAddPhotoAfterSave}
-                    loading={isUploadingPhoto}
+              <View style={styles.section}>
+                <ThemedText type="sectionLabel">Preview</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  How this will look on the feed.
+                </ThemedText>
+                <ThemedView type="backgroundElement" style={styles.previewCard}>
+                  <FeedCardHeaderText
+                    placeName={selectedPlace.name}
+                    placeId={selectedPlace.id}
+                    stateCountry={previewStateCountry}
+                    taggedPlaces={taggedPlaces}
+                    visitedLine={[rating == null ? 'Visited' : null, note || null].filter(Boolean).join(' · ')}
+                    rating={rating}
+                    stampSeed={currentDraftId ?? selectedPlace.id}
+                    stampCanSeep={previewPhotos.length > 0}
                   />
-                )}
+                  {previewPhotos.length > 0 && (
+                    <PhotoGrid
+                      urls={previewPhotos.map((p) => p.url)}
+                      aspectRatios={previewPhotos.map((p) => p.aspectRatio)}
+                    />
+                  )}
+                </ThemedView>
+              </View>
 
-                <SaveToBoard visitId={savedVisitId} isOwnerOrTagged />
-              </ThemedView>
-            )}
-          </ThemedView>
-        )}
+              <Button
+                label={currentDraftId ? 'Publish' : 'Save visit'}
+                onPress={handleSaveVisit}
+                loading={isSavingVisit}
+              />
+            </View>
+          ) : (
+            <View style={styles.box}>
+              <ThemedText type="small">Visit saved.</ThemedText>
+
+              {uploadedPhotoUris.length > 0 && (
+                <View style={styles.photoRow}>
+                  {uploadedPhotoUris.map((uri) => (
+                    <Image key={uri} source={{ uri }} style={styles.photoThumbnail} />
+                  ))}
+                </View>
+              )}
+
+              {uploadedPhotoUris.length < MAX_VISIT_PHOTOS && (
+                <Button
+                  label={`Add photo (${uploadedPhotoUris.length}/${MAX_VISIT_PHOTOS})`}
+                  variant="secondary"
+                  onPress={handleAddPhotoAfterSave}
+                  loading={isUploadingPhoto}
+                />
+              )}
+
+              <SaveToBoard visitId={savedVisitId} isOwnerOrTagged />
+            </View>
+          ))}
 
         </KeyboardAwareScroll>
 
@@ -710,6 +845,16 @@ export default function ReviewFormScreen() {
           visible={isPickerOpen}
           onCancel={handlePickerCancel}
           onSelect={handlePlaceSelected}
+        />
+        <LocationSearchModal
+          visible={isTagPickerOpen}
+          onCancel={() => setIsTagPickerOpen(false)}
+          onSelect={handleTagPlaceSelected}
+          initialCenter={
+            selectedPlace?.lat != null && selectedPlace?.lng != null
+              ? { lat: selectedPlace.lat, lng: selectedPlace.lng }
+              : undefined
+          }
         />
       </SafeAreaView>
     </ThemedView>
@@ -730,6 +875,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+    gap: Spacing.two,
   },
   scrollContent: {
     alignSelf: 'center',
@@ -745,17 +891,47 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     gap: Spacing.half,
   },
-  resultCard: {
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+  // Matches prompt-question-picker.tsx's own `box` — the same bordered,
+  // rounded container language used for "create prompt", so this screen
+  // (review-form) reads as part of the same visual system instead of the
+  // plain flat `backgroundElement` fills it used before.
+  box: {
+    borderWidth: 1,
+    borderColor: 'rgba(234,231,207,0.35)',
+    borderRadius: Spacing.two,
+    padding: Spacing.three,
     gap: Spacing.three,
   },
-  form: {
+  // A contained mockup, not a literal edge-to-edge reproduction of the real
+  // feed card — the real card's photos deliberately bleed past its own
+  // rounded corners to the screen edges (see (tabs)/index.tsx's
+  // photoBreakout), which only makes sense as that screen's outermost
+  // element, not a section nested inside this form's own bordered box.
+  // FeedCardHeaderText and PhotoGrid inside are the same components/props
+  // the real card uses, so content (place name, rating, tagged spots,
+  // photo crops/order) matches exactly — only this outer wrapping differs.
+  previewCard: {
+    position: 'relative',
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
     gap: Spacing.two,
   },
-  photoSection: {
+  placeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
+  },
+  placeRowText: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  section: {
+    gap: Spacing.two,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   photoRow: {
     flexDirection: 'row',
@@ -771,6 +947,24 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
   },
+  reorderRow: {
+    position: 'absolute',
+    bottom: -6,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  reorderBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reorderBadgeDisabled: {
+    opacity: 0.3,
+  },
   removeBadge: {
     position: 'absolute',
     top: -6,
@@ -781,13 +975,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tagSection: {
-    gap: Spacing.two,
-  },
   tagRow: {
     flexDirection: 'row',
     gap: Spacing.two,
     flexWrap: 'wrap',
+  },
+  // Tag-people suggestions specifically — an avatar-led row (name over
+  // @handle), unlike the plain-text suggestionRow place suggestions use.
+  peopleSuggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  peopleSuggestionInfo: {
+    flex: 1,
+    gap: Spacing.half,
   },
   tagChip: {
     paddingVertical: Spacing.one,

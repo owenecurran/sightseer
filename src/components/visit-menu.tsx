@@ -4,34 +4,43 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
+import { ReportModal } from '@/components/report-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/hooks/use-theme';
-import { reportVisit, type ReportReason } from '@/lib/reports';
 import { supabase } from '@/lib/supabase';
-
-const REPORT_REASONS: { value: ReportReason; label: string }[] = [
-  { value: 'spam', label: 'Spam' },
-  { value: 'inappropriate', label: 'Inappropriate' },
-  { value: 'harassment', label: 'Harassment' },
-  { value: 'other', label: 'Other' },
-];
 
 type VisitMenuProps = {
   visitId: string;
   isOwner: boolean;
   onDeleted: () => void;
+  // Only needed for the report flow (an owner never sees it, see below) —
+  // who and what this visit is, so ReportModal can highlight both.
+  authorId: string;
+  authorName: string;
+  authorAvatarUrl?: string | null;
+  placeName: string;
+  note?: string | null;
 };
 
-export function VisitMenu({ visitId, isOwner, onDeleted }: VisitMenuProps) {
+export function VisitMenu({
+  visitId,
+  isOwner,
+  onDeleted,
+  authorId,
+  authorName,
+  authorAvatarUrl,
+  placeName,
+  note,
+}: VisitMenuProps) {
   const { session } = useAuth();
   const theme = useTheme();
   const [isOpen, setIsOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [reportedReason, setReportedReason] = useState<ReportReason | null>(null);
+  const [isReportOpen, setIsReportOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleToggle() {
@@ -52,17 +61,6 @@ export function VisitMenu({ visitId, isOwner, onDeleted }: VisitMenuProps) {
     onDeleted();
   }
 
-  async function handleReport(reason: ReportReason) {
-    if (!session) return;
-    setError(null);
-    try {
-      await reportVisit(session.user.id, visitId, reason);
-      setReportedReason(reason);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not submit that report.');
-    }
-  }
-
   return (
     <>
       {!isOpen ? (
@@ -77,31 +75,33 @@ export function VisitMenu({ visitId, isOwner, onDeleted }: VisitMenuProps) {
             </ThemedText>
           )}
 
-          {isOwner ? (
-            <View style={styles.row}>
-              <Pressable onPress={() => router.push({ pathname: '/edit-visit/[id]', params: { id: visitId } })}>
-                <ThemedText type="small">Edit</ThemedText>
-              </Pressable>
-              <Pressable onPress={() => setConfirmingDelete(true)}>
-                <ThemedText type="small" style={styles.deleteLabel}>
-                  Delete
-                </ThemedText>
-              </Pressable>
-            </View>
-          ) : reportedReason ? (
-            <ThemedText type="small">Reported ✓</ThemedText>
-          ) : (
-            <View style={styles.row}>
-              <ThemedText type="small" themeColor="textSecondary">
-                Report:
-              </ThemedText>
-              {REPORT_REASONS.map((r) => (
-                <Pressable key={r.value} onPress={() => handleReport(r.value)}>
-                  <ThemedText type="small">{r.label}</ThemedText>
+          {/* A short, single-column list of plain actions — the old inline
+              row of report reasons crammed into this exact popup was the
+              direct complaint (read as cluttered coming off the three-dot
+              button); Report now just opens ReportModal instead of trying
+              to fit a whole form here. */}
+          <View style={styles.list}>
+            {isOwner ? (
+              <>
+                <Pressable onPress={() => router.push({ pathname: '/edit-visit/[id]', params: { id: visitId } })}>
+                  <ThemedText type="small">Edit</ThemedText>
                 </Pressable>
-              ))}
-            </View>
-          )}
+                <Pressable onPress={() => setConfirmingDelete(true)}>
+                  <ThemedText type="small" style={styles.deleteLabel}>
+                    Delete
+                  </ThemedText>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable
+                onPress={() => {
+                  setIsOpen(false);
+                  setIsReportOpen(true);
+                }}>
+                <ThemedText type="small">Report</ThemedText>
+              </Pressable>
+            )}
+          </View>
 
           <Pressable onPress={handleToggle}>
             <ThemedText type="small" themeColor="textSecondary">
@@ -118,6 +118,18 @@ export function VisitMenu({ visitId, isOwner, onDeleted }: VisitMenuProps) {
         onConfirm={handleDelete}
         onCancel={() => setConfirmingDelete(false)}
       />
+
+      {session && !isOwner && (
+        <ReportModal
+          visible={isReportOpen}
+          onClose={() => setIsReportOpen(false)}
+          reporterId={session.user.id}
+          reportedUserId={authorId}
+          reportedUserName={authorName}
+          reportedUserAvatarUrl={authorAvatarUrl}
+          post={{ visitId, placeName, note }}
+        />
+      )}
     </>
   );
 }
@@ -138,11 +150,8 @@ const styles = StyleSheet.create({
     padding: Spacing.two,
     borderRadius: Spacing.two,
   },
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.three,
-    alignItems: 'center',
+  list: {
+    gap: Spacing.two,
   },
   deleteLabel: {
     color: '#F22B22',

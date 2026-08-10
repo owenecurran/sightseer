@@ -5,12 +5,13 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { CommentsThread } from '@/components/comments-section';
+import { FeedAuthorLine } from '@/components/feed-author-line';
+import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { PageLoader } from '@/components/ui/page-loader';
-import { StretchText } from '@/components/ui/stretch-text';
 import { VisitActionsRow } from '@/components/visit-actions-row';
 import { VisitMenu } from '@/components/visit-menu';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -18,38 +19,24 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
-import { likeVisit, unlikeVisit, type TaggedPlace } from '@/lib/feed';
+import { likeVisit, unlikeVisit } from '@/lib/feed';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 import { getVisitDetail, type VisitDetail } from '@/lib/visit-detail';
-import { useTheme } from '@/hooks/use-theme';
-
-const CATEGORY_COLORS: Record<string, string> = {
-  water: '#1E88E5',
-  trail: '#8B5E3C',
-  food_drink: '#D32F2F',
-};
-
-function categoryColor(category: TaggedPlace['category'], defaultColor: string): string {
-  return (category && CATEGORY_COLORS[category]) || defaultColor;
-}
-
-function formatAuthorLine(authorName: string, taggedUserNames: string[]): string {
-  if (taggedUserNames.length === 0) return authorName;
-  if (taggedUserNames.length === 1) return `${authorName} with ${taggedUserNames[0]}`;
-  return `${authorName} with ${taggedUserNames[0]} + ${taggedUserNames.length - 1} other${taggedUserNames.length > 2 ? 's' : ''}`;
-}
 
 export default function VisitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
-  const theme = useTheme();
   const [visit, setVisit] = useState<VisitDetail | null | undefined>(undefined);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  // Arriving here *is* "clicking on a post" — comments should already be
+  // expanded, not require an extra tap to reveal (unlike the feed's own
+  // cards, where staying collapsed by default matters more for scanning
+  // many posts at once).
+  const [isCommentsOpen, setIsCommentsOpen] = useState(true);
   const [commentCount, setCommentCount] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
@@ -140,35 +127,39 @@ export default function VisitDetailScreen() {
         {visit && (
           <ThemedView type="backgroundElement" style={styles.card}>
             <View style={styles.headerRow}>
-              <Avatar uri={avatarUrl} name={visit.authorName} size={32} />
-              <ThemedText type="smallBold" style={styles.headerText}>
-                {formatAuthorLine(visit.authorName, visit.taggedUserNames)}
-              </ThemedText>
+              <View style={styles.headerAuthor}>
+                <Pressable onPress={() => router.push({ pathname: '/user/[id]', params: { id: visit.user_id } })}>
+                  <Avatar uri={avatarUrl} name={visit.authorName} size={32} />
+                </Pressable>
+                <FeedAuthorLine
+                  authorId={visit.user_id}
+                  authorName={visit.authorName}
+                  taggedUsers={visit.taggedUsers}
+                  style={styles.headerText}
+                />
+              </View>
               <VisitMenu
                 visitId={visit.id}
                 isOwner={session?.user.id === visit.user_id}
                 onDeleted={() => router.back()}
+                authorId={visit.user_id}
+                authorName={visit.authorName}
+                authorAvatarUrl={avatarUrl}
+                placeName={visit.placeName}
+                note={visit.note}
               />
             </View>
 
-            <StretchText type="headline" fill>{visit.placeName}</StretchText>
-            {visit.taggedPlaces.length > 0 && (
-              <ThemedText type="small">
-                {visit.taggedPlaces.map((place, index) => (
-                  <ThemedText
-                    key={place.name}
-                    type="small"
-                    style={{ color: categoryColor(place.category, theme.textSecondary) }}>
-                    {index > 0 ? ' · ' : ''}
-                    {place.name}
-                  </ThemedText>
-                ))}
-              </ThemedText>
-            )}
-            <ThemedText type="small" themeColor="textSecondary">
-              {visit.rating != null ? `${visit.rating.toFixed(1)} ★` : 'Visited'}
-              {visit.note ? ` · ${visit.note}` : ''}
-            </ThemedText>
+            <FeedCardHeaderText
+              placeName={visit.placeName}
+              placeId={visit.placeId}
+              stateCountry={visit.stateCountry}
+              taggedPlaces={visit.taggedPlaces}
+              visitedLine={[visit.rating == null ? 'Visited' : null, visit.note || null].filter(Boolean).join(' · ')}
+              rating={visit.rating}
+              stampSeed={visit.id}
+              stampCanSeep={visit.photoIds.length > 0}
+            />
 
             {(() => {
               const photos = visit.photoIds
@@ -226,6 +217,12 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  headerAuthor: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
   },

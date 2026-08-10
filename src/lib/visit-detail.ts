@@ -1,3 +1,4 @@
+import { resolveStateCountries } from '@/lib/places-cache';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
@@ -11,11 +12,13 @@ export type VisitDetail = {
   user_id: string;
   authorName: string;
   placeName: string;
+  placeId: string;
+  stateCountry: string | null;
   photoIds: string[];
   photoAspectRatios: (number | null)[];
   likeCount: number;
   isLikedByMe: boolean;
-  taggedUserNames: string[];
+  taggedUsers: { id: string; name: string }[];
   taggedPlaces: { name: string; category: PlaceCategory }[];
   commentCount: number;
   isViewerTagged: boolean;
@@ -27,6 +30,7 @@ type RawVisitDetail = {
   note: string | null;
   visited_on: string;
   user_id: string;
+  place_id: string;
   users: { handle: string | null; name: string | null } | null;
   places: { name: string } | null;
   photos: { id: string; position: number; width: number | null; height: number | null }[];
@@ -44,7 +48,7 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, user_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)'
+      'id, rating, note, visited_on, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)'
     )
     .eq('id', visitId)
     .maybeSingle();
@@ -52,6 +56,10 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
   if (!data) return null;
 
   const v = data as unknown as RawVisitDetail;
+  // Same one-place-at-a-time shape resolveStateCountries is meant for
+  // batches of (feed.ts calls it with every visit on screen at once) — a
+  // single-element array here is just the degenerate case, not a misuse.
+  const stateCountryMap = await resolveStateCountries([v.place_id]);
   return {
     id: v.id,
     rating: v.rating,
@@ -60,15 +68,20 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
     user_id: v.user_id,
     authorName: v.users?.name ?? v.users?.handle ?? 'Someone',
     placeName: v.places?.name ?? 'Unknown place',
+    placeId: v.place_id,
+    stateCountry: stateCountryMap.get(v.place_id) ?? null,
     photoIds: [...v.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
     photoAspectRatios: [...v.photos]
       .sort((a, b) => a.position - b.position)
       .map((p) => (p.width && p.height ? p.width / p.height : null)),
     likeCount: v.likes.length,
     isLikedByMe: v.likes.some((like) => like.user_id === myUserId),
-    taggedUserNames: v.visit_tagged_users
-      .map((t) => t.users?.name ?? t.users?.handle)
-      .filter((name): name is string => name != null),
+    taggedUsers: v.visit_tagged_users
+      .map((t) => {
+        const name = t.users?.name ?? t.users?.handle;
+        return name != null ? { id: t.user_id, name } : null;
+      })
+      .filter((t): t is { id: string; name: string } => t != null),
     taggedPlaces: v.visit_tagged_places
       .map((t) => t.places)
       .filter((place): place is { name: string; category: PlaceCategory } => place != null),

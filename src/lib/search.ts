@@ -1,12 +1,12 @@
+import { rankByConnection, type RankedUser } from '@/lib/follows';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 type TravelBookRow = Database['public']['Tables']['travel_books']['Row'];
 type UserRow = Database['public']['Tables']['users']['Row'];
-type FollowStatus = Database['public']['Tables']['follows']['Row']['status'];
 
-export type SearchUserResult = UserRow & { followStatus: FollowStatus | null };
+export type SearchUserResult = RankedUser<UserRow>;
 export type SearchBoardResult = BoardRow & { creatorName: string };
 export type SearchTravelBookResult = TravelBookRow & { creatorName: string };
 
@@ -53,20 +53,12 @@ export async function searchAll(
   if (boardsResult.error) throw boardsResult.error;
   if (travelBooksResult.error) throw travelBooksResult.error;
 
-  const userIds = usersResult.data.map((u) => u.id);
-  let statusByUserId = new Map<string, FollowStatus>();
-  if (userIds.length > 0) {
-    const { data: myFollows, error } = await supabase
-      .from('follows')
-      .select('followee_id, status')
-      .eq('follower_id', myUserId)
-      .in('followee_id', userIds);
-    if (error) throw error;
-    statusByUserId = new Map(myFollows.map((f) => [f.followee_id, f.status]));
-  }
-
   return {
-    users: usersResult.data.map((u) => ({ ...u, followStatus: statusByUserId.get(u.id) ?? null })),
+    // Following first, then most-mutuals-first, then everyone else — see
+    // rankByConnection's own comment. Also attaches each user's `mutuals`
+    // list, so callers (e.g. explore.tsx) don't need a second round-trip
+    // just to show "Followed by X" / a mutual-follower count.
+    users: await rankByConnection(usersResult.data, myUserId),
     boards: (boardsResult.data as unknown as (BoardRow & { users: CreatorRow })[]).map(({ users, ...board }) => ({
       ...board,
       creatorName: creatorName(users),
@@ -77,10 +69,10 @@ export async function searchAll(
   };
 }
 
-// Plain user search for tagging people on a visit / picking trip
-// collaborators — no follow-status join needed there, unlike the unified
-// Search tab above.
-export async function searchUsers(query: string, myUserId: string): Promise<UserRow[]> {
+// User search for tagging people on a visit / picking trip collaborators —
+// ranked the same way as the unified Search tab above (rankByConnection),
+// so friends/following surface first there too.
+export async function searchUsers(query: string, myUserId: string): Promise<SearchUserResult[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
   const pattern = `%${trimmed}%`;
@@ -92,5 +84,5 @@ export async function searchUsers(query: string, myUserId: string): Promise<User
     .or(`handle.ilike.${pattern},name.ilike.${pattern}`)
     .limit(RESULT_LIMIT);
   if (error) throw error;
-  return data;
+  return rankByConnection(data, myUserId);
 }

@@ -43,7 +43,6 @@ import { listUserTravelBooks } from '@/lib/travel-books';
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
 const TEXT_ANSWER_MAX_LENGTH = 200;
-const MAX_ATTACHMENTS = 5;
 const MAX_GRID_PHOTOS = 4;
 
 type LocalAttachment = {
@@ -418,10 +417,6 @@ export default function PromptEditorScreen() {
     setAttachments((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)));
   }
 
-  function handleAddAttachment() {
-    setAttachments((prev) => [...prev, emptyAttachment()]);
-  }
-
   function handleRemoveAttachment(index: number) {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   }
@@ -732,14 +727,6 @@ export default function PromptEditorScreen() {
               )}
             </View>
           ))}
-
-          {attachments.length < MAX_ATTACHMENTS && (
-            <Pressable onPress={handleAddAttachment}>
-              <ThemedText type="small" themeColor="textSecondary">
-                + Add another attachment
-              </ThemedText>
-            </Pressable>
-          )}
 
           <View style={styles.row}>
             <Button label="Save" onPress={handleSave} loading={isSaving} />

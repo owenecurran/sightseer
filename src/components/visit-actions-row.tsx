@@ -66,25 +66,25 @@ export function VisitActionsRow({
         </ThemedText>
       </Pressable>
 
-      <View style={styles.spacer} />
-
       <SaveToBoard visitId={visitId} isOwnerOrTagged={isOwnerOrTagged} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Previously a left-clustered group (heart/comment/share) plus a
+  // flex:1 spacer shoving the save icon alone to the far right — per
+  // direct feedback that read as lopsided/"sloppy", not intentionally
+  // balanced. All four actions now sit together as one centered group.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: Spacing.four,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one,
-  },
-  spacer: {
-    flex: 1,
   },
 });

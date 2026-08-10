@@ -208,7 +208,7 @@ export default function EditVisitScreen() {
                 </ThemedText>
               </View>
 
-              <TextField placeholder="Note (optional)" value={note} onChangeText={setNote} multiline />
+              <TextField placeholder="Review (optional)" value={note} onChangeText={setNote} multiline />
               <DateCarousel value={visitedOn} onChange={setVisitedOn} />
 
               <Button label="Save changes" onPress={handleSave} loading={isSaving} />

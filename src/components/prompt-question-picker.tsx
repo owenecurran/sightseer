@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { StretchText } from '@/components/ui/stretch-text';
@@ -28,9 +29,28 @@ export function PromptQuestionPicker({
   selectedSlug,
   onSelectPrompt,
 }: PromptQuestionPickerProps) {
+  // `categoryRow`'s real height — `categoryColumn` cross-stretches to match
+  // `promptColumn`'s own (taller) content height, so the 4 `flex:1` rows
+  // divide that stretched height, not just their own `minHeight` floor.
+  // Measured directly off `categoryColumn` and divided evenly here rather
+  // than trusted to propagate through to `categoryTextWrap` via a second
+  // level of cross-axis stretch, since that inner wrapper needs a real
+  // height to actually hand StretchText's `fillHeight` mode something to
+  // fill.
+  const [columnHeight, setColumnHeight] = useState(0);
+  const rowGapTotal = Math.max(0, categories.length - 1) * Spacing.two;
+  const rowHeight =
+    columnHeight > 0 ? (columnHeight - Spacing.two * 2 - rowGapTotal) / categories.length : 0;
+
   return (
     <View style={styles.box}>
-      <View style={styles.categoryColumn}>
+      <View
+        style={styles.categoryColumn}
+        onLayout={(e: LayoutChangeEvent) => {
+          const height = e.nativeEvent.layout.height;
+          if (height !== columnHeight) setColumnHeight(height);
+        }}
+      >
         {categories.map((category) => {
           const isSelected = category === selectedCategory;
           return (
@@ -49,10 +69,11 @@ export function PromptQuestionPicker({
                   108px available, but "Discovery" still clipped to
                   "Discov…" — TeaserCard's own titleText style has zero
                   padding, which is why this never surfaced there). */}
-              <View style={styles.categoryTextWrap}>
-                {/* fillHeight needs `categoryRow` to actually have a real,
-                    content-independent height to stretch into — see that
-                    style's own comment. */}
+              <View style={[styles.categoryTextWrap, rowHeight > 0 ? { height: rowHeight } : null]}>
+                {/* fillHeight needs this wrapper to actually have a real,
+                    content-independent height to stretch into — see
+                    `rowHeight` above for why that's set explicitly here
+                    instead of via flex stretch. */}
                 <StretchText
                   type="sectionLabel"
                   fill
@@ -116,6 +137,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     gap: Spacing.two,
+    backgroundColor: '#010b06',
   },
   row: {
     position: 'relative',
@@ -124,25 +146,11 @@ const styles = StyleSheet.create({
   // Category rows specifically need `flexDirection:'row'` (unlike plain
   // `row` above) so `categoryTextWrap`'s `flex:1` claims the row's *width*
   // — flex:1 on a lone child of a column-direction parent claims height
-  // instead, which was the other half of why StretchText's fill mode
-  // wasn't getting a real width to measure against. `flex:1` also lets each
-  // row grow past `minHeight` to fill any *extra* space `box`'s cross-axis
-  // stretch hands categoryColumn when promptColumn is genuinely taller — but
-  // `minHeight` is what actually guarantees a visible vertical stretch: with
-  // 4 short category rows and up to 3 two-line prompt rows on the right,
-  // categoryColumn's own natural content height came out within a few px of
-  // promptColumn's (confirmed live via a debug readout — 22.48px measured
-  // container height for a 22.48px-tall single line, i.e. next to zero
-  // stretch), so relying on stretch alone left nothing real to grow into.
-  // Deliberately no `alignItems` here (RN's row-direction default is
-  // 'stretch') — an explicit 'center' here was the actual bug behind
-  // "height still not adjusted at all": it let `categoryTextWrap` size to
-  // its own natural (unstretched) content height and just center that
-  // inside the taller row, instead of the child growing to fill the row's
-  // real height — confirmed live via a debug readout: containerHeight
-  // measured 38.48px against a 48px minHeight, exactly
-  // text-height(22.48)+categoryTextWrap's-own-padding(16), i.e. minHeight
-  // was reserving the space but 'center' was refusing to hand it down.
+  // instead, which was the other half of why StretchText's fill mode wasn't
+  // getting a real width to measure against. `minHeight` is a floor only —
+  // the actual per-row height `categoryTextWrap` is given comes from
+  // `rowHeight` above (categoryColumn's own measured height divided evenly),
+  // not from this row's own layout.
   categoryRow: {
     position: 'relative',
     flex: 1,

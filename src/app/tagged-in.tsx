@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FeedAuthorLine } from '@/components/feed-author-line';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -17,12 +18,6 @@ import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { getVisitsTaggedIn, untagSelf, type TaggedVisit } from '@/lib/tagged-visits';
-
-function formatAuthorLine(authorName: string, taggedUserNames: string[]): string {
-  if (taggedUserNames.length === 0) return authorName;
-  if (taggedUserNames.length === 1) return `${authorName} with ${taggedUserNames[0]}`;
-  return `${authorName} with ${taggedUserNames[0]} + ${taggedUserNames.length - 1} other${taggedUserNames.length > 2 ? 's' : ''}`;
-}
 
 export default function TaggedInScreen() {
   const { session } = useAuth();
@@ -111,10 +106,15 @@ export default function TaggedInScreen() {
               style={styles.contentWrap}>
               <ThemedView type="backgroundElement" style={styles.visitCard}>
                 <View style={styles.headerRow}>
-                  <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />
-                  <ThemedText type="smallBold" style={styles.headerText}>
-                    {formatAuthorLine(item.authorName, item.taggedUserNames)}
-                  </ThemedText>
+                  <Pressable onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.user_id } })}>
+                    <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />
+                  </Pressable>
+                  <FeedAuthorLine
+                    authorId={item.user_id}
+                    authorName={item.authorName}
+                    taggedUsers={item.taggedUsers}
+                    style={styles.headerText}
+                  />
                 </View>
                 <StretchText type="headline" fill>{item.placeName}</StretchText>
                 <ThemedText type="small" themeColor="textSecondary">

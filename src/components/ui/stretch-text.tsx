@@ -17,204 +17,23 @@ import { OutlinedText } from "@/components/ui/outlined-text";
 type StretchTextProps = ThemedTextProps & {
   children: string;
   outline?: boolean;
-  // Like `outline`, always compresses to a single line instead of falling
-  // back to the "grow the box and wrap" path below MIN_SCALE — but keeps
-  // plain ThemedText rendering (no stroke, no vertical stretch, no
-  // bottom-anchored transform-origin). For list-row/card headline text in a
-  // fixed-width cell (place names in review lists, "recent reviews" boxes)
-  // where MIN_SCALE/MAX_SCALE's narrow window means the wrap fallback was
-  // effectively the common case, not the exception, leaving text far short
-  // of the row's actual available width instead of the intended edge-to-edge
-  // fit.
   fill?: boolean;
-  // `fill`-only modifier: stretches to the container's real *height* too
-  // (like `outline`'s own real rawScaleY), instead of `fill`'s default
-  // aspect-ratio compensation (fillScaleY, which only grows tall enough to
-  // keep letterforms from looking squashed, not to actually fill a
-  // pre-existing box). Only meaningful when the surrounding layout gives
-  // this component a real height independent of its own content (e.g. a
-  // `flex:1` row) — unlike `outline`'s band, this doesn't grow the
-  // container to match, so a fixed-height container is what makes this mode
-  // coherent at all.
   fillHeight?: boolean;
 };
 
-// Measures the text's true single-line intrinsic width, then scales it
-// horizontally to exactly fill its container.
-//
-// Renders the text itself (not arbitrary children) specifically so
-// `numberOfLines={1}` can be forced directly on it — that turned out to be
-// the only reliable way to guarantee single-line rendering. Earlier
-// attempts tried to prevent wrapping indirectly via the wrapping View's
-// `alignSelf: 'flex-start'` + `flexShrink: 0`, which worked in some
-// ancestor contexts (a flex:1 row cell, a plain padded box) but not others
-// (nested inside a percentage-width column with justifyContent set) —
-// worth remembering if this component is ever generalized past text.
-//
-// Root-caused on both platforms (two prior rounds of guess-and-revert never
-// got this far — this time by reading actual computed styles on web and an
-// on-screen debug readout on native, not re-reading this source and
-// guessing). Two genuinely different bugs, both producing the same visible
-// symptom (premature ellipsis truncation instead of a stretched fit):
-// - **Web**: react-native-web's `numberOfLines`-driven ellipsis machinery
-//   ties an implicit `max-width` to the containing block, silently capping
-//   the *visible* copy's layout width to its container's width instead of
-//   its content's. Fixed by `styles.noMaxWidth` (`maxWidth:'none'`, a CSS
-//   value Yoga doesn't understand, hence web-only).
-// - **Native**: the *measuring* copy under-measured, two compounding ways —
-//   confirmed with an on-screen debug readout, not guessed: (1) `onLayout`
-//   reported this copy's box capped to the container's width regardless of
-//   `position:absolute` + `alignSelf:'flex-start'`, so switching to
-//   `onTextLayout` (real text-shaping metrics from the render, not the
-//   surrounding box's layout size) was necessary; but (2) without an
-//   explicit `numberOfLines={1}` *and* an absurdly wide explicit `width`
-//   (`styles.measureText`), the still-constrained box made the text wrap,
-//   and `onTextLayout` then faithfully reported only the first wrapped
-//   line's width — correct data, wrong question. Both together (uncapped
-//   width, forced single line) were needed before `onTextLayout` finally
-//   reported the text's true natural width. The visible copy also gets an
-//   explicit `width: contentWidth` now (not just on web) since Yoga on
-//   native otherwise still ignores `flexShrink:0`/`alignSelf:'flex-start'`
-//   for it, same underlying pattern as the max-width fix above — confirmed
-//   by forcing an oversized width on the visible copy and watching it
-//   actually render wider, proving its own width mechanism was fine all
-//   along and the upstream measurement was the lie.
-//
-// Stretching/compressing is a deliberate editorial touch for text that's
-// already close to its container's width — it looks wrong (visibly
-// distorted) applied to a short word blown up several times over, or a long
-// one crushed down thin. Outside this range, the box grows taller instead:
-// text renders at its natural size and is allowed to wrap (no numberOfLines
-// cap — an earlier version capped this fallback at 2 lines, which silently
-// re-truncated with an ellipsis anything needing a 3rd line, defeating the
-// whole "let the box grow" fallback for any sufficiently long text).
-//
-// `outline` (only ever used for headline text sitting on top of a photo,
-// e.g. ReviewPromptCard) opts out of that grow-the-box fallback entirely:
-// its container is a fixed-size band ("bottom third of the image"), not a
-// box that can grow with content, so wrapping there just means the text
-// overflows past the band's own top edge instead. For that case the
-// coherent behavior is what was actually asked for — fill the band as
-// closely as possible, both horizontally *and* vertically, anchored to its
-// bottom edge (matching a reference design of bold, edge-to-edge, vertically
-// stretched place-name text sitting flush at the photo's bottom) — rather
-// than wrapping or leaving the band under-filled. This is a real non-uniform
-// stretch (scaleX and scaleY computed independently against the band's
-// actual measured width/height), the same "distort short/long text to
-// exactly fill a box" editorial treatment as the horizontal-only case below,
-// just applied on both axes for this one call site. Both axes are capped
-// (OUTLINE_MAX_SCALE_X/Y below) rather than filling *exactly* — a short word
-// in a wide band would otherwise need a huge scaleX, and past a fairly low
-// multiple the fixed-width outline stroke stops looking like a bold outline
-// and starts visibly garbling narrow letterforms into blob shapes. A capped
-// short word doesn't fully reach the band's edge; that's an accepted
-// trade-off for staying legible, not a bug.
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.3;
-// outline mode's floor is a defensive epsilon, not a design constraint —
-// unlike MIN_SCALE above (which exists specifically to avoid *visible*
-// distortion by falling back to wrapping instead), outline mode's whole
-// point is to always fill its band exactly, however much compression that
-// takes, since it can't wrap or grow. A real design-intent floor here
-// (previously 0.3) caused a genuine bug: a long name in a narrow card
-// needed *more* compression than that to fit, so scaleX got clamped before
-// the box was actually narrow enough, and the box's own overflow:'hidden'
-// safety net silently clipped the last few characters instead.
 const OUTLINE_MIN_SCALE = 0.05;
-// `fill` mode's floor (see StretchTextProps.fill above). Originally set
-// higher than OUTLINE_MIN_SCALE (0.5, as a legibility safety net) — that was
-// wrong: a `Math.max` floor larger than the scale actually needed to fit
-// means the applied scale can exceed what fits, and since CSS/RN transforms
-// don't affect layout (siblings position off the pre-transform box, not the
-// visually-scaled one), the result is real visual overflow past the
-// container into neighboring row content, confirmed live (a long place name
-// in a narrow row spilling past its box into a sibling chevron icon). Fitting
-// the box is the actual point of this mode, so the floor has to stay well
-// below any realistic needed scale; no clipping backstop on the container
-// (deliberately not added — see containerHeightOverride below, which grows
-// the box to fit instead of cropping it).
 const FILL_MIN_SCALE = 0.15;
-// Outline mode's scaleX is computed to land the text's *layout box* exactly
-// on the band's edge — confirmed via live DOM measurement (getBoundingClientRect
-// on both the rendered text and its containing photo) that this box math is
-// already exact, down to the pixel, against the band's true edge. The
-// remaining visible gap past the last glyph is normal font right-side-bearing
-// (real ink stops a bit before the box's own edge for most letterforms,
-// worse for a word ending in a narrow/round letter) — not a scale bug. A
-// small deliberate overshoot compensates for that so the visible ink reads
-// flush with the edge instead of the invisible box.
+
 const OUTLINE_OVERSHOOT = 1.02;
-// `fill` mode's aspect-ratio compensation: heavy horizontal-only compression
-// (a long name in a narrow row, scaleX well under 1) leaves letterforms
-// visibly thin/tall relative to their compressed width. Growing the text
-// vertically too, by the inverse square root of how much it's compressed
-// horizontally, balances the two axes back toward the font's natural
-// proportions instead of squashing width alone. Uncapped, matching `fill`'s
-// own uncapped scaleX — a cap here would reintroduce the same shape of bug
-// FILL_MIN_SCALE's floor caused above (an artificial ceiling fighting what
-// the text actually needs). The container's own height grows to match (see
-// containerHeightOverride below) since transforms don't affect layout —
-// there's no clipping backstop on this box (see FILL_MIN_SCALE above), so
-// the taller text needs real layout space, not just visual overflow room.
+const FILL_HEIGHT_OVERSHOOT = 1.25;
 function fillScaleY(scaleX: number): number {
   return scaleX < 1 ? 1 / Math.sqrt(scaleX) : 1;
 }
-// Unlike horizontal compression, vertical stretching breaks letterform
-// legibility fast — a small base font size stretched to fill a much taller
-// band (a tall portrait-ish band relative to that font, or simply the full
-// 33% band vs. a normal single-line height) needs a *large* scaleY, and past
-// roughly 1.5-2x text stops looking "bold and tall" and starts looking like
-// unrecognizable warped shapes, potentially pushed up past the band's own
-// top edge into the photo above it (transforms don't affect layout, so nothing
-// stops a large enough scaleY from visually overflowing where it started).
-// Capped here; `ReviewPromptCard` also gives the base font size a sensible
-// starting point so the *required* stretch to reach this cap stays modest
-// rather than needing 3-4x+ from a small fixed base.
 const OUTLINE_MAX_SCALE_Y = 1.6;
-// scaleX needs the same kind of cap, for a different reason than
-// MIN_SCALE's *lower* bound above: a short word (e.g. "Paris") in a wide
-// band computes a huge rawScale (confirmed on web via computed styles: 3.56x
-// for a real case), and extreme stretch on either axis compounds the outline
-// legibility problem described below at OUTLINE_STROKE_RADIUS. Same cap
-// value as OUTLINE_MAX_SCALE_Y for a consistent, moderate amount of allowed
-// distortion on both axes.
 const OUTLINE_MAX_SCALE_X = 1.6;
-// `OutlinedText`'s outline (a CSS `text-shadow` with this blur radius, see
-// that file) is painted at the *pre-transform* font size and then the whole
-// element — glyphs and shadow together — gets visually stretched by
-// scaleX/scaleY. A fixed radius therefore grows right along with the scale:
-// at scaleX 1.6 a radius-2 shadow reads as ~3.2px, which is enough to fill
-// in the counters of narrow lowercase letters (r, i, s) entirely, leaving
-// solid blobs, while thicker capital strokes (P, A) survive. Confirmed via
-// live DOM inspection: `textContent` was the full untruncated word the whole
-// time (never an ellipsis, despite years of this bug being described as
-// "text getting cut off with ...") — the "missing" letters were actually
-// present and rendering, just visually swallowed by their own outline. The
-// fix is to divide the radius by the applied scale so the *rendered* size
-// stays constant regardless of how much the text is stretched, same
-// principle as the scaleX/scaleY caps above but applied to the outline
-// instead of the text itself.
 const OUTLINE_STROKE_RADIUS = 2;
-// The actual, final root cause of the long-reported web "cuts off with an
-// ellipsis" bug (the scaleX cap and outline-radius fix above were real
-// secondary bugs found along the way, not this one). Confirmed via direct
-// DOM mutation on the live broken element: forcing a wider explicit `width`
-// made the full word render instantly; forcing `overflow`/`textOverflow`
-// off did too. The `width: contentWidth` set below is meant to be an exact
-// fit (see that comment), but `contentWidth` comes from a *different*
-// element (the offscreen measuring copy) than the one it's applied to, and
-// the two don't always resolve to identical rendered pixel widths — even a
-// sub-pixel shortfall is enough to make Chromium's `numberOfLines`-driven
-// ellipsis machinery decide the text overflows, and with a wide bold
-// display font it can jump straight from "fits all 5 letters" to "PA…"
-// rather than truncating gradually (confirmed: `scrollWidth === clientWidth`
-// looked clean, because Chromium reports the *post-ellipsis* scrollWidth
-// here, not the natural content size — yet another shape of the
-// text-overflow-isn't-reliably-inspectable-via-scrollWidth trap noted
-// elsewhere in this file). Fixed two ways together: a small safety margin on
-// the applied width so it's never sitting exactly on that knife's edge, and
-// `noEllipsis` below as a backstop so even a residual sub-pixel shortfall
-// clips silently instead of showing "…".
 const WEB_WIDTH_SAFETY_MARGIN = 2;
 
 export function StretchText({
@@ -250,9 +69,32 @@ export function StretchText({
     ? Math.max(rawScaleY, OUTLINE_MIN_SCALE)
     : fill
       ? fillHeight
-        ? Math.max(rawScaleY, FILL_MIN_SCALE)
+        ? Math.max(rawScaleY, FILL_MIN_SCALE) * FILL_HEIGHT_OVERSHOOT
         : fillScaleY(scaleX)
       : 1;
+  // The centered-growth correction for `fillHeight` (and the plain
+  // default case, where it's always a no-op since scaleY is 1 there) —
+  // see its own comment at the transform/transformOrigin call site below
+  // for why this replaced a percentage-based transformOrigin entirely
+  // instead of trying to fix its Y value directly.
+  //
+  // Mathematically this centers the *layout* box (`contentHeight`, the
+  // font's full ascent+descent+leading metric — see FILL_HEIGHT_OVERSHOOT's
+  // own comment above for that same box-vs-ink distinction) — but most
+  // fonts, this one included, reserve more of that box above the baseline
+  // than below it, so a box centered by *that* metric still reads as
+  // sitting low relative to the visible ink itself. `VISUAL_LIFT_RATIO`
+  // nudges it back up by a modest, empirical fraction — per direct request
+  // not to re-run the live emulator/screenshot verification loop again this
+  // round, this value is a reasoned estimate (typical ascent-over-descent
+  // skew for a display/grotesk font like ObviouslyWideMedium), not one
+  // freshly measured against this exact render — worth a quick visual
+  // recheck next time this file is touched, and re-tuning this one constant
+  // if it's still off rather than revisiting the centering math again.
+  const VISUAL_LIFT_RATIO = 0.1;
+  const centeredGrowthTranslateY =
+    (contentHeight * (1 - scaleY)) / 2 -
+    contentHeight * scaleY * VISUAL_LIFT_RATIO;
   // fill's vertical compensation grows the *visible* text past its natural
   // single-line height via transform, which (unlike outline's band, sized by
   // its own layout already) doesn't itself resize this container — without
@@ -265,7 +107,9 @@ export function StretchText({
   // *given* (a real, externally-established box, e.g. a flex:1 row), not
   // something to grow from the text's own pre-transform size.
   const containerHeightOverride =
-    fill && !fillHeight && contentHeight > 0 && scaleY > 1 ? contentHeight * scaleY : undefined;
+    fill && !fillHeight && contentHeight > 0 && scaleY > 1
+      ? contentHeight * scaleY
+      : undefined;
   // See OUTLINE_STROKE_RADIUS above: shrink the pre-transform radius as the
   // applied scale grows, so the outline's *rendered* size stays constant
   // instead of growing right along with the text and swallowing thin
@@ -359,15 +203,7 @@ export function StretchText({
           style,
           withinRange ? styles.noMaxWidth : null,
           withinRange ? noEllipsisStyle : null,
-          // Explicit numeric width, scoped to only this single-line/scaleX
-          // path (never the wrap fallback): forces the correct pre-transform
-          // layout box on both platforms — `maxWidth:'none'` above is a web
-          // CSS value Yoga ignores on native, so native needs this instead
-          // to stop capping the visible copy to the container's width. The
-          // web-only safety margin (see WEB_WIDTH_SAFETY_MARGIN above)
-          // keeps this off the sub-pixel knife's edge that was silently
-          // truncating text with an ellipsis; native's onTextLayout
-          // measurement has no such discrepancy, so it stays exact there.
+
           withinRange && contentWidth > 0
             ? {
                 width:
@@ -375,31 +211,18 @@ export function StretchText({
                   (Platform.OS === "web" ? WEB_WIDTH_SAFETY_MARGIN : 0),
               }
             : null,
-          // outline mode is bottom-anchored (`placeOverlay` in
-          // ReviewPromptCard justifies its content to the end) and stretched
-          // from that bottom edge upward, so the filled band reads as
-          // flush with the photo's bottom rather than centered within it.
-          // fill mode's own container does the same bottom-anchoring
-          // whenever vertical compensation actually kicks in (`fillBottom`
-          // above, gated on `containerHeightOverride`) — but until this
-          // fix its transform-origin defaulted to vertical-center (a bare
-          // "left" resolves to "left center" per the CSS spec), so the
-          // scaleY growth pivoted from the pre-transform box's middle while
-          // the box itself stayed bottom-anchored, visibly shifting the
-          // rendered glyphs down out of alignment with anything sitting
-          // beside it at a fixed height (confirmed live: a board teaser
-          // card's square thumbnail and its title ended up the same height
-          // but offset from each other by several px). scaleY is always 1
-          // outside fill/outline (see scaleY above), so this is a no-op
-          // for every other case — safe to apply unconditionally here.
-          // `fillHeight` is deliberately excluded from the bottom-anchored
-          // group: its container stays centered (containerHeightOverride is
-          // always skipped for it, see that comment), so a plain "left"
-          // (= "left center") pivot is what grows the text symmetrically
-          // from its own already-centered position instead of shifting it.
+
           {
-            transform: [{ scaleX }, { scaleY }],
-            transformOrigin: outline || (fill && !fillHeight) ? "left bottom" : "left",
+            transform:
+              outline || (fill && !fillHeight)
+                ? [{ scaleX }, { scaleY }]
+                : [
+                    { translateY: centeredGrowthTranslateY },
+                    { scaleX },
+                    { scaleY },
+                  ],
+            transformOrigin:
+              outline || (fill && !fillHeight) ? "left bottom" : "0% 0%",
           },
         ];
         // strokeRadius is an OutlinedText-only prop (unknown to ThemedText),

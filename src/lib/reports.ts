@@ -6,14 +6,18 @@ export type ReportReason = Database['public']['Tables']['reports']['Row']['reaso
 export type PendingReport = {
   id: string;
   reason: ReportReason;
+  details: string | null;
   createdAt: string;
   // Null when the reported visit was already deleted (e.g. by its owner)
-  // before an admin acted on the report — snapshot fields below still
-  // describe what was reported, but there's nothing left to delete.
+  // before an admin acted on the report, or when this report was never
+  // about a specific visit to begin with (a direct user report) — snapshot
+  // fields below still describe what was reported either way.
   visitId: string | null;
   visitRating: number | null;
   visitNote: string | null;
-  placeName: string;
+  // Null for a direct user report (no visit involved at all) rather than
+  // 'Unknown place' — moderation.tsx tells the two apart on this.
+  placeName: string | null;
   authorName: string;
   reporterName: string;
 };
@@ -21,6 +25,7 @@ export type PendingReport = {
 type RawReport = {
   id: string;
   reason: ReportReason;
+  details: string | null;
   created_at: string;
   visit_id: string | null;
   snapshot_place_name: string | null;
@@ -36,14 +41,27 @@ type RawReport = {
   reporter: { handle: string | null; name: string | null } | null;
 };
 
-export async function reportVisit(
-  reporterId: string,
-  visitId: string,
-  reason: ReportReason
-): Promise<void> {
-  const { error } = await supabase
-    .from('reports')
-    .insert({ reporter_id: reporterId, visit_id: visitId, reason });
+export type SubmitReportParams = {
+  reporterId: string;
+  reason: ReportReason;
+  // Free-text context alongside the fixed reason category — blank/whitespace
+  // normalized to null rather than stored as ''.
+  details?: string;
+  // At least one of these two must be set (reports_has_target, see the
+  // migration) — a visit report, a direct user report, or both (e.g.
+  // reporting the person while a specific post is what prompted it).
+  visitId?: string;
+  reportedUserId?: string;
+};
+
+export async function submitReport(params: SubmitReportParams): Promise<void> {
+  const { error } = await supabase.from('reports').insert({
+    reporter_id: params.reporterId,
+    reason: params.reason,
+    details: params.details?.trim() || null,
+    visit_id: params.visitId ?? null,
+    reported_user_id: params.reportedUserId ?? null,
+  });
   if (error) throw error;
 }
 
@@ -51,7 +69,7 @@ export async function listPendingReports(): Promise<PendingReport[]> {
   const { data, error } = await supabase
     .from('reports')
     .select(
-      'id, reason, created_at, visit_id, snapshot_place_name, snapshot_author_name, snapshot_rating, snapshot_note, visits(rating, note, places!place_id(name), users!user_id(handle, name)), reporter:users!reporter_id(handle, name)'
+      'id, reason, details, created_at, visit_id, snapshot_place_name, snapshot_author_name, snapshot_rating, snapshot_note, visits(rating, note, places!place_id(name), users!user_id(handle, name)), reporter:users!reporter_id(handle, name)'
     )
     .eq('status', 'pending')
     .order('created_at', { ascending: true });
@@ -60,11 +78,12 @@ export async function listPendingReports(): Promise<PendingReport[]> {
   return (data as unknown as RawReport[]).map((r) => ({
     id: r.id,
     reason: r.reason,
+    details: r.details,
     createdAt: r.created_at,
     visitId: r.visit_id,
     visitRating: r.visits?.rating ?? r.snapshot_rating,
     visitNote: r.visits?.note ?? r.snapshot_note,
-    placeName: r.visits?.places?.name ?? r.snapshot_place_name ?? 'Unknown place',
+    placeName: r.visits?.places?.name ?? r.snapshot_place_name,
     authorName:
       r.visits?.users?.name ?? r.visits?.users?.handle ?? r.snapshot_author_name ?? 'Someone',
     reporterName: r.reporter?.name ?? r.reporter?.handle ?? 'Someone',

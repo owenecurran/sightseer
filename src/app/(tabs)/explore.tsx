@@ -16,7 +16,7 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getLatestReviewPhotoIds } from '@/lib/boards';
-import { followUser, listMutualFollowers, unfollowOrCancelRequest, type MutualFollower } from '@/lib/follows';
+import { followUser, unfollowOrCancelRequest, type MutualFollower } from '@/lib/follows';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { searchAll, type SearchBoardResult, type SearchTravelBookResult, type SearchUserResult } from '@/lib/search';
 
@@ -38,11 +38,15 @@ function followLabel(status: SearchUserResult['followStatus']): string {
   return 'Follow';
 }
 
+// Leads with the raw count (per direct feedback: "shows the number of
+// mutual followers as well", not just names) before the same "Followed by
+// X (+N others)" framing this already had.
 function mutualsLabel(mutuals: MutualFollower[]): string | null {
   if (mutuals.length === 0) return null;
   const firstName = mutuals[0].name ?? mutuals[0].handle ?? 'Someone';
-  if (mutuals.length === 1) return `Followed by ${firstName}`;
-  return `Followed by ${firstName} + ${mutuals.length - 1} other${mutuals.length > 2 ? 's' : ''}`;
+  const countLabel = `${mutuals.length} mutual follower${mutuals.length === 1 ? '' : 's'}`;
+  if (mutuals.length === 1) return `${countLabel} · ${firstName}`;
+  return `${countLabel} · ${firstName} + ${mutuals.length - 1} other${mutuals.length > 2 ? 's' : ''}`;
 }
 
 export default function SearchScreen() {
@@ -56,7 +60,6 @@ export default function SearchScreen() {
   const [users, setUsers] = useState<SearchUserResult[]>([]);
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [coverUrls, setCoverUrls] = useState<Record<string, string>>({});
-  const [mutualsByUser, setMutualsByUser] = useState<Record<string, MutualFollower[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
@@ -85,12 +88,7 @@ export default function SearchScreen() {
         setUsers(result.users);
 
         const userIds = result.users.map((u) => u.id);
-        const [avatars, mutualsMap] = await Promise.all([
-          userIds.length > 0 ? getAvatarViewUrls(userIds) : Promise.resolve({}),
-          listMutualFollowers(session.user.id, userIds),
-        ]);
-        setAvatarUrls(avatars);
-        setMutualsByUser(Object.fromEntries(mutualsMap));
+        setAvatarUrls(userIds.length > 0 ? await getAvatarViewUrls(userIds) : {});
 
         // Cover thumbnails: explicit cover_photo_id wins; boards without one
         // fall back to the most-recently-added item's photo (same rule
@@ -236,8 +234,7 @@ export default function SearchScreen() {
 
                 {showPeople &&
                   users.map((user) => {
-                    const mutuals = mutualsByUser[user.id] ?? [];
-                    const mutualLine = mutualsLabel(mutuals);
+                    const mutualLine = mutualsLabel(user.mutuals);
                     return (
                       <Pressable
                         key={user.id}

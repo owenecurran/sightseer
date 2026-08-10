@@ -41,6 +41,11 @@ type LocationSearchModalProps = {
   // shows a preview card that navigates to /place/[id] on tap. Defaults to
   // 'pick' so review.tsx needs no changes.
   mode?: 'pick' | 'browse';
+  // Opens already centered here instead of the user's current GPS location
+  // — review-form.tsx's "Tag specific spots" picker uses this to start at
+  // the review's own place, since a spot being tagged is almost always near
+  // it, not near wherever the phone currently is.
+  initialCenter?: { lat: number; lng: number };
 };
 
 const DEBOUNCE_MS = 300;
@@ -61,7 +66,13 @@ const VIEWPORT_DEBOUNCE_MS = 500;
 // POI/label layers are left as-is for v1 (MAPBOX_STYLE_URL is the built-in
 // dark style) — hiding them needs the SDK's style-layer API, noted as a
 // fast-follow rather than blocking this component on style polish.
-export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick' }: LocationSearchModalProps) {
+export function LocationSearchModal({
+  visible,
+  onCancel,
+  onSelect,
+  mode = 'pick',
+  initialCenter,
+}: LocationSearchModalProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -119,6 +130,19 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     setHasSearchedCenter(false);
     sessionTokenRef.current = createPlacesSessionToken();
 
+    // A caller-provided center (e.g. the place being reviewed, for "Tag
+    // specific spots") wins outright — no reason to ask for/wait on GPS
+    // when the far more relevant origin was already handed to us.
+    if (initialCenter) {
+      isProgrammaticMoveRef.current = true;
+      cameraRef.current?.setCamera({
+        centerCoordinate: [initialCenter.lng, initialCenter.lat],
+        zoomLevel: SELECTED_ZOOM,
+        animationDuration: 0,
+      });
+      return;
+    }
+
     // Best-effort: center on the user's current location when the picker
     // opens, before any search happens. If permission is denied or location
     // can't be determined, getCurrentLocation() resolves null and the map
@@ -138,7 +162,13 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     return () => {
       cancelled = true;
     };
-  }, [visible]);
+    // Depends on the *coordinates*, not the `initialCenter` object itself —
+    // callers (review-form.tsx) pass a fresh object literal every render, so
+    // depending on the reference would re-run this whole reset (snapping the
+    // camera back, discarding any manual pan) on every unrelated parent
+    // re-render while the picker sits open, not just when it's (re)opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initialCenter?.lat, initialCenter?.lng]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -327,7 +357,13 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
           styleURL={MAPBOX_STYLE_URL}
           scaleBarEnabled={false}
           onMapIdle={handleMapIdle}>
-          <Camera ref={cameraRef} defaultSettings={{ zoomLevel: DEFAULT_ZOOM }} />
+          <Camera
+            ref={cameraRef}
+            defaultSettings={{
+              zoomLevel: initialCenter ? SELECTED_ZOOM : DEFAULT_ZOOM,
+              centerCoordinate: initialCenter ? [initialCenter.lng, initialCenter.lat] : undefined,
+            }}
+          />
           {selectedDetails && (
             <PointAnnotation id="selected-place" coordinate={[selectedDetails.lng, selectedDetails.lat]}>
               <View style={styles.pin} />
@@ -597,7 +633,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   suggestions: {
-    marginTop: Spacing.two,
+    marginTop: Spacing.three,
     borderRadius: Spacing.three,
     overflow: 'hidden',
   },

@@ -212,6 +212,8 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
 
+            {profile?.bio && <ThemedText type="default">{profile.bio}</ThemedText>}
+
             <Pressable onPress={() => router.push('/edit-profile')}>
               <ThemedText type="small" themeColor="sage">
                 Edit profile

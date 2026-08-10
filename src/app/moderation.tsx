@@ -98,18 +98,30 @@ export default function ModerationScreen() {
         <View style={styles.list}>
           {reports.map((report) => (
             <ThemedView key={report.id} type="backgroundElement" style={styles.card}>
-              <ThemedText type="smallBold">{report.placeName}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {report.authorName}
-                {report.visitRating != null ? ` · ${report.visitRating.toFixed(1)} ★` : ''}
-                {report.visitNote ? ` · ${report.visitNote}` : ''}
-              </ThemedText>
+              <ThemedText type="smallBold">{report.placeName ?? report.authorName}</ThemedText>
+              {report.placeName && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {report.authorName}
+                  {report.visitRating != null ? ` · ${report.visitRating.toFixed(1)} ★` : ''}
+                  {report.visitNote ? ` · ${report.visitNote}` : ''}
+                </ThemedText>
+              )}
               <ThemedText type="small">
                 Reported for {REASON_LABELS[report.reason]} by {report.reporterName}
               </ThemedText>
-              {!report.visitId && (
+              {report.details && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  “{report.details}”
+                </ThemedText>
+              )}
+              {report.placeName && !report.visitId && (
                 <ThemedText type="small" themeColor="textSecondary">
                   Visit already deleted by its owner.
+                </ThemedText>
+              )}
+              {!report.placeName && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  Reported this user directly — no specific post.
                 </ThemedText>
               )}
 

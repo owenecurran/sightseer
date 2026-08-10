@@ -31,7 +31,7 @@ export type FeedVisit = {
   photoAspectRatios: (number | null)[];
   likeCount: number;
   isLikedByMe: boolean;
-  taggedUserNames: string[];
+  taggedUsers: { id: string; name: string }[];
   taggedPlaces: TaggedPlace[];
   commentCount: number;
   visitNumber: number;
@@ -87,9 +87,12 @@ export function mapRawFeedVisit(
       .map((p) => (p.width && p.height ? p.width / p.height : null)),
     likeCount: visit.likes.length,
     isLikedByMe: visit.likes.some((like) => like.user_id === myUserId),
-    taggedUserNames: visit.visit_tagged_users
-      .map((t) => t.users?.name ?? t.users?.handle)
-      .filter((name): name is string => name != null),
+    taggedUsers: visit.visit_tagged_users
+      .map((t) => {
+        const name = t.users?.name ?? t.users?.handle;
+        return name != null ? { id: t.user_id, name } : null;
+      })
+      .filter((t): t is { id: string; name: string } => t != null),
     taggedPlaces: visit.visit_tagged_places
       .map((t) => t.places)
       .filter((place): place is { name: string; category: PlaceCategory } => place != null),

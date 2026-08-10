@@ -158,6 +158,43 @@ export async function listMutualFollowers(
   return result;
 }
 
+export type RankedUser<T> = T & { followStatus: FollowStatus | null; mutuals: MutualFollower[] };
+
+// Shared ranking for every "search for a person" surface (the Search tab's
+// people results, tagging people on a review) — people the viewer already
+// follows first, then anyone with mutual followers (more mutuals first),
+// then everyone else. One batched pair of queries (follow status + mutual
+// followers, both already keyed by candidate id) regardless of how many
+// users are being ranked, not one query per candidate.
+export async function rankByConnection<T extends { id: string }>(
+  users: T[],
+  viewerId: string
+): Promise<RankedUser<T>[]> {
+  if (users.length === 0) return [];
+  const userIds = users.map((u) => u.id);
+
+  const [followsResult, mutualsByUser] = await Promise.all([
+    supabase.from('follows').select('followee_id, status').eq('follower_id', viewerId).in('followee_id', userIds),
+    listMutualFollowers(viewerId, userIds),
+  ]);
+  if (followsResult.error) throw followsResult.error;
+  const statusByUserId = new Map(followsResult.data.map((f) => [f.followee_id, f.status]));
+
+  const ranked = users.map((user) => ({
+    ...user,
+    followStatus: statusByUserId.get(user.id) ?? null,
+    mutuals: mutualsByUser.get(user.id) ?? [],
+  }));
+
+  ranked.sort((a, b) => {
+    const aFollowing = a.followStatus === 'accepted' ? 1 : 0;
+    const bFollowing = b.followStatus === 'accepted' ? 1 : 0;
+    if (aFollowing !== bFollowing) return bFollowing - aFollowing;
+    return b.mutuals.length - a.mutuals.length;
+  });
+  return ranked;
+}
+
 export async function getFollowCounts(userId: string): Promise<{ following: number; followers: number }> {
   const [followingResult, followersResult] = await Promise.all([
     supabase

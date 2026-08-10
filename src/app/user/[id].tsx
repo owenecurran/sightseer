@@ -13,13 +13,14 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
+import { UserMenu } from '@/components/user-menu';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { blockUser, isBlocking, unblockUser } from '@/lib/blocks';
 import type { Database } from '@/lib/database.types';
-import { followUser, getFollowCounts, getFollowStatus, unfollowOrCancelRequest } from '@/lib/follows';
+import { followUser, getFollowCounts, getFollowStatus, removeFollower, unfollowOrCancelRequest } from '@/lib/follows';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { parseDefaultCamera } from '@/lib/map-layers';
 import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
@@ -47,8 +48,12 @@ export default function UserProfileScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
-  const [confirmingBlock, setConfirmingBlock] = useState(false);
   const [isUpdatingBlock, setIsUpdatingBlock] = useState(false);
+  // Whether *they* follow *me* — a different direction than `followStatus`
+  // above (do I follow them) — only relevant for offering "Remove as
+  // follower" in UserMenu.
+  const [targetFollowsMe, setTargetFollowsMe] = useState(false);
+  const [isRemovingFollower, setIsRemovingFollower] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
@@ -66,17 +71,19 @@ export default function UserProfileScreen() {
           if (userError) throw userError;
           setUser(userData);
 
-          const [avatars, status, counts, showcase, blocked] = await Promise.all([
+          const [avatars, status, reverseStatus, counts, showcase, blocked] = await Promise.all([
             userData.avatar_r2_key
               ? getAvatarViewUrls([id])
               : Promise.resolve<Record<string, string>>({}),
             getFollowStatus(session.user.id, id),
+            getFollowStatus(id, session.user.id),
             getFollowCounts(id),
             getProfileShowcase(id),
             isBlocking(session.user.id, id),
           ]);
           setAvatarUrl(avatars[id] ?? null);
           setFollowStatus(status);
+          setTargetFollowsMe(reverseStatus === 'accepted');
           setFollowCounts(counts);
           setTotalVisits(showcase.totalVisits);
           setLatestVisit(showcase.latestVisit);
@@ -120,8 +127,8 @@ export default function UserProfileScreen() {
     try {
       await blockUser(session.user.id, user.id);
       setIsBlocked(true);
-      setConfirmingBlock(false);
       setFollowStatus(null);
+      setTargetFollowsMe(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not block that user.');
     } finally {
@@ -143,6 +150,20 @@ export default function UserProfileScreen() {
     }
   }
 
+  async function handleRemoveFollower() {
+    if (!session || !user) return;
+    setError(null);
+    setIsRemovingFollower(true);
+    try {
+      await removeFollower(session.user.id, user.id);
+      setTargetFollowsMe(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove that follower.');
+    } finally {
+      setIsRemovingFollower(false);
+    }
+  }
+
   const isSelf = session?.user.id === id;
   const canSeeContent = !isBlocked && (!user?.is_private || followStatus === 'accepted' || isSelf);
 
@@ -157,9 +178,26 @@ export default function UserProfileScreen() {
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
           <View style={styles.contentWrap}>
-            <Pressable onPress={() => router.back()}>
-              <ThemedText type="link">← Back</ThemedText>
-            </Pressable>
+            <View style={styles.topRow}>
+              <Pressable onPress={() => router.back()}>
+                <ThemedText type="link">← Back</ThemedText>
+              </Pressable>
+              {!isSelf && session && user && (
+                <UserMenu
+                  reporterId={session.user.id}
+                  targetUserId={user.id}
+                  targetUserName={user.name ?? user.handle ?? 'this user'}
+                  targetUserAvatarUrl={avatarUrl}
+                  isBlocked={isBlocked}
+                  isUpdatingBlock={isUpdatingBlock}
+                  onBlock={handleBlock}
+                  onUnblock={handleUnblock}
+                  targetFollowsMe={targetFollowsMe}
+                  isRemovingFollower={isRemovingFollower}
+                  onRemoveFollower={handleRemoveFollower}
+                />
+              )}
+            </View>
 
             <View style={styles.headerRow}>
               <Avatar uri={avatarUrl} name={user?.name ?? user?.handle} size={72} />
@@ -178,40 +216,13 @@ export default function UserProfileScreen() {
 
             {user?.bio && <ThemedText type="default">{user.bio}</ThemedText>}
 
-            {!isSelf && isBlocked && (
-              <Button label="Unblock" variant="secondary" onPress={handleUnblock} loading={isUpdatingBlock} />
-            )}
-
             {!isSelf && !isBlocked && (
-              <View style={styles.followRow}>
-                <Button
-                  label={followLabel(followStatus)}
-                  variant={followStatus === 'accepted' ? 'secondary' : 'primary'}
-                  onPress={handleFollowToggle}
-                  loading={isUpdatingFollow}
-                />
-                {confirmingBlock ? (
-                  <View style={styles.blockConfirmRow}>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Block this user?
-                    </ThemedText>
-                    <Pressable onPress={handleBlock} disabled={isUpdatingBlock}>
-                      <ThemedText type="smallBold">Confirm</ThemedText>
-                    </Pressable>
-                    <Pressable onPress={() => setConfirmingBlock(false)}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Cancel
-                      </ThemedText>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <Pressable onPress={() => setConfirmingBlock(true)}>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Block
-                    </ThemedText>
-                  </Pressable>
-                )}
-              </View>
+              <Button
+                label={followLabel(followStatus)}
+                variant={followStatus === 'accepted' ? 'secondary' : 'primary'}
+                onPress={handleFollowToggle}
+                loading={isUpdatingFollow}
+              />
             )}
 
             <View style={styles.statsRow}>
@@ -296,6 +307,17 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     gap: Spacing.three,
   },
+  // "Back" and UserMenu share this row, separate from headerRow below —
+  // UserMenu used to sit inside headerRow itself, but that squeezed
+  // headerInfo's already-tight flex:1 column just enough to send a longer
+  // display name into a badly-wrapped mess (confirmed live: "David Calder
+  // Hipp" broke into "Da/vid/Ca/lder/Hip/p"). "Back" is always short, so
+  // there's no equivalent squeeze here.
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -313,15 +335,6 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: Spacing.three,
-  },
-  followRow: {
-    gap: Spacing.two,
-  },
-  blockConfirmRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.three,
-    alignItems: 'center',
   },
   borderedBox: {
     borderWidth: 1,

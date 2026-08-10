@@ -32,6 +32,8 @@ type LocationSearchModalProps = {
   // matching prop comment, this file mirrors that one's mode split.
   onSelect?: (place: PlaceRow) => void;
   mode?: 'pick' | 'browse';
+  // See location-search-modal.native.tsx's matching prop comment.
+  initialCenter?: { lat: number; lng: number };
 };
 
 const DEBOUNCE_MS = 300;
@@ -57,7 +59,13 @@ if (!mapboxgl.accessToken) {
 // native picker. Mirrors location-search-modal.native.tsx's structure
 // (search → fetch details → animate camera → drop marker → confirm) closely
 // enough that the two files should be read/changed together.
-export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick' }: LocationSearchModalProps) {
+export function LocationSearchModal({
+  visible,
+  onCancel,
+  onSelect,
+  mode = 'pick',
+  initialCenter,
+}: LocationSearchModalProps) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceAutocompleteSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -112,8 +120,8 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
     const map = new mapboxgl.Map({
       container: node,
       style: STYLE_URL,
-      center: [0, 20],
-      zoom: DEFAULT_ZOOM,
+      center: initialCenter ? [initialCenter.lng, initialCenter.lat] : [0, 20],
+      zoom: initialCenter ? SELECTED_ZOOM : DEFAULT_ZOOM,
     });
     mapRef.current = map;
 
@@ -201,12 +209,17 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       });
     }
 
+    // A caller-provided center already won at construction time above — no
+    // reason to then recenter onto GPS too. See the native picker's matching
+    // comment.
     let cancelled = false;
-    getCurrentLocation().then((coords) => {
-      if (cancelled || !coords) return;
-      isProgrammaticMoveRef.current = true;
-      map.flyTo({ center: [coords.lng, coords.lat], zoom: CURRENT_LOCATION_ZOOM });
-    });
+    if (!initialCenter) {
+      getCurrentLocation().then((coords) => {
+        if (cancelled || !coords) return;
+        isProgrammaticMoveRef.current = true;
+        map.flyTo({ center: [coords.lng, coords.lat], zoom: CURRENT_LOCATION_ZOOM });
+      });
+    }
 
     return () => {
       cancelled = true;
@@ -222,6 +235,7 @@ export function LocationSearchModal({ visible, onCancel, onSelect, mode = 'pick'
       map.remove();
       mapRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   useEffect(() => {
@@ -585,7 +599,7 @@ const styles = StyleSheet.create({
     textShadowRadius: 3,
   },
   suggestions: {
-    marginTop: Spacing.two,
+    marginTop: Spacing.three,
     borderRadius: Spacing.three,
     overflow: 'hidden',
   },

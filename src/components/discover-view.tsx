@@ -6,7 +6,7 @@ import Animated from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { BrandColors, Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { listPublishedArticles, type ArticleListItem } from '@/lib/articles';
@@ -35,7 +35,7 @@ export function DiscoverView() {
 
   useEffect(() => {
     setError(null);
-    Promise.all([listPublishedArticles(5), listFeaturedBoards(5), getPopularPlaces(10)])
+    Promise.all([listPublishedArticles(5), listFeaturedBoards(5), getPopularPlaces(5)])
       .then(async ([articleList, boardList, placeList]) => {
         setArticles(articleList);
         setFeaturedBoards(boardList);
@@ -109,20 +109,43 @@ export function DiscoverView() {
 
       {popularPlaces.length > 0 && (
         <View style={styles.section}>
-          <ThemedText type="sectionLabel">Popular locations</ThemedText>
-          {popularPlaces.map((place) => (
-            <Pressable key={place.id} onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}>
-              <ThemedView type="backgroundElement" style={styles.row}>
-                <View style={styles.rowLeading}>
-                  <ThemedText type="headline">{place.name}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {placeRegions.get(place.id) ? `${placeRegions.get(place.id)} · ` : ''}
-                    {place.avgRating.toFixed(1)} ★ · {place.reviewCount} review{place.reviewCount === 1 ? '' : 's'}
+          <ThemedText type="sectionLabel">Top locations</ThemedText>
+          <ThemedView type="backgroundElement" style={styles.leaderboard}>
+            {popularPlaces.map((place, index) => {
+              const rank = index + 1;
+              return (
+                <Pressable
+                  key={place.id}
+                  onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}
+                  style={[styles.leaderboardRow, rank < popularPlaces.length && styles.leaderboardRowDivider]}>
+                  <ThemedText
+                    type="statLine"
+                    themeColor={rank === 1 ? undefined : 'textSecondary'}
+                    style={[styles.rank, rank === 1 && styles.rankFirst]}>
+                    {rank}
                   </ThemedText>
-                </View>
-              </ThemedView>
-            </Pressable>
-          ))}
+                  <View style={styles.rowLeading}>
+                    <ThemedText type="headline" style={styles.leaderboardName} numberOfLines={1}>
+                      {place.name}
+                    </ThemedText>
+                    {placeRegions.get(place.id) && (
+                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                        {placeRegions.get(place.id)}
+                      </ThemedText>
+                    )}
+                  </View>
+                  <View style={styles.leaderboardScore}>
+                    <ThemedText type="roundedStat" style={styles.leaderboardRating}>
+                      {place.avgRating.toFixed(1)} ★
+                    </ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {place.reviewCount} review{place.reviewCount === 1 ? '' : 's'}
+                    </ThemedText>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ThemedView>
         </View>
       )}
     </Animated.ScrollView>
@@ -159,5 +182,48 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: Spacing.two,
     backgroundColor: 'rgba(234,231,207,0.08)',
+  },
+  // One shared card (unlike the article/board rows above, each their own
+  // rounded box) — a leaderboard reads as a single ranked list, not a stack
+  // of independent cards, so rows are divided by hairlines within one
+  // continuous block instead.
+  leaderboard: {
+    borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  leaderboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+  },
+  leaderboardRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(234,231,207,0.16)',
+  },
+  // Fixed width so every row's name/score column lines up regardless of
+  // whether the rank is 1 or 2 digits.
+  rank: {
+    width: 34,
+    textAlign: 'center',
+    fontSize: 22,
+  },
+  // #1 gets the app's own accent color and a noticeably bigger size — the
+  // one "leaderboard" cue that a plain numbered list doesn't have on its
+  // own, cheap to read at a glance while scrolling.
+  rankFirst: {
+    color: BrandColors.sage,
+    fontSize: 30,
+  },
+  leaderboardName: {
+    fontSize: 22,
+  },
+  leaderboardScore: {
+    alignItems: 'flex-end',
+    gap: Spacing.half,
+  },
+  leaderboardRating: {
+    fontSize: 16,
   },
 });

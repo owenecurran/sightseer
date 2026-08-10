@@ -1,14 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
-import { Spacing } from '@/constants/theme';
+import { BrandColors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import { getAvatarViewUrls } from '@/lib/avatar';
@@ -134,51 +133,78 @@ export function CommentsThread({ visitId, visitOwnerId, onCountChange }: Comment
   }
 
   return (
-    <ThemedView style={styles.container}>
-      {error && (
-        <ThemedText type="small" themeColor="textSecondary">
-          {error}
-        </ThemedText>
-      )}
-      {isLoading && <ThemedText type="small">Loading…</ThemedText>}
+    <View style={styles.wrap}>
+      {/* One bordered box for the whole thread — the same bordered-box
+          language used everywhere else in the app for a self-contained
+          section (prompt-question-picker.tsx's own `box`, review-form.tsx's
+          section boxes) rather than the previous plain, unbordered list
+          that didn't read as its own distinct area. */}
+      <ThemedView type="backgroundElement" style={styles.box}>
+        {error && (
+          <ThemedText type="small" themeColor="textSecondary">
+            {error}
+          </ThemedText>
+        )}
+        {isLoading && <ThemedText type="small">Loading…</ThemedText>}
 
-      {comments.map((comment) => {
-        const canDelete =
-          !!session && (comment.userId === session.user.id || session.user.id === visitOwnerId);
-        return (
-          <View key={comment.id} style={styles.commentRow}>
-            <Avatar uri={avatarUrls[comment.userId]} name={comment.authorName} size={28} />
-            <View style={styles.commentBody}>
-              <View style={styles.commentHeader}>
-                <ThemedText type="smallBold">{comment.authorName}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {relativeTime(comment.createdAt)}
-                </ThemedText>
+        {!isLoading && comments.length === 0 && !error && (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
+            No comments have been posted yet.
+          </ThemedText>
+        )}
+
+        {comments.map((comment, index) => {
+          const canDelete =
+            !!session && (comment.userId === session.user.id || session.user.id === visitOwnerId);
+          return (
+            <View key={comment.id} style={[styles.commentRow, index > 0 && styles.commentRowDivider]}>
+              <Avatar uri={avatarUrls[comment.userId]} name={comment.authorName} size={28} />
+              <View style={styles.commentBody}>
+                <View style={styles.commentHeader}>
+                  <ThemedText type="smallBold">{comment.authorName}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {relativeTime(comment.createdAt)}
+                  </ThemedText>
+                </View>
+                <ThemedText type="small">{comment.body}</ThemedText>
               </View>
-              <ThemedText type="small">{comment.body}</ThemedText>
+              {canDelete && (
+                <Pressable onPress={() => setPendingDeleteId(comment.id)} hitSlop={8}>
+                  <Ionicons name="trash-outline" size={16} color={theme.textSecondary} />
+                </Pressable>
+              )}
             </View>
-            {canDelete && (
-              <Pressable onPress={() => setPendingDeleteId(comment.id)} hitSlop={8}>
-                <Ionicons name="trash-outline" size={16} color={theme.textSecondary} />
-              </Pressable>
-            )}
-          </View>
-        );
-      })}
+          );
+        })}
+      </ThemedView>
 
+      {/* The write box — its own bordered field with the send action
+          inline inside it (a trailing icon button, not a separate full-width
+          "Post" button below), matching how a chat/comment composer reads
+          elsewhere (e.g. iMessage, most social apps) more than this app's
+          own full-form Button did here. */}
       <View style={styles.addRow}>
         <TextField
-          placeholder="Add a comment..."
+          placeholder="Write your comment..."
           value={newComment}
           onChangeText={setNewComment}
           style={styles.addInput}
         />
-        <Button
-          label="Post"
+        <Pressable
           onPress={handleAddComment}
-          loading={isSubmitting}
-          disabled={!newComment.trim()}
-        />
+          disabled={isSubmitting || !newComment.trim()}
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.sendButton,
+            (isSubmitting || !newComment.trim()) && styles.sendButtonDisabled,
+            pressed && styles.pressed,
+          ]}>
+          {isSubmitting ? (
+            <ActivityIndicator color={BrandColors.background} size="small" />
+          ) : (
+            <Ionicons name="send" size={16} color={BrandColors.background} />
+          )}
+        </Pressable>
       </View>
 
       <ConfirmDeleteModal
@@ -188,7 +214,7 @@ export function CommentsThread({ visitId, visitOwnerId, onCountChange }: Comment
         onConfirm={handleConfirmDelete}
         onCancel={() => setPendingDeleteId(null)}
       />
-    </ThemedView>
+    </View>
   );
 }
 
@@ -198,13 +224,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.one,
   },
-  container: {
+  wrap: {
     gap: Spacing.two,
+  },
+  box: {
+    borderWidth: 1,
+    borderColor: 'rgba(234,231,207,0.35)',
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  emptyText: {
+    textAlign: 'center',
   },
   commentRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.two,
+  },
+  // Separates comments from each other within the one shared box, now that
+  // they're no longer each floating in their own undifferentiated gap.
+  commentRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(234,231,207,0.15)',
+    paddingTop: Spacing.two,
   },
   commentBody: {
     flex: 1,
@@ -216,9 +259,25 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
   },
   addInput: {
     flex: 1,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: BrandColors.sage,
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  pressed: {
+    opacity: 0.8,
   },
 });
