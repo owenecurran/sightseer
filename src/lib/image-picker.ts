@@ -4,13 +4,22 @@ import { Platform } from 'react-native';
 export type PickImageResult = ImagePicker.ImagePickerAsset | 'denied' | null;
 
 // null = user cancelled the picker; 'denied' = library permission refused
-// (native only — web has no such permission prompt).
-export async function pickImageFromLibrary(): Promise<PickImageResult> {
+// (native only — web has no such permission prompt). `exif` defaults off —
+// most callers here (avatar/cover/prompt photos) have no use for it, and
+// requesting it is extra payload for no benefit; review-form.tsx passes
+// `exif: true` specifically so it can back-fill the visit date from the
+// first photo's own EXIF (see photo-clustering.ts's extractDateFromExif,
+// already used the same way for bulk-upload's per-cluster dates).
+export async function pickImageFromLibrary(options?: { exif?: boolean }): Promise<PickImageResult> {
   if (Platform.OS !== 'web') {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return 'denied';
   }
-  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'],
+    quality: 0.8,
+    exif: options?.exif ?? false,
+  });
   if (result.canceled || !result.assets[0]) return null;
   return result.assets[0];
 }
@@ -20,10 +29,14 @@ export async function pickImageFromLibrary(): Promise<PickImageResult> {
 // launchCameraAsync already throws a clear "not available on web" error on
 // that platform; the review flow's own camera option only ever renders on
 // native (see PhotoSourceModal).
-export async function takePhotoWithCamera(): Promise<PickImageResult> {
+export async function takePhotoWithCamera(options?: { exif?: boolean }): Promise<PickImageResult> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (!permission.granted) return 'denied';
-  const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    quality: 0.8,
+    exif: options?.exif ?? false,
+  });
   if (result.canceled || !result.assets[0]) return null;
   return result.assets[0];
 }

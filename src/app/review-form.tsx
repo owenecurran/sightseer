@@ -30,6 +30,7 @@ import type { Database } from '@/lib/database.types';
 import { deleteDraftPhoto, getDraftForEdit, publishDraft, updateDraftFields, uploadPhotoForDraft } from '@/lib/drafts';
 import { pickImageFromLibrary, takePhotoWithCamera } from '@/lib/image-picker';
 import { cachePlaceHierarchy, getPlaceBreadcrumb, resolveStateCountries } from '@/lib/places-cache';
+import { extractDateFromExif } from '@/lib/photo-clustering';
 import { uploadPhotoForVisit } from '@/lib/photo-upload';
 import { searchUsers, type SearchUserResult } from '@/lib/search';
 import { supabase } from '@/lib/supabase';
@@ -329,7 +330,10 @@ export default function ReviewFormScreen() {
 
   async function handlePhotoSourceChoice(source: 'camera' | 'library') {
     setIsPhotoSourceModalOpen(false);
-    const result = source === 'camera' ? await takePhotoWithCamera() : await pickImageFromLibrary();
+    // exif:true — see handlePickPhoto/handleAddDraftPhoto below, which read
+    // the photo's own taken-date off this to back-fill the visit date.
+    const result =
+      source === 'camera' ? await takePhotoWithCamera({ exif: true }) : await pickImageFromLibrary({ exif: true });
     if (result === 'denied') {
       setError(
         source === 'camera'
@@ -352,8 +356,19 @@ export default function ReviewFormScreen() {
   async function handlePickPhoto() {
     if (pendingPhotos.length + uploadedPhotoUris.length >= MAX_VISIT_PHOTOS) return;
     setError(null);
+    // First photo on the review only — back-fills the date to when the
+    // photo was actually taken (matches bulk-upload's own per-cluster date
+    // choice) rather than leaving it defaulted to today. Still just a
+    // starting point: DateCarousel below stays freely editable after this,
+    // and adding a *second* photo never overwrites whatever's there by then.
+    const isFirstPhoto = pendingPhotos.length === 0 && uploadedPhotoUris.length === 0;
     const asset = await pickImage();
-    if (asset) setCropSource({ uri: asset.uri, target: { kind: 'pending' } });
+    if (!asset) return;
+    if (isFirstPhoto) {
+      const takenOn = extractDateFromExif(asset.exif);
+      if (takenOn) setVisitedOn(takenOn);
+    }
+    setCropSource({ uri: asset.uri, target: { kind: 'pending' } });
   }
 
   async function handleAddPhotoAfterSave() {
@@ -368,8 +383,16 @@ export default function ReviewFormScreen() {
   async function handleAddDraftPhoto() {
     if (photoSlots.length >= MAX_VISIT_PHOTOS) return;
     setError(null);
+    // See handlePickPhoto's identical comment — same first-photo-only
+    // back-fill, just against this flow's own photoSlots list instead.
+    const isFirstPhoto = photoSlots.length === 0;
     const asset = await pickImage();
-    if (asset) setCropSource({ uri: asset.uri, target: { kind: 'draft-new' } });
+    if (!asset) return;
+    if (isFirstPhoto) {
+      const takenOn = extractDateFromExif(asset.exif);
+      if (takenOn) setVisitedOn(takenOn);
+    }
+    setCropSource({ uri: asset.uri, target: { kind: 'draft-new' } });
   }
 
   function handleRecropDraftSlot(index: number) {
@@ -859,6 +882,17 @@ export default function ReviewFormScreen() {
               )}
 
               <SaveToBoard visitId={savedVisitId} isOwnerOrTagged />
+
+              {/* router.back() (not a fixed destination) is what makes "back
+                  to your remaining drafts after a bulk upload" fall out for
+                  free: a draft was reached by pushing this screen ON TOP of
+                  /drafts (see drafts.tsx's own row onPress), so popping back
+                  lands there again, and that screen's own useFocusEffect
+                  reloads its list — now one shorter — on the way back in. A
+                  fresh (non-draft) review pops back to wherever it was
+                  started from instead, same as this screen's own header
+                  back button already does. */}
+              <Button label="Done" onPress={() => router.back()} />
             </View>
           ))}
 

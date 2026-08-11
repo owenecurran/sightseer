@@ -56,6 +56,13 @@ export type FeedCardHeaderTextProps = {
   // FeedRatingStamp itself.
   stampSeed?: string;
   stampCanSeep?: boolean;
+  // An absolute ceiling (px) on how far the stamp may rise from this
+  // block's bottom edge, applied on top of whatever the location line
+  // itself allows — see maxStampBottomOffset below. Per-caller because the
+  // same range doesn't read the same on every screen: tagged-in.tsx passes
+  // one after its stamps read as sitting too high. Undefined leaves the
+  // location line as the only ceiling, which is the feed's own look.
+  maxStampRise?: number;
 };
 
 // The place-name/rating text portion of a feed visit card's header — pulled
@@ -76,6 +83,7 @@ export function FeedCardHeaderText({
   rating,
   stampSeed,
   stampCanSeep = false,
+  maxStampRise,
 }: FeedCardHeaderTextProps) {
   const theme = useTheme();
   // The stamp anchors to *this* block's own bottom-right corner (see
@@ -118,13 +126,25 @@ export function FeedCardHeaderText({
   // how far the stamp may rise so its top edge — worst-case rotation
   // included (STAMP_EFFECTIVE_HEIGHT) — covers at most
   // LOCATION_OVERLAP_ALLOWANCE px of the location text.
-  const maxStampBottomOffset =
+  const locationCeiling =
     stateCountry && wrapHeight > 0 && locationBottom != null
       ? wrapHeight -
         locationBottom +
         LOCATION_OVERLAP_ALLOWANCE -
         STAMP_EFFECTIVE_HEIGHT
       : undefined;
+
+  // The caller's own absolute cap wins wherever it's tighter — and, unlike
+  // locationCeiling above, applies even when there's no location line at
+  // all. That gap is exactly why an earlier attempt at this knob (which
+  // only adjusted the allowance feeding locationCeiling) did nothing on
+  // posts without a location: the whole expression went undefined and
+  // FeedRatingStamp silently fell back to its own internal, uncontrollable
+  // rise range.
+  const maxStampBottomOffset =
+    locationCeiling != null && maxStampRise != null
+      ? Math.min(locationCeiling, maxStampRise)
+      : (locationCeiling ?? maxStampRise);
 
   return (
     <View

@@ -6,8 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AttachmentPreview, type PreviewData } from '@/components/attachment-preview';
 import { AttachmentTypePicker } from '@/components/attachment-type-picker';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
+import { LocationSearchModal } from '@/components/location-search-modal';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
-import { PlaceSearchInput } from '@/components/place-search-input';
 import { PromptQuestionPicker } from '@/components/prompt-question-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -139,6 +139,10 @@ export default function PromptEditorScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [cropSource, setCropSource] = useState<{ uri: string; index: number } | null>(null);
+  // Which attachment's 'place' picker the map modal below is currently open
+  // for — null when closed. Index, not a boolean, since more than one
+  // attachment can be a 'place' type at once.
+  const [locationPickerIndex, setLocationPickerIndex] = useState<number | null>(null);
   const [visitPhotoOptions, setVisitPhotoOptions] = useState<Record<string, VisitPhotoOption[]>>({});
   const [placePhotoOptions, setPlacePhotoOptions] = useState<Record<string, VisitPhotoOption[]>>({});
   const [boardPhotoOptions, setBoardPhotoOptions] = useState<Record<string, VisitPhotoOption[]>>({});
@@ -746,10 +750,13 @@ export default function PromptEditorScreen() {
                       <ThemedText type="small">{attachment.placeName}</ThemedText>
                     </ThemedView>
                   )}
-                  <PlaceSearchInput
-                    placeholder="Search for a place"
-                    onSelect={(place: PlaceRow) => handleSelectPlace(index, place)}
-                  />
+                  <Pressable onPress={() => setLocationPickerIndex(index)}>
+                    <ThemedView type="backgroundElement" style={styles.chip}>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {attachment.placeId ? 'Change place' : 'Search for a place'}
+                      </ThemedText>
+                    </ThemedView>
+                  </Pressable>
                   {attachment.placeId &&
                     renderCoverPhotoPicker(placePhotoOptions[attachment.placeId] ?? [], attachment.coverPhotoId, (photoId) =>
                       updateAttachment(index, { coverPhotoId: photoId })
@@ -794,6 +801,15 @@ export default function PromptEditorScreen() {
           uri={cropSource?.uri ?? null}
           onCancel={handleCropCancel}
           onConfirm={handleCropConfirm}
+        />
+
+        <LocationSearchModal
+          visible={locationPickerIndex != null}
+          onCancel={() => setLocationPickerIndex(null)}
+          onSelect={(place) => {
+            if (locationPickerIndex != null) handleSelectPlace(locationPickerIndex, place);
+            setLocationPickerIndex(null);
+          }}
         />
       </SafeAreaView>
     </ThemedView>

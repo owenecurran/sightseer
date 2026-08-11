@@ -2,9 +2,9 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
-import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -21,8 +21,12 @@ type FullReviewsViewProps = {
 
 // One full review per row, normal vertical scroll — matching every other
 // list in the app (reviews.tsx, index.tsx). Previously a horizontal paging
-// carousel (one review per swipe); only the scroll axis changed, card
-// content (place name, author+rating, note, full-bleed photo) is unchanged.
+// carousel (one review per swipe); only the scroll axis changed. The header
+// block itself now reuses FeedCardHeaderText directly instead of a
+// hand-rolled lookalike — same "one implementation, everyone matches"
+// reasoning that component's own header comment already states, so this
+// card's place name/location/note/rating stamp match the real feed and
+// travel-book reviews exactly rather than approximating them a third way.
 export function FullReviewsView({ items, photoUrls, viewerId, ownRatings }: FullReviewsViewProps) {
   const bottomInset = useBottomTabInset();
   const scrollHandler = useHideOnScrollHandler();
@@ -39,39 +43,34 @@ export function FullReviewsView({ items, photoUrls, viewerId, ownRatings }: Full
       renderItem={({ item }: { item: BoardVisitItem }) => {
         const ownRating = ownRatings?.[item.placeId];
         const showOwnRating = ownRating != null && item.authorId !== viewerId;
+        const photos = item.photoIds
+          .map((id, i) => ({ url: photoUrls[id], ratio: item.photoAspectRatios[i] }))
+          .filter((p): p is { url: string; ratio: number | null } => p.url != null);
         return (
-        <View style={styles.card}>
-          <View style={styles.textWrap}>
-            <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })}>
-              <View style={styles.header}>
-                <ThemedText type="displaySerif">{item.placeName}</ThemedText>
-                {item.stateCountry && (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {item.stateCountry}
-                  </ThemedText>
-                )}
-                <View style={styles.authorRatingRow}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {item.authorName}
-                  </ThemedText>
-                  {item.rating != null && <RatingGlassBadgeGated rating={item.rating} size={40} />}
-                </View>
-                {showOwnRating && (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Your rating: {ownRating.toFixed(1)} ★
-                  </ThemedText>
-                )}
-              </View>
-              {item.note && <ThemedText type="default">{item.note}</ThemedText>}
-            </Pressable>
+          <View style={styles.card}>
+            <View style={styles.textWrap}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {item.authorName}
+              </ThemedText>
+              <Pressable onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })}>
+                <FeedCardHeaderText
+                  placeName={item.placeName}
+                  placeId={item.placeId}
+                  stateCountry={item.stateCountry}
+                  visitedLine={[item.rating == null ? 'Visited' : null, item.note || null].filter(Boolean).join(' · ')}
+                  rating={item.rating}
+                  stampSeed={item.id}
+                  stampCanSeep={photos.length > 0}
+                />
+              </Pressable>
+              {showOwnRating && (
+                <ThemedText type="small" themeColor="textSecondary">
+                  Your rating: {ownRating.toFixed(1)} ★
+                </ThemedText>
+              )}
+            </View>
+            <PhotoGrid urls={photos.map((p) => p.url)} aspectRatios={photos.map((p) => p.ratio)} />
           </View>
-          {(() => {
-            const photos = item.photoIds
-              .map((id, i) => ({ url: photoUrls[id], ratio: item.photoAspectRatios[i] }))
-              .filter((p): p is { url: string; ratio: number | null } => p.url != null);
-            return <PhotoGrid urls={photos.map((p) => p.url)} aspectRatios={photos.map((p) => p.ratio)} />;
-          })()}
-        </View>
         );
       }}
     />
@@ -89,15 +88,17 @@ const styles = StyleSheet.create({
   card: {
     gap: Spacing.three,
   },
+  // position/zIndex here (not just on FeedCardHeaderText's own internal
+  // zIndex) matters because PhotoGrid below is a *sibling* of this block,
+  // not of FeedCardHeaderText itself — zIndex only resolves stacking among
+  // elements sharing one immediate parent, so the stamp's own zIndex
+  // (scoped to its direct parent, FeedCardHeaderText) can't win that fight
+  // on its own. Same fix (tabs)/index.tsx's cardTop needed for the same
+  // reason.
   textWrap: {
+    position: 'relative',
+    zIndex: 2,
     paddingHorizontal: Spacing.four,
-  },
-  header: {
     gap: Spacing.half,
-  },
-  authorRatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
   },
 });

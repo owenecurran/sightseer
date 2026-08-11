@@ -1,4 +1,4 @@
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -28,9 +28,16 @@ const VIEW_MODES: { key: ViewMode; label: string }[] = [
   { key: 'map', label: 'Map' },
 ];
 
+// `userId` optional (not a required route param the way collections/[userId]
+// needs one) — plain `/reviews` from profile.tsx's own "Latest reviews"
+// still means "mine", same as before this screen could show anyone else's;
+// user/[id].tsx's own "Latest reviews" now passes its target explicitly
+// instead of that screen needing a second, near-duplicate route file.
 export default function AllReviewsScreen() {
+  const { userId: routeUserId } = useLocalSearchParams<{ userId?: string }>();
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
+  const [targetUserName, setTargetUserName] = useState<string | null>(null);
   const [items, setItems] = useState<BoardVisitItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -38,13 +45,26 @@ export default function AllReviewsScreen() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
+  const targetUserId = routeUserId ?? session?.user.id;
+  const isSelf = Boolean(session && targetUserId === session.user.id);
+
   useFocusEffect(
     useCallback(() => {
-      if (!session) return;
+      if (!session || !targetUserId) return;
       setError(null);
       (async () => {
         try {
-          const myItems = await getMyVisitItems(session.user.id);
+          const [myItems] = await Promise.all([
+            getMyVisitItems(targetUserId),
+            isSelf
+              ? Promise.resolve()
+              : supabase
+                  .from('users')
+                  .select('name, handle')
+                  .eq('id', targetUserId)
+                  .single()
+                  .then(({ data }) => setTargetUserName(data?.name ?? data?.handle ?? null)),
+          ]);
           setItems(myItems);
 
           const photoIds = myItems.flatMap((item) => item.photoIds);
@@ -52,12 +72,12 @@ export default function AllReviewsScreen() {
             setPhotoUrls(await getPhotoViewUrls(photoIds));
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load your reviews.');
+          setError(err instanceof Error ? err.message : 'Could not load these reviews.');
         } finally {
           setHasLoadedOnce(true);
         }
       })();
-    }, [session])
+    }, [session, targetUserId, isSelf])
   );
 
   async function handleRemove(visitId: string) {
@@ -80,7 +100,9 @@ export default function AllReviewsScreen() {
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
 
-          <ThemedText type="displaySerif">Your reviews</ThemedText>
+          <ThemedText type="displaySerif">
+            {isSelf ? 'Your reviews' : targetUserName ? `${targetUserName}'s reviews` : 'Reviews'}
+          </ThemedText>
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -123,7 +145,7 @@ export default function AllReviewsScreen() {
               <ListView
                 items={items}
                 photoUrls={photoUrls}
-                isOwner
+                isOwner={isSelf}
                 onRemove={handleRemove}
                 removeMessage="Delete this review? This can't be undone."
               />

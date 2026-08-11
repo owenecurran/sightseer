@@ -23,6 +23,14 @@ type VisitMenuProps = {
   authorAvatarUrl?: string | null;
   placeName: string;
   note?: string | null;
+  // Tagged-but-not-owner viewers only — an "Untag yourself" row appears
+  // alongside Report exactly when both are supplied and true/present (an
+  // owner never sees it regardless, same as Report). The caller owns the
+  // actual removal (DB call + its own list-state update, see
+  // tagged-visits.ts's untagSelf and tagged-in.tsx's own call site) — this
+  // component only awaits it and closes the menu on success.
+  isViewerTagged?: boolean;
+  onUntagSelf?: () => Promise<void>;
 };
 
 export function VisitMenu({
@@ -34,6 +42,8 @@ export function VisitMenu({
   authorAvatarUrl,
   placeName,
   note,
+  isViewerTagged,
+  onUntagSelf,
 }: VisitMenuProps) {
   const { session } = useAuth();
   const theme = useTheme();
@@ -41,6 +51,7 @@ export function VisitMenu({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [isUntagging, setIsUntagging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleToggle() {
@@ -59,6 +70,20 @@ export function VisitMenu({
     }
     setConfirmingDelete(false);
     onDeleted();
+  }
+
+  async function handleUntag() {
+    if (!onUntagSelf) return;
+    setError(null);
+    setIsUntagging(true);
+    try {
+      await onUntagSelf();
+      setIsOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove that tag.');
+    } finally {
+      setIsUntagging(false);
+    }
   }
 
   return (
@@ -93,13 +118,20 @@ export function VisitMenu({
                 </Pressable>
               </>
             ) : (
-              <Pressable
-                onPress={() => {
-                  setIsOpen(false);
-                  setIsReportOpen(true);
-                }}>
-                <ThemedText type="small">Report</ThemedText>
-              </Pressable>
+              <>
+                {isViewerTagged && onUntagSelf && (
+                  <Pressable onPress={handleUntag} disabled={isUntagging}>
+                    <ThemedText type="small">{isUntagging ? 'Removing…' : 'Untag yourself'}</ThemedText>
+                  </Pressable>
+                )}
+                <Pressable
+                  onPress={() => {
+                    setIsOpen(false);
+                    setIsReportOpen(true);
+                  }}>
+                  <ThemedText type="small">Report</ThemedText>
+                </Pressable>
+              </>
             )}
           </View>
 

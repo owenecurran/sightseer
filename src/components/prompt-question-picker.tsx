@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { StretchText } from '@/components/ui/stretch-text';
@@ -89,34 +89,46 @@ export function PromptQuestionPicker({
       </View>
       <View style={styles.divider} />
       <View style={styles.promptColumn}>
-        {selectedCategory == null && (
-          <ThemedText type="small" themeColor="textSecondary">
-            Pick a category
-          </ThemedText>
-        )}
-        {selectedCategory != null && promptsInCategory.length === 0 && (
-          <ThemedText type="small" themeColor="textSecondary">
-            No prompts left in this category.
-          </ThemedText>
-        )}
-        {promptsInCategory.map((p) => {
-          const isSelected = p.slug === selectedSlug;
-          return (
-            <Pressable key={p.slug} onPress={() => onSelectPrompt(p.slug)} style={styles.row}>
-              {isSelected && <View style={styles.selectedPill} />}
-              <ThemedText type="roundedStat" style={[styles.promptText, isSelected && styles.selectedText]}>
-                {p.label}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
+        <ScrollView contentContainerStyle={styles.promptColumnContent} showsVerticalScrollIndicator={false}>
+          {selectedCategory == null && (
+            <ThemedText type="small" themeColor="textSecondary">
+              Pick a category
+            </ThemedText>
+          )}
+          {selectedCategory != null && promptsInCategory.length === 0 && (
+            <ThemedText type="small" themeColor="textSecondary">
+              No prompts left in this category.
+            </ThemedText>
+          )}
+          {promptsInCategory.map((p) => {
+            const isSelected = p.slug === selectedSlug;
+            return (
+              <Pressable key={p.slug} onPress={() => onSelectPrompt(p.slug)} style={styles.row}>
+                {isSelected && <View style={styles.selectedPill} />}
+                <ThemedText type="roundedStat" style={[styles.promptText, isSelected && styles.selectedText]}>
+                  {p.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
     </View>
   );
 }
 
+// Fixed, not content-driven — see `box`'s own comment for why: capping the
+// whole picker's height (instead of letting promptColumn grow with however
+// many prompts a category ends up with) is what keeps categoryColumn's own
+// cross-stretch (and therefore each category pill's height) stable as more
+// prompts get added to constants/profile-prompts.ts over time, and is what
+// makes the prompt list itself an actual scroll region instead of just
+// growing the whole page taller.
+const PICKER_HEIGHT = 280;
+
 const styles = StyleSheet.create({
   box: {
+    height: PICKER_HEIGHT,
     flexDirection: 'row',
     borderWidth: 1,
     borderColor: 'rgba(234,231,207,0.35)',
@@ -134,10 +146,12 @@ const styles = StyleSheet.create({
   },
   promptColumn: {
     flex: 1,
+    backgroundColor: '#010b06',
+  },
+  promptColumnContent: {
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     gap: Spacing.two,
-    backgroundColor: '#010b06',
   },
   row: {
     position: 'relative',

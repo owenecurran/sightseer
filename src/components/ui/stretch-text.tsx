@@ -19,6 +19,19 @@ type StretchTextProps = ThemedTextProps & {
   outline?: boolean;
   fill?: boolean;
   fillHeight?: boolean;
+  // `fillHeight` modifier: scale to *exactly* the container's height rather
+  // than deliberately overshooting it. fillHeight's default behavior
+  // (FILL_HEIGHT_OVERSHOOT + VISUAL_LIFT_RATIO below) intentionally pushes
+  // the rendered text past its own box, top and bottom, so the visible ink
+  // — which is smaller than the layout box it's measured from — still fills
+  // an overlay band edge to edge. That's right for a band drawn *over*
+  // something (placeOverlay), and wrong for a box with real content
+  // directly above it, where the overshoot just covers that content (see
+  // teaser-card.tsx: the stretched title was overlapping the section label
+  // above it). With this set, the two compensations zero out and the
+  // transform math lands the scaled text exactly on the container's own
+  // top and bottom edges.
+  fillHeightExact?: boolean;
 };
 
 const MIN_SCALE = 0.85;
@@ -41,6 +54,7 @@ export function StretchText({
   outline,
   fill,
   fillHeight,
+  fillHeightExact,
   style,
   ...rest
 }: StretchTextProps) {
@@ -69,7 +83,8 @@ export function StretchText({
     ? Math.max(rawScaleY, OUTLINE_MIN_SCALE)
     : fill
       ? fillHeight
-        ? Math.max(rawScaleY, FILL_MIN_SCALE) * FILL_HEIGHT_OVERSHOOT
+        ? Math.max(rawScaleY, FILL_MIN_SCALE) *
+          (fillHeightExact ? 1 : FILL_HEIGHT_OVERSHOOT)
         : fillScaleY(scaleX)
       : 1;
   // The centered-growth correction for `fillHeight` (and the plain
@@ -91,7 +106,13 @@ export function StretchText({
   // freshly measured against this exact render — worth a quick visual
   // recheck next time this file is touched, and re-tuning this one constant
   // if it's still off rather than revisiting the centering math again.
-  const VISUAL_LIFT_RATIO = 0.1;
+  //
+  // Zeroed under `fillHeightExact` (see that prop) — with both this and the
+  // overshoot neutralized, the remaining `(contentHeight * (1 - scaleY))/2`
+  // term exactly cancels the container's own justifyContent:'center' inset,
+  // putting the scaled text's top edge on the container's top edge and its
+  // bottom on the container's bottom.
+  const VISUAL_LIFT_RATIO = fillHeightExact ? 0 : 0.1;
   const centeredGrowthTranslateY =
     (contentHeight * (1 - scaleY)) / 2 -
     contentHeight * scaleY * VISUAL_LIFT_RATIO;

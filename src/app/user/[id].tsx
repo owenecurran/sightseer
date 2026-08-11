@@ -12,7 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
-import { StretchText } from '@/components/ui/stretch-text';
+import { TeaserCard } from '@/components/ui/teaser-card';
 import { UserMenu } from '@/components/user-menu';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -23,7 +23,8 @@ import type { Database } from '@/lib/database.types';
 import { followUser, getFollowCounts, getFollowStatus, removeFollower, unfollowOrCancelRequest } from '@/lib/follows';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { parseDefaultCamera } from '@/lib/map-layers';
-import { getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
+import { getPhotoViewUrls } from '@/lib/photo-view';
+import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { supabase } from '@/lib/supabase';
 
 type UserRow = Database['public']['Tables']['users']['Row'];
@@ -45,6 +46,7 @@ export default function UserProfileScreen() {
   const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [totalVisits, setTotalVisits] = useState(0);
   const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
+  const [latestVisitPhotoUrl, setLatestVisitPhotoUrl] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -88,6 +90,12 @@ export default function UserProfileScreen() {
           setTotalVisits(showcase.totalVisits);
           setLatestVisit(showcase.latestVisit);
           setIsBlocked(blocked);
+
+          // First photo by position, matching profile.tsx's own "Latest
+          // reviews" teaser — a multi-photo review shows its first photo
+          // here, not just whichever one the query happened to return first.
+          const photoId = firstPhotoId(showcase.latestVisit);
+          setLatestVisitPhotoUrl(photoId ? (await getPhotoViewUrls([photoId]))[photoId] : undefined);
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not load this profile.');
         } finally {
@@ -254,18 +262,13 @@ export default function UserProfileScreen() {
               </ThemedText>
             )}
 
-            {canSeeContent && latestVisit && (
-              <Pressable
-                onPress={() => router.push({ pathname: '/visit/[id]', params: { id: latestVisit.id } })}
-                style={styles.borderedBox}>
-                <ThemedText type="sectionLabel">Latest reviews</ThemedText>
-                <View style={styles.latestReviewRow}>
-                  <View style={styles.latestReviewText}>
-                    <StretchText type="headline" fill>{latestVisit.places?.name ?? 'Unknown place'}</StretchText>
-                  </View>
-                  <ThemedText type="headline">›</ThemedText>
-                </View>
-              </Pressable>
+            {canSeeContent && latestVisit && user && (
+              <TeaserCard
+                label="Latest reviews"
+                title={latestVisit.places?.name ?? 'Unknown place'}
+                thumbnailUrl={latestVisitPhotoUrl}
+                onPress={() => router.push({ pathname: '/reviews', params: { userId: user.id } })}
+              />
             )}
 
             {canSeeContent && user && <ProfilePromptsSection userId={user.id} />}
@@ -335,21 +338,6 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: Spacing.three,
-  },
-  borderedBox: {
-    borderWidth: 1,
-    borderColor: 'rgba(234,231,207,0.35)',
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    gap: Spacing.one,
-  },
-  latestReviewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  latestReviewText: {
-    flex: 1,
   },
   neutralCard: {
     borderRadius: Spacing.three,
