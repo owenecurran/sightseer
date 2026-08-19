@@ -133,7 +133,10 @@ export function TripGroupCard({
     <View style={styles.wrap}>
       <ThemedView type="backgroundElement" style={styles.header}>
         <View style={styles.headerRow}>
-          <TripMapSquare visits={allVisits} />
+          <TripMapSquare
+            visits={allVisits}
+            center={trip.areaLat != null && trip.areaLng != null ? { lat: trip.areaLat, lng: trip.areaLng } : null}
+          />
           <View style={styles.headerText}>
             <ThemedText type="sectionLabel">{isOuting ? 'Night out' : 'Trip'}</ThemedText>
             {/* The area name comes from the deepest place every review sits

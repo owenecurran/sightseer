@@ -126,7 +126,13 @@ async function getFeedVisitsForFollowed(followedIds: string[], myUserId: string)
     .from('visits')
     .select(FEED_VISIT_SELECT)
     .in('user_id', followedIds)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    // Bounded: this previously fetched every visit any followed user ever
+    // posted (plus joins for photos/likes/comments on each) — fine at ten
+    // rows, quadratically painful at a thousand. The feed is a recency
+    // surface; 50 covers it. Revisit with real cursor pagination if
+    // infinite scroll is ever wanted.
+    .limit(50);
   if (error) throw error;
 
   const rawVisits = data as unknown as RawFeedVisit[];
@@ -292,9 +298,15 @@ export async function getFeedItems(myUserId: string): Promise<FeedItem[]> {
   const followedIds = await getFollowedUserIds(myUserId);
   if (followedIds.length === 0) return [];
 
-  const [visits, recaps] = await Promise.all([
+  // The trips RPC is the slowest query here (~300ms even on small data —
+  // recursive place-hierarchy CTEs) and only needs author ids, which are
+  // known before the visits arrive: every feed author is a followed user.
+  // Running it alongside the other two takes it off the critical path
+  // instead of adding its full cost after them.
+  const [visits, recaps, tripsSettled] = await Promise.all([
     getFeedVisitsForFollowed(followedIds, myUserId),
     getFeedRecaps(followedIds),
+    getTripsForUsers(followedIds).catch(() => [] as Trip[]),
   ]);
 
   const items: FeedItem[] = [
@@ -302,19 +314,7 @@ export async function getFeedItems(myUserId: string): Promise<FeedItem[]> {
     ...recaps.map((recap): FeedItem => ({ type: 'recap', sortKey: recap.publishedAt, recap })),
   ];
 
-  // Trips are computed per author across ALL their visits (not just the
-  // ones in this feed), so this is keyed off the authors actually present
-  // rather than the visit rows — see getTripsForUsers. Best-effort: a
-  // failure here degrades to an ungrouped feed instead of an empty one.
-  const authorIds = [...new Set(visits.map((v) => v.user_id))];
-  let trips: Trip[] = [];
-  try {
-    trips = await getTripsForUsers(authorIds);
-  } catch {
-    trips = [];
-  }
-
-  return groupVisitsIntoTrips(items, trips).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+  return groupVisitsIntoTrips(items, tripsSettled).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 }
 
 // "This is my 2nd visit here" — the visit's ordinal position among the same

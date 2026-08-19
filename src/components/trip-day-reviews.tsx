@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -6,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { VisitCard } from '@/components/visit-card';
 import { Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import type { FeedVisit, TripDay } from '@/lib/feed';
 
 type TripDayReviewsProps = {
@@ -28,7 +30,8 @@ const BEHIND_TILT_DEGREES = 2;
 const SHUFFLE_MS = 220;
 // Arrow buttons sit ON the card's left/right edges rather than under it, so
 // stepping through never moves the control you're tapping.
-const ARROW_SIZE = 40;
+const ARROW_SIZE = 56;
+const ARROW_ICON_SIZE = 28;
 
 function formatDate(date: string): string {
   const [year, month, day] = date.split('-').map(Number);
@@ -62,13 +65,15 @@ export function TripDayReviews({
   onShare,
   onVisitDeleted,
 }: TripDayReviewsProps) {
+  const theme = useTheme();
   const [index, setIndex] = useState(0);
-  // The tallest card seen so far, held as a minHeight on the stack. Cards
-  // differ in height, and letting the container resize on every step made
-  // the whole feed shift under the buttons mid-cycle. minHeight (never
-  // height) locks the layout without ever cropping a taller card — if one
-  // exceeds the current max it simply raises it.
-  const [maxHeight, setMaxHeight] = useState(0);
+  // Where to pin the arrows vertically: the centre of the ACTIVE card's
+  // photo block. Tracked per card rather than captured once — with the
+  // container height no longer locked the box already resizes to each
+  // review, so freezing the arrows at the first card's photo position would
+  // just strand them off-centre on every other one. Null until a card with
+  // photos lays out, in which case they centre on the card instead.
+  const [arrowAnchor, setArrowAnchor] = useState<number | null>(null);
   const travel = useSharedValue(0);
   const fade = useSharedValue(1);
 
@@ -77,8 +82,10 @@ export function TripDayReviews({
   const activeIndex = Math.min(index, reviewCount - 1);
   const activeVisit = day.visits[activeIndex];
 
-  function measureCard(height: number) {
-    setMaxHeight((current) => (height > current ? height : current));
+  function handlePhotoLayout(offsetY: number, height: number) {
+    if (height <= 0) return;
+    const next = offsetY + height / 2;
+    setArrowAnchor((current) => (current != null && Math.abs(current - next) < 1 ? current : next));
   }
 
   const cardStyle = useAnimatedStyle(() => ({
@@ -114,46 +121,64 @@ export function TripDayReviews({
         )}
       </View>
 
-      {/* The cards behind are plain tinted rectangles, not real reviews:
-          they only ever show as a sliver of edge, and rendering extra live
-          VisitCards (each with its own photos) to produce that sliver would
-          be pure waste. They fill this wrapper, whose height comes from the
-          real card in flow beneath them. */}
-      <View style={[styles.stack, maxHeight > 0 && { minHeight: maxHeight }]}>
-        {reviewCount > 2 && <ThemedView type="backgroundElement" style={[styles.behind, styles.behindFar]} />}
-        {reviewCount > 1 && <ThemedView type="backgroundElement" style={[styles.behind, styles.behindNear]} />}
+      {/* The cards behind are plain tinted rectangles, not real reviews —
+          they only ever show as a sliver of edge, so rendering extra live
+          VisitCards to produce that sliver would be pure waste.
 
-        <Animated.View
-          style={cardStyle}
-          onLayout={(e) => measureCard(e.nativeEvent.layout.height)}>
-          <VisitCard
-            visit={activeVisit}
-            photoUrls={photoUrls}
-            avatarUrl={avatarUrls[activeVisit.user_id]}
-            isOwner={viewerId === activeVisit.user_id}
-            isCopied={copiedVisitId === activeVisit.id}
-            onToggleLike={() => onToggleLike(activeVisit)}
-            onShare={() => onShare(activeVisit)}
-            onDeleted={() => onVisitDeleted(activeVisit.id)}
-          />
-        </Animated.View>
+          Height is deliberately NOT locked: reviews differ in height (a wide
+          single photo is far shorter than a 2x2 grid), and pinning the box
+          to the tallest left visible dead space under the short ones. The
+          trade is that the box resizes as you step through. */}
+      <View style={styles.stack}>
+        <View style={styles.cardLayer}>
+          {reviewCount > 2 && <ThemedView type="backgroundElement" style={[styles.behind, styles.behindFar]} />}
+          {reviewCount > 1 && <ThemedView type="backgroundElement" style={[styles.behind, styles.behindNear]} />}
 
-        {reviewCount > 1 && (
-          <>
-            <Pressable
-              onPress={() => step(-1)}
-              hitSlop={10}
-              style={[styles.arrow, styles.arrowLeft]}>
-              <ThemedText type="headline">‹</ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={() => step(1)}
-              hitSlop={10}
-              style={[styles.arrow, styles.arrowRight]}>
-              <ThemedText type="headline">›</ThemedText>
-            </Pressable>
-          </>
-        )}
+          <Animated.View style={cardStyle}>
+            <VisitCard
+              onPhotoLayout={handlePhotoLayout}
+              visit={activeVisit}
+              photoUrls={photoUrls}
+              avatarUrl={avatarUrls[activeVisit.user_id]}
+              isOwner={viewerId === activeVisit.user_id}
+              isCopied={copiedVisitId === activeVisit.id}
+              onToggleLike={() => onToggleLike(activeVisit)}
+              onShare={() => onShare(activeVisit)}
+              onDeleted={() => onVisitDeleted(activeVisit.id)}
+            />
+          </Animated.View>
+
+          {reviewCount > 1 && (
+            <>
+              <Pressable
+                onPress={() => step(-1)}
+                hitSlop={10}
+                style={[
+                  styles.arrow,
+                  { backgroundColor: theme.backgroundElement },
+                  styles.arrowLeft,
+                  arrowAnchor != null
+                    ? { top: arrowAnchor - ARROW_SIZE / 2, marginTop: 0 }
+                    : null,
+                ]}>
+                <Ionicons name="chevron-back" size={ARROW_ICON_SIZE} color={theme.text} />
+              </Pressable>
+              <Pressable
+                onPress={() => step(1)}
+                hitSlop={10}
+                style={[
+                  styles.arrow,
+                  { backgroundColor: theme.backgroundElement },
+                  styles.arrowRight,
+                  arrowAnchor != null
+                    ? { top: arrowAnchor - ARROW_SIZE / 2, marginTop: 0 }
+                    : null,
+                ]}>
+                <Ionicons name="chevron-forward" size={ARROW_ICON_SIZE} color={theme.text} />
+              </Pressable>
+            </>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -172,6 +197,11 @@ const styles = StyleSheet.create({
   // position:'relative' anchors the cards behind; no overflow:'hidden', so
   // the rating stamp still leans past the card's own corner.
   stack: {
+    position: 'relative',
+  },
+  // Hugs the card, so backgrounds and arrows track the review's real height
+  // rather than the locked outer box.
+  cardLayer: {
     position: 'relative',
   },
   behind: {
@@ -206,7 +236,6 @@ const styles = StyleSheet.create({
     borderRadius: ARROW_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
     zIndex: 10,
   },
   arrowLeft: {

@@ -8,6 +8,7 @@ import { Spacing } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BoardVisitItem } from '@/lib/boards';
 import type { FeedVisit } from '@/lib/feed';
+import { colorForRating } from '@/lib/rating-gradient';
 
 // Matches location-search-modal's STYLE_URL, in the form the Static Images
 // API wants (`mapbox/dark-v10` rather than the `mapbox://styles/` URI).
@@ -24,6 +25,10 @@ const RETINA = '@2x';
 // Enough of a margin around the trip's own bounds that pins don't sit on
 // the thumbnail's edge.
 const BOUNDS_PADDING_RATIO = 1.6;
+// Ring drawn around the thumbnail, tinted by the trip's average score — the
+// same gradient the rating stamps use, so a glance at the map square reads
+// as "how good was this trip" without a number on it.
+const BORDER_WIDTH = 3;
 const MIN_SPAN_DEGREES = 0.02;
 // How many pins to actually draw. The Static API takes them as path
 // segments in the URL, so an unbounded list would build a URL long enough
@@ -33,6 +38,10 @@ const MAX_PINS = 5;
 
 type TripMapSquareProps = {
   visits: FeedVisit[];
+  // The trip's destination. Centring here rather than on the midpoint of
+  // the pins is what stops a single layover dragging the frame off into
+  // empty country — see the migration that added these coordinates.
+  center?: { lat: number; lng: number } | null;
 };
 
 type Coord = { lat: number; lng: number };
@@ -99,7 +108,7 @@ function toBoardItems(visits: FeedVisit[]): BoardVisitItem[] {
 // card (each with its own GL context and tile fetches) is drastically more
 // expensive than one cached PNG. The interactive map is created only once
 // the user actually opens it.
-export function TripMapSquare({ visits }: TripMapSquareProps) {
+export function TripMapSquare({ visits, center: destination }: TripMapSquareProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const coords = coordsOf(visits);
 
@@ -108,7 +117,15 @@ export function TripMapSquare({ visits }: TripMapSquareProps) {
   if (coords.length === 0) return null;
 
   const token = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-  const { center, zoom } = frameFor(coords);
+  const framed = frameFor(coords);
+  // The destination wins when known; the pin frame is the fallback for a
+  // trip whose area has no coordinates cached.
+  const center = destination ?? framed.center;
+  const zoom = framed.zoom;
+
+  const rated = visits.map((v) => v.rating).filter((r): r is number => r != null);
+  const averageRating =
+    rated.length > 0 ? rated.reduce((sum, r) => sum + r, 0) / rated.length : null;
   const pins = coords
     .slice(0, MAX_PINS)
     .map((c) => `pin-s+EAE7CF(${c.lng.toFixed(5)},${c.lat.toFixed(5)})`)
@@ -120,7 +137,13 @@ export function TripMapSquare({ visits }: TripMapSquareProps) {
   return (
     <>
       <Pressable onPress={() => setIsExpanded((open) => !open)} hitSlop={4}>
-        <LoadableImage source={staticUrl ? { uri: staticUrl } : undefined} style={styles.square} />
+        <LoadableImage
+          source={staticUrl ? { uri: staticUrl } : undefined}
+          style={[
+            styles.square,
+            averageRating != null && { borderColor: colorForRating(averageRating) },
+          ]}
+        />
       </Pressable>
 
       {/* Fullscreen rather than an inline panel — the point of opening it is
@@ -149,6 +172,10 @@ const styles = StyleSheet.create({
     width: SQUARE_SIZE,
     height: SQUARE_SIZE,
     borderRadius: Spacing.two,
+    // Transparent by default so an unrated trip keeps the same footprint as
+    // a rated one — only the colour appears, never the layout shift.
+    borderWidth: BORDER_WIDTH,
+    borderColor: 'transparent',
   },
   // BoardMapView is flex:1, so it needs a parent with a real height to fill
   // rather than collapsing to nothing — here that's the whole screen.

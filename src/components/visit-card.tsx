@@ -46,6 +46,12 @@ type VisitCardProps = {
   onToggleLike: () => void;
   onShare: () => void;
   onDeleted: () => void;
+  // Reports where this card's photo block sits within the card (offset from
+  // the card's own top, and its height). Only the trip day swiper uses it,
+  // to centre its arrows on the photo rather than on the whole card — the
+  // photo's position isn't derivable from outside, since the header above
+  // it varies with the author line wrapping.
+  onPhotoLayout?: (offsetY: number, height: number) => void;
   // Tagged-but-not-owner viewers only (see VisitMenu's own prop) — omitted
   // entirely (no "Untag yourself" option) when not supplied, which is every
   // caller except tagged-in.tsx today.
@@ -74,6 +80,7 @@ export function VisitCard({
   onDeleted,
   onUntagSelf,
   maxStampRise,
+  onPhotoLayout,
 }: VisitCardProps) {
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [commentCount, setCommentCount] = useState(visit.commentCount);
@@ -246,7 +253,11 @@ export function VisitCard({
           stamp still overflows into that gutter deliberately — the point
           of this being a plain sibling View with no clipping is that the
           two are independent. */}
-      <View>
+      <View
+        onLayout={(e) =>
+          onPhotoLayout?.(e.nativeEvent.layout.y, e.nativeEvent.layout.height)
+        }
+      >
         {(() => {
           const photos = visit.photoIds
             .map((id, i) => ({

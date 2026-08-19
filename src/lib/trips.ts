@@ -24,6 +24,10 @@ export type Trip = {
   // of the trip's reviews sit inside. Chosen server-side, not here.
   areaName: string;
   areaLevel: TripAreaLevel;
+  // The displayed area's own coordinates — what the map thumbnail centres
+  // on. Null for a place cached without them.
+  areaLat: number | null;
+  areaLng: number | null;
   startDate: string;
   endDate: string;
   // Recent enough that more reviews are plausibly still coming — the feed
@@ -42,6 +46,8 @@ type RawTrip = {
   area_place_id: string;
   area_name: string;
   area_level: string;
+  area_lat: number | null;
+  area_lng: number | null;
   auto_area_place_id: string;
   start_date: string;
   end_date: string;
@@ -71,6 +77,8 @@ export async function getTripsForUsers(userIds: string[]): Promise<Trip[]> {
     areaPlaceId: row.area_place_id,
     autoAreaPlaceId: row.auto_area_place_id,
     areaName: row.area_name,
+    areaLat: row.area_lat,
+    areaLng: row.area_lng,
     // Falls back rather than throwing on an unexpected level — a label
     // that renders is better than a feed that doesn't.
     areaLevel: isAreaLevel(row.area_level) ? row.area_level : 'locality',

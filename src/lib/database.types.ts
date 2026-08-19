@@ -1870,7 +1870,9 @@ export type Database = {
       get_trips_for_users: {
         Args: { user_ids: string[] }
         Returns: {
+          area_lat: number
           area_level: string
+          area_lng: number
           area_name: string
           area_place_id: string
           auto_area_place_id: string
@@ -1900,6 +1902,7 @@ export type Database = {
         Returns: boolean
       }
       longtransactionsenabled: { Args: never; Returns: boolean }
+      majority_area: { Args: { p_ids: string[] }; Returns: string }
       match_contacts_by_hash: {
         Args: { hashes: string[] }
         Returns: {

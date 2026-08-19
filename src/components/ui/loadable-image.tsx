@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { ImageLoadingIcon } from '@/components/ui/image-loading-icon';
+import { stableImageSource } from '@/lib/image-cache';
 
 type LoadableImageProps = Omit<ImageProps, 'style'> & {
   style?: StyleProp<ViewStyle>;
@@ -24,7 +25,16 @@ export function LoadableImage({ source, style, onLoad, ...rest }: LoadableImageP
 
   return (
     <View style={[style, styles.clip]}>
-      {hasSource && <Image {...rest} source={source} style={styles.fill} onLoad={handleLoad} />}
+      {hasSource && (
+        <Image
+          {...rest}
+          // Stable disk-cache identity across presigned-URL rotation — see
+          // stableImageSource. Non-string sources pass through untouched.
+          source={typeof source === 'object' && source != null && 'uri' in source ? stableImageSource((source as { uri?: string }).uri) : source}
+          style={styles.fill}
+          onLoad={handleLoad}
+        />
+      )}
       {!isLoaded && <ImageLoadingIcon />}
     </View>
   );

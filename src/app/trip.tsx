@@ -127,7 +127,10 @@ export default function TripScreen() {
           ) : (
             <>
               <View style={styles.header}>
-                <TripMapSquare visits={allVisits} />
+                <TripMapSquare
+                  visits={allVisits}
+                  center={trip.areaLat != null && trip.areaLng != null ? { lat: trip.areaLat, lng: trip.areaLng } : null}
+                />
                 <View style={styles.headerText}>
                   <ThemedText type="sectionLabel">Trip</ThemedText>
                   <StretchText type="headline" fill>

@@ -1,4 +1,5 @@
 import { getPhotoViewUrls } from '@/lib/photo-view';
+import { downscaleForUpload } from '@/lib/photo-downscale';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 import type { EditablePhoto } from '@/lib/visit-edit';
@@ -147,7 +148,9 @@ type UploadDraftPhotoParams = {
 // draft-scoped edge function/ownership check instead.
 export async function uploadPhotoForDraft(params: UploadDraftPhotoParams): Promise<string> {
   const { draftId, uri, mimeType, width, height, position = 0 } = params;
-  const contentType = mimeType && ALLOWED_CONTENT_TYPES.includes(mimeType) ? mimeType : 'image/jpeg';
+  // Downscale before anything touches the network — see photo-downscale.ts.
+  const scaled = await downscaleForUpload(uri, width, height, mimeType);
+  const contentType = ALLOWED_CONTENT_TYPES.includes(scaled.mimeType) ? scaled.mimeType : 'image/jpeg';
 
   const { data, error: fnError } = await supabase.functions.invoke('create-draft-photo-upload-url', {
     body: { draftId, contentType },
@@ -155,7 +158,7 @@ export async function uploadPhotoForDraft(params: UploadDraftPhotoParams): Promi
   if (fnError) throw fnError;
   const { uploadUrl, r2Key } = data as { uploadUrl: string; r2Key: string };
 
-  const fileResponse = await fetch(uri);
+  const fileResponse = await fetch(scaled.uri);
   const blob = await fileResponse.blob();
 
   const uploadResponse = await fetch(uploadUrl, {
@@ -170,8 +173,8 @@ export async function uploadPhotoForDraft(params: UploadDraftPhotoParams): Promi
   const { error: insertError } = await supabase.from('photos').insert({
     draft_visit_id: draftId,
     r2_key: r2Key,
-    width,
-    height,
+    width: scaled.width,
+    height: scaled.height,
     position,
   });
   if (insertError) throw insertError;
