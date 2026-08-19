@@ -10,6 +10,7 @@ import { DateCarousel } from '@/components/ui/date-carousel';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
+import { addHomeLocation } from '@/lib/home-locations';
 import { supabase } from '@/lib/supabase';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
@@ -61,6 +62,28 @@ export default function DemographicsScreen() {
       .from('users')
       .update({ ...fields, has_set_demographics: true })
       .eq('id', session.user.id);
+
+    // The hometown also becomes the user's first *home location*, which is
+    // what trip detection actually reads (users.home_place_id is only the
+    // demographic — see 20260819090200_backfill_home_locations.sql). Doing
+    // it here means trips work from day one instead of silently never
+    // grouping until someone happens to find the Settings screen.
+    //
+    // Deliberately not fatal: onboarding must not be blockable by this.
+    // Worst case the user adds it later in Settings, so a failure here is
+    // swallowed rather than trapping them on this step.
+    if (!updateError && fields.home_place_id) {
+      try {
+        await addHomeLocation(session.user.id, {
+          id: fields.home_place_id,
+          name: homePlace?.name ?? '',
+        } as PlaceRow);
+      } catch {
+        // Already saved, or at the cap — neither is worth interrupting
+        // signup over.
+      }
+    }
+
     setIsSubmitting(false);
 
     if (updateError) {
@@ -95,11 +118,15 @@ export default function DemographicsScreen() {
         </ThemedText>
 
         <View style={styles.section}>
-          <ThemedText type="smallBold">Hometown</ThemedText>
+          <ThemedText type="smallBold">Where are you based?</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Reviews you post around here count as everyday life — anything further afield gets grouped
+            into a trip. You can add up to 5 places later in Settings.
+          </ThemedText>
           <Pressable onPress={() => setIsPickerOpen(true)}>
             <ThemedView type="backgroundElement" style={styles.chip}>
               <ThemedText type="default" themeColor={homePlace ? 'text' : 'textSecondary'}>
-                {homePlace ? homePlace.name : 'Add your hometown'}
+                {homePlace ? homePlace.name : 'Add your home city'}
               </ThemedText>
             </ThemedView>
           </Pressable>

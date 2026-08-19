@@ -2,6 +2,7 @@ import { mapRawFeedVisit, type RawFeedVisit } from '@/lib/feed';
 import { resolveStateCountries } from '@/lib/places-cache';
 import { getVisitsTaggedIn, type TaggedVisit } from '@/lib/tagged-visits';
 import { supabase } from '@/lib/supabase';
+import type { Trip } from '@/lib/trips';
 import type { Database } from '@/lib/database.types';
 
 export type TravelBookRow = Database['public']['Tables']['travel_books']['Row'];
@@ -314,4 +315,38 @@ export async function uncheckTravelBookItem(userId: string, itemId: string): Pro
 export async function updateTravelBookPrivacy(bookId: string, isPrivate: boolean): Promise<void> {
   const { error } = await supabase.from('travel_books').update({ is_private: isPrivate }).eq('id', bookId);
   if (error) throw error;
+}
+
+// Creates the book, adds every visible visit from the trip to it, then
+// records the link so the feed shows "View travel book" instead of offering
+// to create a second one for the same trip.
+//
+// Not a transaction: supabase-js has no multi-statement transaction, and
+// the pieces are individually harmless if a later one fails (a book with
+// some of its visits, and no override row, just means the offer reappears).
+// Rather than leave that silently inconsistent, the override is written
+// last, so it only claims "converted" once the contents actually landed.
+export async function createTravelBookFromTrip(trip: Trip, title: string): Promise<string> {
+  const book = await createTravelBook({
+    userId: trip.userId,
+    title,
+    locationPlaceId: trip.areaPlaceId,
+  });
+
+  for (const visitId of trip.visitIds) {
+    await addVisitToTravelBook(book.id, visitId, trip.userId);
+  }
+
+  const { error } = await supabase.from('trip_overrides').upsert(
+    {
+      user_id: trip.userId,
+      start_date: trip.startDate,
+      travel_book_id: book.id,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,start_date' }
+  );
+  if (error) throw error;
+
+  return book.id;
 }

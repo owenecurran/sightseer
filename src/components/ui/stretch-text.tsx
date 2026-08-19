@@ -38,6 +38,15 @@ const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.3;
 const OUTLINE_MIN_SCALE = 0.05;
 const FILL_MIN_SCALE = 0.15;
+// Ceiling for `fill` mode. Without one, scaleX is just
+// containerWidth/contentWidth with only a floor applied, so a short title
+// in a wide column stretches without bound — invisible on a phone (narrow
+// containers keep the ratio near 1) but glaring on a desktop-width window,
+// where a two-word place name was being smeared across the whole column.
+// Capping it means very short text stops short of filling the full width
+// on large screens, which is the intended trade: fill is a look, not a
+// requirement to touch both edges.
+const FILL_MAX_SCALE = 2.2;
 
 const OUTLINE_OVERSHOOT = 1.02;
 const FILL_HEIGHT_OVERSHOOT = 1.25;
@@ -72,8 +81,10 @@ export function StretchText({
   const withinRange =
     alwaysFit || (rawScale >= MIN_SCALE && rawScale <= MAX_SCALE);
   const scaleX = alwaysFit
-    ? Math.max(rawScale, outline ? OUTLINE_MIN_SCALE : FILL_MIN_SCALE) *
-      (outline ? OUTLINE_OVERSHOOT : 1)
+    ? (outline
+        ? Math.max(rawScale, OUTLINE_MIN_SCALE) * OUTLINE_OVERSHOOT
+        // Clamped at both ends for fill — see FILL_MAX_SCALE.
+        : Math.min(Math.max(rawScale, FILL_MIN_SCALE), FILL_MAX_SCALE))
     : 1;
   const rawScaleY =
     containerHeight > 0 && contentHeight > 0

@@ -40,20 +40,15 @@ export default function CreateChooserScreen() {
           </Pressable>
         )}
 
-        <Pressable onPress={() => router.push('/review-form')}>
+        {/* One entry point instead of the old "New review" + "Bulk upload"
+            pair — how the review gets built (from a location, or from
+            photos' own metadata) is now a question asked inside that flow
+            rather than two sibling choices here. See review-source.tsx. */}
+        <Pressable onPress={() => router.push('/review-source')}>
           <ThemedView type="backgroundElement" style={styles.optionCard}>
             <ThemedText type="headline">New review</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Log a visit to a place you've been.
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
-
-        <Pressable onPress={() => router.push('/bulk-upload')}>
-          <ThemedView type="backgroundElement" style={styles.optionCard}>
-            <ThemedText type="headline">Bulk upload</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Turn a batch of photos into starting drafts, one per place.
+              Log a visit to a place you've been — from a location, or straight from your photos.
             </ThemedText>
           </ThemedView>
         </Pressable>

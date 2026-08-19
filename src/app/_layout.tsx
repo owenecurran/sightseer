@@ -1,7 +1,7 @@
 import { useFonts } from 'expo-font';
 import { DarkTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect} from 'react';
 import { Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type PagerView from 'react-native-pager-view';
@@ -16,6 +16,10 @@ import { TabPagerProvider } from '@/hooks/use-tab-pager';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
 
 SplashScreen.preventAutoHideAsync();
+
+// Paths that legitimately render with no session — excluded from the
+// signed-out redirect below so it can't loop against itself.
+const AUTH_PATHS = ['/sign-in', '/sign-up', '/forgot-password'];
 
 function RootNavigator() {
   const { session, profile, isLoading } = useAuth();
@@ -49,6 +53,21 @@ function RootNavigator() {
       pagerRef.current?.setPage(index);
     }
   }
+
+  // Signing out (or a token simply expiring) only invalidates screens that
+  // actually sit inside a Stack.Protected block. Every other authenticated
+  // screen — settings, drafts, home-locations, review-source, the detail
+  // routes — is an ordinary Stack route, so it stays perfectly valid with no
+  // session behind it and the user is stranded there with no way back (the
+  // reported "sign out locks me in Settings"). Enumerating every one of
+  // those screens in a guard would mean remembering to add each new one, so
+  // this catches the condition itself instead: no session, not already on an
+  // auth screen -> back to sign-in, wherever you happened to be.
+  useEffect(() => {
+    if (isLoading || isAuthenticated) return;
+    if (AUTH_PATHS.includes(pathname)) return;
+    router.replace('/sign-in');
+  }, [isAuthenticated, isLoading, pathname]);
 
   if (isLoading) return null;
 

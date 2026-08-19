@@ -9,6 +9,8 @@ import { DiscoverView } from "@/components/discover-view";
 import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { HomeLocationPrompt } from "@/components/home-location-prompt";
+import { TripGroupCard } from "@/components/trip-group-card";
 import { Avatar } from "@/components/ui/avatar";
 import { FeedRatingStamp } from "@/components/ui/feed-rating-stamp";
 import { LoadableImage } from "@/components/ui/loadable-image";
@@ -33,11 +35,16 @@ import {
   type FeedItem,
   type FeedVisit,
 } from "@/lib/feed";
+import { listHomeLocations } from "@/lib/home-locations";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 import { getPhotoViewUrls } from "@/lib/photo-view";
 import { shareText } from "@/lib/share";
 import { supabase } from "@/lib/supabase";
 import { getRecapCoverUrls, type FeedRecap } from "@/lib/travel-book-recaps";
+import {
+  getHomeLocationSuggestion,
+  type HomeLocationSuggestion,
+} from "@/lib/trips";
 
 export default function HomeScreen() {
   const { session, profile } = useAuth();
@@ -45,6 +52,9 @@ export default function HomeScreen() {
   const bottomInset = useBottomTabInset();
   const [viewMode, setViewMode] = useState<FeedMode>("feed");
   const [items, setItems] = useState<FeedItem[]>([]);
+  // "You've been in X a while — is this home now?" Null unless the viewer's
+  // own ongoing trip has run long enough to be worth asking about.
+  const [homeSuggestion, setHomeSuggestion] = useState<HomeLocationSuggestion | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [recapCoverUrls, setRecapCoverUrls] = useState<Record<string, string>>(
@@ -69,8 +79,17 @@ export default function HomeScreen() {
     try {
       const feedItems = await getFeedItems(session.user.id);
       setItems(feedItems);
+      // Trip items carry their visits nested inside days, so collecting
+      // only `type === "visit"` items missed every review inside a trip —
+      // their photo ids never reached getPhotoViewUrls and their authors
+      // never reached getAvatarViewUrls, which is exactly why trips
+      // rendered with no photos and no avatars.
       const feedVisits = feedItems.flatMap((item) =>
-        item.type === "visit" ? [item.visit] : [],
+        item.type === "visit"
+          ? [item.visit]
+          : item.type === "trip"
+            ? item.feedTrip.days.flatMap((day) => day.visits)
+            : [],
       );
       const feedRecaps = feedItems.flatMap((item) =>
         item.type === "recap" ? [item.recap] : [],
@@ -115,6 +134,17 @@ export default function HomeScreen() {
         setHasLoadedOnce(true);
       });
       if (session) {
+        // Best-effort and independent of the feed itself — a failure here
+        // just means no prompt, never a broken feed.
+        listHomeLocations(session.user.id)
+          .then((homes) =>
+            getHomeLocationSuggestion(
+              session.user.id,
+              homes.map((h) => h.placeId),
+            ),
+          )
+          .then(setHomeSuggestion)
+          .catch(() => setHomeSuggestion(null));
         getUnreadNotificationCount(session.user.id)
           .then(setUnreadCount)
           .catch(() => {});
@@ -169,6 +199,25 @@ export default function HomeScreen() {
         err instanceof Error ? err.message : "Could not update that like.",
       );
     }
+  }
+
+  // Flips a trip block from "Make this a travel book" to a link to the new
+  // book without refetching the whole feed — the trip's grouping and
+  // contents haven't changed, only what it's now linked to.
+  function handleTripConverted(tripKey: string, travelBookId: string) {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.type === "trip" && item.feedTrip.trip.key === tripKey
+          ? {
+              ...item,
+              feedTrip: {
+                ...item.feedTrip,
+                trip: { ...item.feedTrip.trip, travelBookId },
+              },
+            }
+          : item,
+      ),
+    );
   }
 
   function handleVisitDeleted(visitId: string) {
@@ -319,6 +368,18 @@ export default function HomeScreen() {
                 />
               }
             >
+              {homeSuggestion && (
+                <HomeLocationPrompt
+                  suggestion={homeSuggestion}
+                  onResolved={() => {
+                    setHomeSuggestion(null);
+                    // Adding a home location changes what counts as a trip,
+                    // so the grouping has to be recomputed rather than just
+                    // hiding the prompt.
+                    loadFeed();
+                  }}
+                />
+              )}
               {displayItems.map((item: FeedItem) =>
                 item.type === "divider" ? (
                   <ThemedText
@@ -334,6 +395,19 @@ export default function HomeScreen() {
                     recap={item.recap}
                     avatarUrl={avatarUrls[item.recap.authorId]}
                     coverUrl={recapCoverUrls[item.recap.id]}
+                  />
+                ) : item.type === "trip" ? (
+                  <TripGroupCard
+                    key={`trip-${item.feedTrip.trip.key}`}
+                    feedTrip={item.feedTrip}
+                    photoUrls={photoUrls}
+                    avatarUrls={avatarUrls}
+                    viewerId={session?.user.id}
+                    copiedVisitId={copiedVisitId}
+                    onToggleLike={handleToggleLike}
+                    onShare={handleShareVisit}
+                    onVisitDeleted={handleVisitDeleted}
+                    onConverted={handleTripConverted}
                   />
                 ) : (
                   <VisitCard
@@ -419,11 +493,18 @@ const styles = StyleSheet.create({
   // precisely the card edge. With the inset moved inside, the ScrollView
   // spans the full column and that 24px gutter is ordinary in-bounds space
   // those elements can legitimately overflow into.
+  // Full width on purpose — MaxContentWidth is applied to the CONTENT
+  // below (`gutter` and `list`), never to this frame. On web an RN
+  // ScrollView is its own overflow container, so capping the frame means
+  // the scrollable region is only the centered column: a mouse wheel
+  // anywhere in the empty margins of a wide window hits a non-scrolling
+  // element and does nothing. Capping the content instead keeps the
+  // reading column identical while letting the scroll surface span the
+  // whole window. (Same frame-vs-content distinction as the horizontal
+  // padding note below, for a different reason.)
   safeArea: {
     flex: 1,
-    alignSelf: "center",
     width: "100%",
-    maxWidth: MaxContentWidth,
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
   },
@@ -431,6 +512,9 @@ const styles = StyleSheet.create({
   // now applied per-child so the scroll container itself can stay
   // full-width (see safeArea above).
   gutter: {
+    width: "100%",
+    maxWidth: MaxContentWidth,
+    alignSelf: "center",
     paddingHorizontal: Spacing.four,
   },
   // DiscoverView used to be a direct flex child of safeArea; wrapping it to
@@ -474,7 +558,11 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     // See safeArea — the cards' horizontal inset lives here, inside the
     // ScrollView's own clip bounds, so overflow past a card edge lands in
-    // ordinary in-bounds space instead of being clipped away.
+    // ordinary in-bounds space instead of being clipped away. The reading
+    // column's width cap lives here too, for the same reason.
+    width: "100%",
+    maxWidth: MaxContentWidth,
+    alignSelf: "center",
     paddingHorizontal: Spacing.four,
   },
   // position:'relative' on this and cardTop below: FeedRatingStamp

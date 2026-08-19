@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -16,6 +16,8 @@ import { createDraft, uploadPhotoForDraft } from '@/lib/drafts';
 import { findNearbyPlaces } from '@/lib/google-places';
 import { pickMultipleImagesFromLibrary } from '@/lib/image-picker';
 import {
+  clusterAllTogether,
+  clusterOnePerPhoto,
   clusterPhotosByLocation,
   earliestTakenOn,
   extractDateFromExif,
@@ -36,7 +38,34 @@ function todayIsoDate(): string {
   return `${d.getFullYear()}-${month}-${day}`;
 }
 
+// How the picked photos get split into drafts. Set by review-source.tsx's
+// own second-level choice; anything unrecognised (an old deep link, say)
+// falls back to the automatic by-place grouping this screen shipped with.
+type PhotoMode = 'per-photo' | 'single' | 'by-place';
+
+const MODE_COPY: Record<PhotoMode, { title: string; blurb: string }> = {
+  'per-photo': {
+    title: 'One review per photo',
+    blurb:
+      "Pick your photos and each one becomes its own draft, using its own location and date from the photo's metadata. Pick just one photo to make a single review.",
+  },
+  single: {
+    title: 'One review for all photos',
+    blurb:
+      'Pick your photos and they all go on one draft, using the first photo that carries a location.',
+  },
+  'by-place': {
+    title: 'Bulk upload',
+    blurb:
+      "Pick a batch of photos and we'll group them by location into starting drafts — one per place, ready for you to finish and publish.",
+  },
+};
+
 export default function BulkUploadScreen() {
+  const { mode: rawMode } = useLocalSearchParams<{ mode?: string }>();
+  const mode: PhotoMode =
+    rawMode === 'per-photo' || rawMode === 'single' ? rawMode : 'by-place';
+  const copy = MODE_COPY[mode];
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const scrollHandler = useHideOnScrollHandler();
@@ -68,7 +97,12 @@ export default function BulkUploadScreen() {
         takenOn: extractDateFromExif(exif),
       };
     });
-    const clusters = clusterPhotosByLocation(assets);
+    const clusters =
+      mode === 'per-photo'
+        ? clusterOnePerPhoto(assets)
+        : mode === 'single'
+          ? clusterAllTogether(assets)
+          : clusterPhotosByLocation(assets);
     setProgress({ done: 0, total: clusters.length });
 
     let failedPhotoCount = 0;
@@ -143,10 +177,9 @@ export default function BulkUploadScreen() {
             <ThemedText type="link">← Back</ThemedText>
           </Pressable>
 
-          <ThemedText type="displaySerif">Bulk upload</ThemedText>
+          <ThemedText type="displaySerif">{copy.title}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            Pick a batch of photos and we'll group them by location into starting drafts — one per place,
-            ready for you to finish and publish.
+            {copy.blurb}
           </ThemedText>
 
           {error && (

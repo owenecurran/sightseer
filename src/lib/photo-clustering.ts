@@ -119,3 +119,24 @@ export function clusterPhotosByLocation(assets: GeoTaggedAsset[]): PhotoCluster[
 
   return clusters;
 }
+
+// The two explicit groupings the "based on photo(s)" flow offers, as
+// alternatives to clusterPhotosByLocation's automatic by-place grouping
+// above. Both produce the same PhotoCluster shape, so bulk-upload.tsx's own
+// draft-creation loop is identical regardless of which one built the list.
+
+// One draft per photo. Each keeps its own EXIF coordinates and date, so a
+// batch shot in different places still resolves a different location each.
+export function clusterOnePerPhoto(assets: GeoTaggedAsset[]): PhotoCluster[] {
+  return assets.map((asset) => ({ lat: asset.lat, lng: asset.lng, photos: [asset] }));
+}
+
+// Everything into a single draft. Location comes from the first photo that
+// actually carries coordinates rather than simply the first photo, so one
+// stripped/screenshot image at the front of the selection doesn't cost the
+// whole review its location.
+export function clusterAllTogether(assets: GeoTaggedAsset[]): PhotoCluster[] {
+  if (assets.length === 0) return [];
+  const located = assets.find((asset) => asset.lat != null && asset.lng != null);
+  return [{ lat: located?.lat ?? null, lng: located?.lng ?? null, photos: assets }];
+}

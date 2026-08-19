@@ -407,6 +407,42 @@ export type Database = {
           },
         ]
       }
+      home_locations: {
+        Row: {
+          created_at: string
+          id: string
+          place_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          place_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          place_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "home_locations_place_id_fkey"
+            columns: ["place_id"]
+            isOneToOne: false
+            referencedRelation: "places"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "home_locations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       likes: {
         Row: {
           created_at: string
@@ -1203,6 +1239,58 @@ export type Database = {
           },
         ]
       }
+      trip_overrides: {
+        Row: {
+          dismissed: boolean
+          display_place_id: string | null
+          home_prompt_dismissed: boolean
+          start_date: string
+          travel_book_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          dismissed?: boolean
+          display_place_id?: string | null
+          home_prompt_dismissed?: boolean
+          start_date: string
+          travel_book_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          dismissed?: boolean
+          display_place_id?: string | null
+          home_prompt_dismissed?: boolean
+          start_date?: string
+          travel_book_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_overrides_display_place_id_fkey"
+            columns: ["display_place_id"]
+            isOneToOne: false
+            referencedRelation: "places"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trip_overrides_travel_book_id_fkey"
+            columns: ["travel_book_id"]
+            isOneToOne: false
+            referencedRelation: "travel_books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trip_overrides_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           avatar_r2_key: string | null
@@ -1595,6 +1683,7 @@ export type Database = {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
       }
+      deepest_common_area: { Args: { p_ids: string[] }; Returns: string }
       disablelongtransactions: { Args: never; Returns: string }
       dropgeometrycolumn:
         | {
@@ -1758,6 +1847,15 @@ export type Database = {
           review_count: number
         }[]
       }
+      get_place_ancestry: {
+        Args: { p_id: string }
+        Returns: {
+          depth: number
+          id: string
+          level: string
+          name: string
+        }[]
+      }
       get_popular_places: {
         Args: { result_limit?: number }
         Returns: {
@@ -1767,6 +1865,23 @@ export type Database = {
           name: string
           place_id: string
           review_count: number
+        }[]
+      }
+      get_trips_for_users: {
+        Args: { user_ids: string[] }
+        Returns: {
+          area_level: string
+          area_name: string
+          area_place_id: string
+          auto_area_place_id: string
+          end_date: string
+          is_ongoing: boolean
+          kind: string
+          start_date: string
+          travel_book_id: string
+          trip_key: string
+          user_id: string
+          visit_ids: string[]
         }[]
       }
       get_visited_regions: {
@@ -1794,6 +1909,10 @@ export type Database = {
           is_private: boolean
           name: string
         }[]
+      }
+      place_has_ancestor: {
+        Args: { anc_id: string; p_id: string }
+        Returns: boolean
       }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }

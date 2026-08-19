@@ -1,4 +1,5 @@
 import { getFeedRecaps, type FeedRecap } from '@/lib/travel-book-recaps';
+import { getTripsForUsers, type Trip } from '@/lib/trips';
 import { resolveStateCountries } from '@/lib/places-cache';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
@@ -20,6 +21,11 @@ export type FeedVisit = {
   authorName: string;
   placeId: string;
   placeName: string;
+  // Where the place actually is — carried on the visit itself so anything
+  // mapping a set of visits (see TripMapSquare) doesn't need a second
+  // round-trip just for coordinates. Null for a place cached without them.
+  placeLat: number | null;
+  placeLng: number | null;
   // "Colorado, United States" (or just one of the two, or null if the
   // hierarchy is missing/incomplete) — see resolveStateCountry.
   stateCountry: string | null;
@@ -39,7 +45,7 @@ export type FeedVisit = {
 };
 
 export const FEED_VISIT_SELECT =
-  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)';
+  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)';
 
 export type RawFeedVisit = {
   id: string;
@@ -50,7 +56,7 @@ export type RawFeedVisit = {
   user_id: string;
   place_id: string;
   users: { handle: string | null; name: string | null } | null;
-  places: { name: string } | null;
+  places: { name: string; lat: number | null; lng: number | null } | null;
   photos: { id: string; position: number; width: number | null; height: number | null }[];
   likes: { user_id: string }[];
   visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
@@ -80,6 +86,8 @@ export function mapRawFeedVisit(
     authorName: visit.users?.name ?? visit.users?.handle ?? 'Someone',
     placeId: visit.place_id,
     placeName: visit.places?.name ?? 'Unknown place',
+    placeLat: visit.places?.lat ?? null,
+    placeLng: visit.places?.lng ?? null,
     stateCountry: stateCountryMap?.get(visit.place_id) ?? null,
     photoIds: [...visit.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
     photoAspectRatios: [...visit.photos]
@@ -163,13 +171,118 @@ export async function getVisitsForPlace(placeId: string, myUserId: string): Prom
   }));
 }
 
+// One day of a trip, in the order the feed renders them.
+export type TripDay = { date: string; visits: FeedVisit[] };
+
+export type FeedTrip = {
+  trip: Trip;
+  days: TripDay[];
+};
+
 export type FeedItem =
   | { type: 'visit'; sortKey: string; visit: FeedVisit }
   | { type: 'recap'; sortKey: string; recap: FeedRecap }
+  // A finished trip, collapsed into one block that still separates its
+  // days. Ongoing trips deliberately never become this — their visits stay
+  // individual 'visit' items so a trip in progress still reads as it
+  // happens, and only settles into one block once it's over.
+  | { type: 'trip'; sortKey: string; feedTrip: FeedTrip }
   // Not returned by getFeedItems itself — inserted client-side by
   // (tabs)/index.tsx to mark the boundary between items posted since the
   // viewer's last feed visit and items already seen before.
   | { type: 'divider'; sortKey: '' };
+
+// Buckets a trip's visits into ordered days. Exported so the standalone
+// trip page builds its days exactly the way the feed does, rather than a
+// second implementation that could drift.
+export function groupVisitsIntoDays(visits: FeedVisit[]): TripDay[] {
+  const byDate = new Map<string, FeedVisit[]>();
+  for (const visit of visits) {
+    const bucket = byDate.get(visit.visited_on);
+    if (bucket) bucket.push(visit);
+    else byDate.set(visit.visited_on, [visit]);
+  }
+  return [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, dayVisits]) => ({ date, visits: dayVisits }));
+}
+
+// Every visit in a given set of ids, in the same shape the feed uses.
+// Powers the trip page, which knows which visits belong to its trip (from
+// the RPC) but not their contents.
+export async function getVisitsByIds(ids: string[], myUserId: string): Promise<FeedVisit[]> {
+  if (ids.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('visits')
+    .select(FEED_VISIT_SELECT)
+    .in('id', ids)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+
+  const rawVisits = data as unknown as RawFeedVisit[];
+  const [visitNumbers, stateCountryMap] = await Promise.all([
+    computeVisitNumbers(rawVisits),
+    resolveStateCountries(rawVisits.map((v) => v.place_id)),
+  ]);
+  return rawVisits.map((visit) => ({
+    ...mapRawFeedVisit(visit, myUserId, stateCountryMap),
+    visitNumber: visitNumbers.get(visit.id) ?? 1,
+  }));
+}
+
+// Replaces each finished trip's individual visit items with one grouped
+// item, leaving everything else (ongoing trips, one-off reviews, recaps)
+// exactly as it was. Presentation only — nothing here widens visibility,
+// since it can only group visits the feed already returned.
+function groupVisitsIntoTrips(items: FeedItem[], trips: Trip[]): FeedItem[] {
+  const finished = trips.filter((t) => !t.isOngoing && t.visitIds.length > 0);
+  if (finished.length === 0) return items;
+
+  // visit id -> the finished trip it belongs to.
+  const tripByVisitId = new Map<string, Trip>();
+  for (const trip of finished) {
+    for (const visitId of trip.visitIds) tripByVisitId.set(visitId, trip);
+  }
+
+  const visitsByTrip = new Map<string, FeedVisit[]>();
+  const passthrough: FeedItem[] = [];
+  for (const item of items) {
+    if (item.type !== 'visit') {
+      passthrough.push(item);
+      continue;
+    }
+    const trip = tripByVisitId.get(item.visit.id);
+    if (!trip) {
+      passthrough.push(item);
+      continue;
+    }
+    const bucket = visitsByTrip.get(trip.key);
+    if (bucket) bucket.push(item.visit);
+    else visitsByTrip.set(trip.key, [item.visit]);
+  }
+
+  const tripItems: FeedItem[] = [];
+  for (const trip of finished) {
+    const visits = visitsByTrip.get(trip.key);
+    // A trip whose visits all fell outside this feed (not followed, etc.)
+    // contributes nothing rather than an empty block.
+    if (!visits || visits.length === 0) continue;
+
+    const days = groupVisitsIntoDays(visits);
+
+    // Sorted by the newest post in the trip, so a finished trip sits where
+    // its most recent review would have, rather than jumping to wherever
+    // the trip happened to start.
+    const sortKey = visits.reduce(
+      (newest, v) => (v.created_at > newest ? v.created_at : newest),
+      visits[0].created_at
+    );
+    tripItems.push({ type: 'trip', sortKey, feedTrip: { trip, days } });
+  }
+
+  return [...passthrough, ...tripItems];
+}
 
 // Merges the follow-feed's two independent sources (visits, published
 // travel-book recaps) client-side by timestamp — there's no DB view/union
@@ -188,7 +301,20 @@ export async function getFeedItems(myUserId: string): Promise<FeedItem[]> {
     ...visits.map((visit): FeedItem => ({ type: 'visit', sortKey: visit.created_at, visit })),
     ...recaps.map((recap): FeedItem => ({ type: 'recap', sortKey: recap.publishedAt, recap })),
   ];
-  return items.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+
+  // Trips are computed per author across ALL their visits (not just the
+  // ones in this feed), so this is keyed off the authors actually present
+  // rather than the visit rows — see getTripsForUsers. Best-effort: a
+  // failure here degrades to an ungrouped feed instead of an empty one.
+  const authorIds = [...new Set(visits.map((v) => v.user_id))];
+  let trips: Trip[] = [];
+  try {
+    trips = await getTripsForUsers(authorIds);
+  } catch {
+    trips = [];
+  }
+
+  return groupVisitsIntoTrips(items, trips).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 }
 
 // "This is my 2nd visit here" — the visit's ordinal position among the same

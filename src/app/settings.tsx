@@ -295,6 +295,18 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
+            <ThemedText type="sectionLabel">Home locations</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Set where you're based so reviews from further afield get grouped into trips.
+            </ThemedText>
+            <Button
+              label="Manage home locations"
+              variant="secondary"
+              onPress={() => router.push('/home-locations')}
+            />
+          </View>
+
+          <View style={styles.section}>
             <ThemedText type="sectionLabel">Contacts</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               Add your phone number so friends who sync their contacts can find you. It's hashed before
