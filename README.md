@@ -192,3 +192,12 @@ supabase/
 ## Status
 
 An actively developed side project.
+
+---
+
+## License
+
+Copyright © 2026 Owen Curran. **All rights reserved.**
+
+This source is public to be read, not reused — see [`LICENSE`](LICENSE). Feel free to look around,
+learn from it, or ask me about any of it; please don't ship it.

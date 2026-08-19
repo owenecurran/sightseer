@@ -1,21 +1,28 @@
-The MIT License (MIT)
+Copyright (c) 2026 Owen Curran. All rights reserved.
 
-Copyright (c) 2015-present 650 Industries, Inc. (aka Expo)
+The source code in this repository is made publicly viewable for reference,
+evaluation, and portfolio purposes only.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+No license or permission is granted, express or implied, to use, copy, modify,
+merge, publish, distribute, sublicense, or sell copies of this software or any
+substantial portion of it, in source or binary form, for any purpose, without
+prior written permission from the copyright holder.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+You may read and reference this source code. You may not deploy it, ship it as
+part of another product, or redistribute it.
+
+Where this repository is hosted on GitHub, the platform's Terms of Service
+additionally grant other GitHub users the right to view and fork it within
+GitHub. That platform-level permission does not extend the rights above: a fork
+made under those terms remains subject to this notice, and confers no right to
+use, publish, or distribute the software outside GitHub.
+
+Third-party dependencies are covered by their own respective licenses, which
+apply to those components rather than this notice.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
