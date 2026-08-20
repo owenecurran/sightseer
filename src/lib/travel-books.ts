@@ -1,4 +1,4 @@
-import { mapRawFeedVisit, type RawFeedVisit } from '@/lib/feed';
+import { FEED_VISIT_SELECT, getMyLikedVisitIds, mapRawFeedVisit, type RawFeedVisit } from '@/lib/feed';
 import { resolveStateCountries } from '@/lib/places-cache';
 import { getVisitsTaggedIn, type TaggedVisit } from '@/lib/tagged-visits';
 import { supabase } from '@/lib/supabase';
@@ -158,7 +158,7 @@ export async function getTravelBookItems(bookId: string, viewerId: string): Prom
   const { data, error } = await supabase
     .from('travel_book_items')
     .select(
-      'id, item_type, place_id, added_by, added_at, visits(id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)), places!place_id(name)'
+      'id, item_type, place_id, added_by, added_at, visits(id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(count)), places!place_id(name)'
     )
     .eq('travel_book_id', bookId);
   if (error) throw error;
@@ -177,13 +177,19 @@ export async function getTravelBookItems(bookId: string, viewerId: string): Prom
   const allPlaceIds = rows
     .map((row) => (row.item_type === 'visit' ? row.visits?.place_id : row.place_id))
     .filter((id): id is string => id != null);
-  const stateCountryMap = await resolveStateCountries(allPlaceIds);
+  const visitIds = rows
+    .filter((row) => row.item_type === 'visit' && row.visits)
+    .map((row) => (row.visits as RawFeedVisit).id);
+  const [stateCountryMap, likedIds] = await Promise.all([
+    resolveStateCountries(allPlaceIds),
+    getMyLikedVisitIds(visitIds, viewerId),
+  ]);
 
   const items: TravelBookItem[] = [];
   for (const row of rows) {
     if (row.item_type === 'visit' && row.visits) {
       items.push({
-        ...mapRawFeedVisit(row.visits, viewerId, stateCountryMap),
+        ...mapRawFeedVisit(row.visits, viewerId, stateCountryMap, likedIds),
         kind: 'visit',
         itemId: row.id,
         addedBy: row.added_by,
@@ -233,12 +239,14 @@ async function getOwnVisitsAsTaggedVisit(userId: string): Promise<TaggedVisit[]>
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)'
+      FEED_VISIT_SELECT
     )
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data as unknown as RawFeedVisit[]).map((visit) => mapRawFeedVisit(visit, userId));
+  const raw = data as unknown as RawFeedVisit[];
+  const likedIds = await getMyLikedVisitIds(raw.map((v) => v.id), userId);
+  return raw.map((visit) => mapRawFeedVisit(visit, userId, undefined, likedIds));
 }
 
 export async function addVisitToTravelBook(bookId: string, visitId: string, addedBy: string): Promise<void> {

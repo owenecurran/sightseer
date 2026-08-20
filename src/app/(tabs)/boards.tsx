@@ -59,8 +59,11 @@ export default function BoardsScreen() {
           setTravelBookThumbnailUrls(await getTravelBookThumbnailUrls(myBooks));
           return myBooks;
         }),
+        // Independent of the two above, so it belongs in the same batch
+        // rather than waiting for collection stats it never uses.
+        getTripsForUsers([session.user.id]),
       ])
-        .then(async ([myBoards, myBooks]) => {
+        .then(async ([myBoards, myBooks, detected]) => {
           const stats = await getCollectionStats(
             myBoards.map((b) => b.id),
             myBooks.map((b) => b.id)
@@ -68,10 +71,9 @@ export default function BoardsScreen() {
           setBoardStats(stats.boards);
           setTravelBookStats(stats.travelBooks);
 
-          // Trips are derived, so they're fetched rather than stored — and
-          // their average score (for each row's thumbnail ring) needs the
-          // underlying reviews, which the RPC returns only ids for.
-          const detected = await getTripsForUsers([session.user.id]);
+          // Each row's thumbnail ring needs the trip's average score, and
+          // the RPC returns only visit ids — so the reviews themselves are
+          // still a follow-up fetch.
           setTrips(detected);
           const allVisitIds = [...new Set(detected.flatMap((t) => t.visitIds))];
           if (allVisitIds.length > 0) {

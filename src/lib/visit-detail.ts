@@ -34,10 +34,10 @@ type RawVisitDetail = {
   users: { handle: string | null; name: string | null } | null;
   places: { name: string } | null;
   photos: { id: string; position: number; width: number | null; height: number | null }[];
-  likes: { user_id: string }[];
+  likes: { count: number }[];
   visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
   visit_tagged_places: { places: { name: string; category: PlaceCategory } | null }[];
-  comments: { id: string }[];
+  comments: { count: number }[];
 };
 
 // Returns null (not an error) when the visit doesn't exist or the RLS
@@ -48,7 +48,7 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)'
+      'id, rating, note, visited_on, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(count)'
     )
     .eq('id', visitId)
     .maybeSingle();
@@ -59,7 +59,18 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
   // Same one-place-at-a-time shape resolveStateCountries is meant for
   // batches of (feed.ts calls it with every visit on screen at once) — a
   // single-element array here is just the degenerate case, not a misuse.
-  const stateCountryMap = await resolveStateCountries([v.place_id]);
+  const [stateCountryMap, likedByMe] = await Promise.all([
+    resolveStateCountries([v.place_id]),
+    // likes(count) can't say whether *I* liked it, so that's its own tiny
+    // lookup — one row, keyed by the primary key pair.
+    supabase
+      .from('likes')
+      .select('visit_id')
+      .eq('user_id', myUserId)
+      .eq('visit_id', v.id)
+      .maybeSingle()
+      .then(({ data }) => data != null),
+  ]);
   return {
     id: v.id,
     rating: v.rating,
@@ -74,8 +85,10 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
     photoAspectRatios: [...v.photos]
       .sort((a, b) => a.position - b.position)
       .map((p) => (p.width && p.height ? p.width / p.height : null)),
-    likeCount: v.likes.length,
-    isLikedByMe: v.likes.some((like) => like.user_id === myUserId),
+    likeCount: v.likes[0]?.count ?? 0,
+    // Single visit, so a one-row lookup rather than the batched helper the
+    // list screens use.
+    isLikedByMe: likedByMe,
     taggedUsers: v.visit_tagged_users
       .map((t) => {
         const name = t.users?.name ?? t.users?.handle;
@@ -85,7 +98,7 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
     taggedPlaces: v.visit_tagged_places
       .map((t) => t.places)
       .filter((place): place is { name: string; category: PlaceCategory } => place != null),
-    commentCount: v.comments.length,
+    commentCount: v.comments[0]?.count ?? 0,
     isViewerTagged: v.visit_tagged_users.some((t) => t.user_id === myUserId),
   };
 }

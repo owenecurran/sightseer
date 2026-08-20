@@ -1,4 +1,10 @@
-import { FEED_VISIT_SELECT, mapRawFeedVisit, type FeedVisit, type RawFeedVisit } from '@/lib/feed';
+import {
+  FEED_VISIT_SELECT,
+  getMyLikedVisitIds,
+  mapRawFeedVisit,
+  type FeedVisit,
+  type RawFeedVisit,
+} from '@/lib/feed';
 import { supabase } from '@/lib/supabase';
 
 export type TaggedVisit = Omit<FeedVisit, 'visitNumber'>;
@@ -26,7 +32,8 @@ export async function getVisitsTaggedIn(myUserId: string): Promise<TaggedVisit[]
   if (error) throw error;
 
   const rawVisits = data as unknown as RawFeedVisit[];
-  return rawVisits.map((visit) => mapRawFeedVisit(visit, myUserId));
+  const likedIds = await getMyLikedVisitIds(rawVisits.map((v) => v.id), myUserId);
+  return rawVisits.map((visit) => mapRawFeedVisit(visit, myUserId, undefined, likedIds));
 }
 
 // RLS (visit_tagged_users_delete) already permits the tagged user to remove

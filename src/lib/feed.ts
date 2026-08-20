@@ -44,8 +44,13 @@ export type FeedVisit = {
   isViewerTagged: boolean;
 };
 
+// likes/comments come back as COUNT aggregates, not row sets. Pulling every
+// like row to call .length on it meant a post with 500 likes transferred 500
+// rows to compute the number 500, for every visit in the feed. `isLikedByMe`
+// can't come from an aggregate, so it's resolved separately in one batched
+// query per list — see getMyLikedVisitIds.
 export const FEED_VISIT_SELECT =
-  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height), likes(user_id), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(id)';
+  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(count)';
 
 export type RawFeedVisit = {
   id: string;
@@ -58,10 +63,10 @@ export type RawFeedVisit = {
   users: { handle: string | null; name: string | null } | null;
   places: { name: string; lat: number | null; lng: number | null } | null;
   photos: { id: string; position: number; width: number | null; height: number | null }[];
-  likes: { user_id: string }[];
+  likes: { count: number }[];
   visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
   visit_tagged_places: { places: { name: string; category: PlaceCategory } | null }[];
-  comments: { id: string }[];
+  comments: { count: number }[];
 };
 
 // Shared by the follow-feed query and the reverse "tagged in" query
@@ -74,7 +79,11 @@ export type RawFeedVisit = {
 export function mapRawFeedVisit(
   visit: RawFeedVisit,
   myUserId: string,
-  stateCountryMap?: Map<string, string | null>
+  stateCountryMap?: Map<string, string | null>,
+  // Which of these visits the viewer has liked. Omitted means "not
+  // resolved", which renders as unliked — callers that show a like button
+  // pass it; one-off previews that don't need it can skip the query.
+  likedVisitIds?: Set<string>
 ): Omit<FeedVisit, 'visitNumber'> {
   return {
     id: visit.id,
@@ -93,8 +102,8 @@ export function mapRawFeedVisit(
     photoAspectRatios: [...visit.photos]
       .sort((a, b) => a.position - b.position)
       .map((p) => (p.width && p.height ? p.width / p.height : null)),
-    likeCount: visit.likes.length,
-    isLikedByMe: visit.likes.some((like) => like.user_id === myUserId),
+    likeCount: visit.likes[0]?.count ?? 0,
+    isLikedByMe: likedVisitIds?.has(visit.id) ?? false,
     taggedUsers: visit.visit_tagged_users
       .map((t) => {
         const name = t.users?.name ?? t.users?.handle;
@@ -104,9 +113,25 @@ export function mapRawFeedVisit(
     taggedPlaces: visit.visit_tagged_places
       .map((t) => t.places)
       .filter((place): place is { name: string; category: PlaceCategory } => place != null),
-    commentCount: visit.comments.length,
+    commentCount: visit.comments[0]?.count ?? 0,
     isViewerTagged: visit.visit_tagged_users.some((t) => t.user_id === myUserId),
   };
+}
+
+// One query for "which of these did I like", replacing the per-visit like
+// rows the select used to carry. Batched over the whole list.
+export async function getMyLikedVisitIds(
+  visitIds: string[],
+  myUserId: string
+): Promise<Set<string>> {
+  if (visitIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from('likes')
+    .select('visit_id')
+    .eq('user_id', myUserId)
+    .in('visit_id', visitIds);
+  if (error) throw error;
+  return new Set((data ?? []).map((row) => row.visit_id));
 }
 
 export async function getFollowedUserIds(myUserId: string): Promise<string[]> {
@@ -136,13 +161,14 @@ async function getFeedVisitsForFollowed(followedIds: string[], myUserId: string)
   if (error) throw error;
 
   const rawVisits = data as unknown as RawFeedVisit[];
-  const [visitNumbers, stateCountryMap] = await Promise.all([
+  const [visitNumbers, stateCountryMap, likedIds] = await Promise.all([
     computeVisitNumbers(rawVisits),
     resolveStateCountries(rawVisits.map((v) => v.place_id)),
+    getMyLikedVisitIds(rawVisits.map((v) => v.id), myUserId),
   ]);
 
   return rawVisits.map((visit) => ({
-    ...mapRawFeedVisit(visit, myUserId, stateCountryMap),
+    ...mapRawFeedVisit(visit, myUserId, stateCountryMap, likedIds),
     visitNumber: visitNumbers.get(visit.id) ?? 1,
   }));
 }
@@ -166,13 +192,14 @@ export async function getVisitsForPlace(placeId: string, myUserId: string): Prom
   if (error) throw error;
 
   const rawVisits = data as unknown as RawFeedVisit[];
-  const [visitNumbers, stateCountryMap] = await Promise.all([
+  const [visitNumbers, stateCountryMap, likedIds] = await Promise.all([
     computeVisitNumbers(rawVisits),
     resolveStateCountries(rawVisits.map((v) => v.place_id)),
+    getMyLikedVisitIds(rawVisits.map((v) => v.id), myUserId),
   ]);
 
   return rawVisits.map((visit) => ({
-    ...mapRawFeedVisit(visit, myUserId, stateCountryMap),
+    ...mapRawFeedVisit(visit, myUserId, stateCountryMap, likedIds),
     visitNumber: visitNumbers.get(visit.id) ?? 1,
   }));
 }
@@ -227,12 +254,13 @@ export async function getVisitsByIds(ids: string[], myUserId: string): Promise<F
   if (error) throw error;
 
   const rawVisits = data as unknown as RawFeedVisit[];
-  const [visitNumbers, stateCountryMap] = await Promise.all([
+  const [visitNumbers, stateCountryMap, likedIds] = await Promise.all([
     computeVisitNumbers(rawVisits),
     resolveStateCountries(rawVisits.map((v) => v.place_id)),
+    getMyLikedVisitIds(rawVisits.map((v) => v.id), myUserId),
   ]);
   return rawVisits.map((visit) => ({
-    ...mapRawFeedVisit(visit, myUserId, stateCountryMap),
+    ...mapRawFeedVisit(visit, myUserId, stateCountryMap, likedIds),
     visitNumber: visitNumbers.get(visit.id) ?? 1,
   }));
 }
