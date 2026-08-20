@@ -20,6 +20,9 @@ type TripDayReviewsProps = {
   onToggleLike: (visit: FeedVisit) => void;
   onShare: (visit: FeedVisit) => void;
   onVisitDeleted: (visitId: string) => void;
+  // Owner-only, and only where removing makes sense (the trip page). Absent
+  // in the feed, where a trip is something you're reading, not editing.
+  onRemoveFromTrip?: (visitId: string) => void;
 };
 
 // How far the incoming card slides from, and how far the cards behind peek
@@ -64,6 +67,7 @@ export function TripDayReviews({
   onToggleLike,
   onShare,
   onVisitDeleted,
+  onRemoveFromTrip,
 }: TripDayReviewsProps) {
   const theme = useTheme();
   const [index, setIndex] = useState(0);
@@ -148,6 +152,17 @@ export function TripDayReviews({
             />
           </Animated.View>
 
+              {onRemoveFromTrip && (
+            <Pressable
+              onPress={() => onRemoveFromTrip(activeVisit.id)}
+              hitSlop={8}
+              style={styles.removeButton}>
+              <ThemedText type="small" themeColor="textSecondary">
+                Not part of this trip
+              </ThemedText>
+            </Pressable>
+          )}
+
           {reviewCount > 1 && (
             <>
               <Pressable
@@ -227,6 +242,13 @@ const styles = StyleSheet.create({
   // Overlaid on the card, vertically centred, so they hold still while the
   // card behind them changes. Small enough to leave the review itself
   // tappable everywhere else.
+  // Sits under the card rather than on it — destructive-ish actions
+  // shouldn't share space with the navigation arrows.
+  removeButton: {
+    alignSelf: 'flex-end',
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.two,
+  },
   arrow: {
     position: 'absolute',
     top: '50%',

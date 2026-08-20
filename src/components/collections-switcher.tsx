@@ -4,33 +4,37 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 
-export type CollectionMode = 'boards' | 'travel_books';
+export type CollectionMode = 'boards' | 'travel_books' | 'trips';
 
 type CollectionsSwitcherProps = {
   active: CollectionMode;
   onChange: (mode: CollectionMode) => void;
 };
 
-// A clear, mutual switcher between Boards and Travel Books — both live on
-// the same tabbed screen (boards.tsx), so this is a plain controlled toggle,
-// not a navigation link between two routes.
+// Switches between Boards, Travel Books and Trips — all three live on the
+// same tabbed screen (boards.tsx), so this is a plain controlled toggle, not
+// navigation between routes. Trips sit here because they're the same kind of
+// thing to a user: a collection of their own reviews, just one the app
+// assembled for them rather than one they built by hand.
+const MODES: { key: CollectionMode; label: string }[] = [
+  { key: 'boards', label: 'Boards' },
+  { key: 'travel_books', label: 'Travel books' },
+  { key: 'trips', label: 'Trips' },
+];
 export function CollectionsSwitcher({ active, onChange }: CollectionsSwitcherProps) {
   return (
     <View style={styles.row}>
-      <Pressable onPress={() => onChange('boards')}>
-        <ThemedView type={active === 'boards' ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
-          <ThemedText type="small" themeColor={active === 'boards' ? 'text' : 'textSecondary'}>
-            Boards
-          </ThemedText>
-        </ThemedView>
-      </Pressable>
-      <Pressable onPress={() => onChange('travel_books')}>
-        <ThemedView type={active === 'travel_books' ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
-          <ThemedText type="small" themeColor={active === 'travel_books' ? 'text' : 'textSecondary'}>
-            Travel books
-          </ThemedText>
-        </ThemedView>
-      </Pressable>
+      {MODES.map((mode) => (
+        <Pressable key={mode.key} onPress={() => onChange(mode.key)}>
+          <ThemedView
+            type={active === mode.key ? 'backgroundSelected' : 'backgroundElement'}
+            style={styles.chip}>
+            <ThemedText type="small" themeColor={active === mode.key ? 'text' : 'textSecondary'}>
+              {mode.label}
+            </ThemedText>
+          </ThemedView>
+        </Pressable>
+      ))}
     </View>
   );
 }

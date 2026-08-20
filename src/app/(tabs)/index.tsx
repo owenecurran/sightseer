@@ -10,6 +10,7 @@ import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { HomeLocationPrompt } from "@/components/home-location-prompt";
+import { TripSuggestionPrompt } from "@/components/trip-suggestion-prompt";
 import { TripGroupCard } from "@/components/trip-group-card";
 import { Avatar } from "@/components/ui/avatar";
 import { FeedRatingStamp } from "@/components/ui/feed-rating-stamp";
@@ -43,7 +44,9 @@ import { supabase } from "@/lib/supabase";
 import { getRecapCoverUrls, type FeedRecap } from "@/lib/travel-book-recaps";
 import {
   getHomeLocationSuggestion,
+  getTripSuggestion,
   type HomeLocationSuggestion,
+  type TripSuggestion,
 } from "@/lib/trips";
 
 export default function HomeScreen() {
@@ -55,6 +58,10 @@ export default function HomeScreen() {
   // "You've been in X a while — is this home now?" Null unless the viewer's
   // own ongoing trip has run long enough to be worth asking about.
   const [homeSuggestion, setHomeSuggestion] = useState<HomeLocationSuggestion | null>(null);
+  // A trip suggestion the user saw after publishing but never answered —
+  // ignoring it writes nothing, so it resurfaces here. An explicit "Not a
+  // trip" is the only thing that stops it coming back.
+  const [tripSuggestion, setTripSuggestion] = useState<TripSuggestion | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [recapCoverUrls, setRecapCoverUrls] = useState<Record<string, string>>(
@@ -136,6 +143,22 @@ export default function HomeScreen() {
       if (session) {
         // Best-effort and independent of the feed itself — a failure here
         // just means no prompt, never a broken feed.
+        // Re-offer the most recent unanswered day. Checked against today
+        // and yesterday only: a suggestion for a day last month has been
+        // passed over enough times to count as declined in spirit.
+        (async () => {
+          const now = new Date();
+          for (const daysAgo of [0, 1]) {
+            const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+            const found = await getTripSuggestion(session.user.id, key);
+            if (found) return found;
+          }
+          return null;
+        })()
+          .then(setTripSuggestion)
+          .catch(() => setTripSuggestion(null));
+
         listHomeLocations(session.user.id)
           .then((homes) =>
             getHomeLocationSuggestion(
@@ -368,6 +391,19 @@ export default function HomeScreen() {
                 />
               }
             >
+              {tripSuggestion && session && (
+                <TripSuggestionPrompt
+                  userId={session.user.id}
+                  suggestion={tripSuggestion}
+                  onResolved={(promoted) => {
+                    setTripSuggestion(null);
+                    // Accepting changes what's a trip, so the grouping has
+                    // to be recomputed; declining changes nothing visible.
+                    if (promoted) loadFeed();
+                  }}
+                />
+              )}
+
               {homeSuggestion && (
                 <HomeLocationPrompt
                   suggestion={homeSuggestion}

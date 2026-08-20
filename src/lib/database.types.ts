@@ -1239,13 +1239,49 @@ export type Database = {
           },
         ]
       }
+      trip_excluded_visits: {
+        Row: {
+          created_at: string
+          user_id: string
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_excluded_visits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trip_excluded_visits_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trip_overrides: {
         Row: {
           dismissed: boolean
           display_place_id: string | null
           home_prompt_dismissed: boolean
+          manual_end_date: string | null
+          promoted: boolean
           start_date: string
           travel_book_id: string | null
+          trip_prompt_declined: boolean
           updated_at: string
           user_id: string
         }
@@ -1253,8 +1289,11 @@ export type Database = {
           dismissed?: boolean
           display_place_id?: string | null
           home_prompt_dismissed?: boolean
+          manual_end_date?: string | null
+          promoted?: boolean
           start_date: string
           travel_book_id?: string | null
+          trip_prompt_declined?: boolean
           updated_at?: string
           user_id: string
         }
@@ -1262,8 +1301,11 @@ export type Database = {
           dismissed?: boolean
           display_place_id?: string | null
           home_prompt_dismissed?: boolean
+          manual_end_date?: string | null
+          promoted?: boolean
           start_date?: string
           travel_book_id?: string | null
+          trip_prompt_declined?: boolean
           updated_at?: string
           user_id?: string
         }
@@ -1867,6 +1909,15 @@ export type Database = {
           review_count: number
         }[]
       }
+      get_trip_suggestion: {
+        Args: { target_date: string; target_user_id: string }
+        Returns: {
+          area_name: string
+          area_place_id: string
+          distance_from_home_m: number
+          visit_count: number
+        }[]
+      }
       get_trips_for_users: {
         Args: { user_ids: string[] }
         Returns: {
@@ -1884,6 +1935,14 @@ export type Database = {
           trip_key: string
           user_id: string
           visit_ids: string[]
+        }[]
+      }
+      get_visit_range_for_place: {
+        Args: { target_place_id: string; target_user_id: string }
+        Returns: {
+          end_date: string
+          start_date: string
+          visit_count: number
         }[]
       }
       get_visited_regions: {

@@ -13,8 +13,10 @@ import { MAX_VISIT_PHOTOS, PhotoGrid } from '@/components/photo-grid';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
 import { PhotoSourceModal } from '@/components/photo-source-modal';
 import { SaveToBoard } from '@/components/save-to-board';
+import { TripSuggestionPrompt } from '@/components/trip-suggestion-prompt';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { getTripSuggestion, type TripSuggestion } from '@/lib/trips';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
@@ -463,6 +465,10 @@ export default function ReviewFormScreen() {
     }
   }
 
+  // Offered right after publishing, when this review completes a cluster
+  // that reads like a trip — see getTripSuggestion for the 2-vs-3 rule.
+  const [tripSuggestion, setTripSuggestion] = useState<TripSuggestion | null>(null);
+
   async function handleSaveVisit() {
     if (!session || !selectedPlace) return;
     setError(null);
@@ -526,6 +532,15 @@ export default function ReviewFormScreen() {
       }
 
       setSavedVisitId(visitId);
+
+      // Does this review complete a day that reads like a trip? Best-effort
+      // and deliberately after the visit itself is safely saved — a failure
+      // here must never make a successful publish look like it failed.
+      if (session) {
+        getTripSuggestion(session.user.id, visitedOn)
+          .then(setTripSuggestion)
+          .catch(() => setTripSuggestion(null));
+      }
 
       if (taggedPlaces.length > 0) {
         await supabase
@@ -878,6 +893,14 @@ export default function ReviewFormScreen() {
                   variant="secondary"
                   onPress={handleAddPhotoAfterSave}
                   loading={isUploadingPhoto}
+                />
+              )}
+
+              {tripSuggestion && session && (
+                <TripSuggestionPrompt
+                  userId={session.user.id}
+                  suggestion={tripSuggestion}
+                  onResolved={() => setTripSuggestion(null)}
                 />
               )}
 

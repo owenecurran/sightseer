@@ -350,3 +350,16 @@ export async function createTravelBookFromTrip(trip: Trip, title: string): Promi
 
   return book.id;
 }
+
+// Adds every visible review from a trip into a travel book that already
+// exists, rather than creating a new one (createTravelBookFromTrip). Skips
+// anything already in the book, so re-adding an extended trip tops it up
+// instead of erroring on the unique (travel_book_id, visit_id) constraint.
+export async function addTripToTravelBook(trip: Trip, bookId: string): Promise<number> {
+  const existing = await getVisitIdsInTravelBook(bookId);
+  const toAdd = trip.visitIds.filter((id) => !existing.has(id));
+  for (const visitId of toAdd) {
+    await addVisitToTravelBook(bookId, visitId, trip.userId);
+  }
+  return toAdd.length;
+}

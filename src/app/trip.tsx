@@ -18,7 +18,7 @@ import { getVisitsByIds, groupVisitsIntoDays, type TripDay } from '@/lib/feed';
 import { likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
-import { getTripsForUsers, type Trip } from '@/lib/trips';
+import { excludeVisitFromTrip, getTripsForUsers, type Trip } from '@/lib/trips';
 
 // Every day of one trip, scrollable — the feed only ever previews a single
 // day of a long trip (see TripGroupCard), and this is where "see all N
@@ -98,6 +98,23 @@ export default function TripScreen() {
     }
   }
 
+  // Removing a review reshapes the trip itself — its dates, its name and
+  // even whether it still qualifies as a trip are all derived from its
+  // reviews — so this reloads rather than just dropping the card locally.
+  async function handleRemoveFromTrip(visitId: string) {
+    if (!session) return;
+    setDays((prev) =>
+      prev
+        .map((day) => ({ ...day, visits: day.visits.filter((v) => v.id !== visitId) }))
+        .filter((day) => day.visits.length > 0)
+    );
+    try {
+      await excludeVisitFromTrip(session.user.id, visitId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove that review from the trip.');
+    }
+  }
+
   function handleVisitDeleted(visitId: string) {
     setDays((prev) =>
       prev.map((day) => ({ ...day, visits: day.visits.filter((v) => v.id !== visitId) })).filter((day) => day.visits.length > 0)
@@ -166,6 +183,9 @@ export default function TripScreen() {
                   onToggleLike={handleToggleLike}
                   onShare={handleShare}
                   onVisitDeleted={handleVisitDeleted}
+                  onRemoveFromTrip={
+                    session?.user.id === trip.userId ? handleRemoveFromTrip : undefined
+                  }
                 />
               ))}
             </>

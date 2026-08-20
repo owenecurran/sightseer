@@ -9,12 +9,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { FeedRatingStamp, getStampTextReserve } from '@/components/ui/feed-rating-stamp';
 import { StretchText } from '@/components/ui/stretch-text';
+import { TripCollectionRow } from '@/components/trip-collection-row';
 import { Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import type { CollectionStats } from '@/lib/collection-stats';
 import type { Database } from '@/lib/database.types';
 import type { TravelBookListItem } from '@/lib/travel-books';
+import type { Trip } from '@/lib/trips';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
@@ -35,6 +37,10 @@ type CollectionsListProps = {
   travelBookThumbnailUrls: Record<string, string>;
   boardStats: Record<string, CollectionStats>;
   travelBookStats: Record<string, CollectionStats>;
+  // Detected trips, with each one's average review score for its thumbnail
+  // ring. Empty for viewers who can't see any of this user's trips.
+  trips: Trip[];
+  tripAverageRatings: Record<string, number | null>;
   isLoading: boolean;
   emptyBoardsMessage: string;
   emptyTravelBooksMessage: string;
@@ -76,6 +82,8 @@ export function CollectionsList({
   travelBookThumbnailUrls,
   boardStats,
   travelBookStats,
+  trips,
+  tripAverageRatings,
   isLoading,
   emptyBoardsMessage,
   emptyTravelBooksMessage,
@@ -104,13 +112,31 @@ export function CollectionsList({
           {emptyBoardsMessage}
         </ThemedText>
       )}
+      {mode === 'trips' && !isLoading && trips.length === 0 && (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.gutter}>
+          No trips yet. Post a couple of reviews away from your home locations and they'll be grouped
+          into one automatically.
+        </ThemedText>
+      )}
       {mode === 'travel_books' && !isLoading && travelBooks.length === 0 && (
         <ThemedText type="small" themeColor="textSecondary" style={styles.gutter}>
           {emptyTravelBooksMessage}
         </ThemedText>
       )}
 
-      {mode === 'boards' ? (
+      {mode === 'trips' ? (
+        <Animated.FlatList
+          data={trips}
+          keyExtractor={(item: Trip) => item.key}
+          contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
+          showsVerticalScrollIndicator={false}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          renderItem={({ item }: { item: Trip }) => (
+            <TripCollectionRow trip={item} averageRating={tripAverageRatings[item.key] ?? null} />
+          )}
+        />
+      ) : mode === 'boards' ? (
         <Animated.FlatList
           data={sortedBoards}
           keyExtractor={(item: BoardRow) => item.id}

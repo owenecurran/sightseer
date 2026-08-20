@@ -15,6 +15,8 @@ import { useTabFocusEffect } from '@/hooks/use-tab-pager';
 import { useAuth } from '@/lib/auth-context';
 import { listMyBoards } from '@/lib/boards';
 import { getCollectionStats, type CollectionStats } from '@/lib/collection-stats';
+import { getTripsForUsers, type Trip } from '@/lib/trips';
+import { getVisitsByIds } from '@/lib/feed';
 import { getBoardThumbnailUrls, getTravelBookThumbnailUrls } from '@/lib/collection-thumbnails';
 import type { Database } from '@/lib/database.types';
 import { listMyTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
@@ -31,6 +33,8 @@ export default function BoardsScreen() {
   const [travelBookThumbnailUrls, setTravelBookThumbnailUrls] = useState<Record<string, string>>({});
   const [boardStats, setBoardStats] = useState<Record<string, CollectionStats>>({});
   const [travelBookStats, setTravelBookStats] = useState<Record<string, CollectionStats>>({});
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [tripAverageRatings, setTripAverageRatings] = useState<Record<string, number | null>>({});
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -63,6 +67,30 @@ export default function BoardsScreen() {
           );
           setBoardStats(stats.boards);
           setTravelBookStats(stats.travelBooks);
+
+          // Trips are derived, so they're fetched rather than stored — and
+          // their average score (for each row's thumbnail ring) needs the
+          // underlying reviews, which the RPC returns only ids for.
+          const detected = await getTripsForUsers([session.user.id]);
+          setTrips(detected);
+          const allVisitIds = [...new Set(detected.flatMap((t) => t.visitIds))];
+          if (allVisitIds.length > 0) {
+            const visits = await getVisitsByIds(allVisitIds, session.user.id);
+            const ratingById = new Map(visits.map((v) => [v.id, v.rating]));
+            setTripAverageRatings(
+              Object.fromEntries(
+                detected.map((trip) => {
+                  const rated = trip.visitIds
+                    .map((id) => ratingById.get(id))
+                    .filter((r): r is number => r != null);
+                  return [
+                    trip.key,
+                    rated.length > 0 ? rated.reduce((sum, r) => sum + r, 0) / rated.length : null,
+                  ];
+                })
+              )
+            );
+          }
         })
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your collections.'))
         .finally(() => {
@@ -78,12 +106,17 @@ export default function BoardsScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.gutter}>
-          <ThemedText type="displaySerif">{mode === 'boards' ? 'Your boards' : 'Your travel books'}</ThemedText>
+          <ThemedText type="displaySerif">
+            {mode === 'boards' ? 'Your boards' : mode === 'trips' ? 'Your trips' : 'Your travel books'}
+          </ThemedText>
 
-          <Button
-            label={mode === 'boards' ? 'New board' : 'New travel book'}
-            onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
-          />
+          {/* Trips have no create button — they're detected, not made. */}
+          {mode !== 'trips' && (
+            <Button
+              label={mode === 'boards' ? 'New board' : 'New travel book'}
+              onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
+            />
+          )}
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -103,6 +136,8 @@ export default function BoardsScreen() {
           travelBookThumbnailUrls={travelBookThumbnailUrls}
           boardStats={boardStats}
           travelBookStats={travelBookStats}
+          trips={trips}
+          tripAverageRatings={tripAverageRatings}
           isLoading={isLoading}
           emptyBoardsMessage="No boards yet. Create one above, or save a visit to a board from the Search tab."
           emptyTravelBooksMessage="No travel books yet. Start one to keep a chronological log of a trip."

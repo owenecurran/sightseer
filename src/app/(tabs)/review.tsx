@@ -53,6 +53,16 @@ export default function CreateChooserScreen() {
           </ThemedView>
         </Pressable>
 
+        <Pressable onPress={() => router.push('/trip/new')}>
+          <ThemedView type="backgroundElement" style={styles.optionCard}>
+            <ThemedText type="headline">New trip</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Group the reviews from a set of dates into one trip. Most trips are detected for you —
+              this is for the ones that aren't.
+            </ThemedText>
+          </ThemedView>
+        </Pressable>
+
         <Pressable onPress={() => router.push('/travel-book/new')}>
           <ThemedView type="backgroundElement" style={styles.optionCard}>
             <ThemedText type="headline">New travel book</ThemedText>

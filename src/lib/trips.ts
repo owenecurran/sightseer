@@ -201,3 +201,157 @@ export async function setTripDisplayPlace(
   );
   if (error) throw error;
 }
+
+// --- Trip suggestion: "should this day be a trip?" ---------------------
+
+// Two reviews are enough to ask when the cluster is genuinely far from home
+// — a different city entirely reads as a trip immediately. Closer than that
+// and a pair is ambiguous (a long lunch out), so it waits for a third.
+const FAR_FROM_HOME_M = 80_000;
+
+export type TripSuggestion = {
+  date: string;
+  areaPlaceId: string | null;
+  areaName: string;
+  visitCount: number;
+  distanceFromHomeM: number | null;
+};
+
+// Whether a given day is worth offering as a trip. Returns null when it
+// isn't — already promoted or declined, at home, or not enough reviews yet.
+export async function getTripSuggestion(
+  userId: string,
+  date: string
+): Promise<TripSuggestion | null> {
+  const { data, error } = await supabase.rpc('get_trip_suggestion', {
+    target_user_id: userId,
+    target_date: date,
+  });
+  if (error) throw error;
+
+  const row = (data as unknown as {
+    area_place_id: string | null;
+    area_name: string | null;
+    visit_count: number;
+    distance_from_home_m: number | null;
+  }[])?.[0];
+  if (!row || !row.area_name) return null;
+
+  const distance = row.distance_from_home_m;
+  const isFar = distance != null && distance >= FAR_FROM_HOME_M;
+  // 3+ always qualifies; 2 only when it's clearly a trip rather than an
+  // errand — see FAR_FROM_HOME_M.
+  if (row.visit_count < 3 && !isFar) return null;
+
+  return {
+    date,
+    areaPlaceId: row.area_place_id,
+    areaName: row.area_name,
+    visitCount: Number(row.visit_count),
+    distanceFromHomeM: distance,
+  };
+}
+
+// "Yes, this is a trip."
+export async function promoteToTrip(userId: string, date: string): Promise<void> {
+  const { error } = await supabase.from('trip_overrides').upsert(
+    { user_id: userId, start_date: date, promoted: true, updated_at: new Date().toISOString() },
+    { onConflict: 'user_id,start_date' }
+  );
+  if (error) throw error;
+}
+
+// "No" — silences it for good. Simply ignoring the prompt writes nothing,
+// which is what lets it come back later.
+export async function declineTripPrompt(userId: string, date: string): Promise<void> {
+  const { error } = await supabase.from('trip_overrides').upsert(
+    {
+      user_id: userId,
+      start_date: date,
+      trip_prompt_declined: true,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,start_date' }
+  );
+  if (error) throw error;
+}
+
+// Manually created trip: an anchor row the detection RPC unions in, rather
+// than a second kind of trip with its own table and code path.
+export async function createManualTrip(
+  userId: string,
+  startDate: string,
+  endDate: string,
+  displayPlaceId: string | null
+): Promise<void> {
+  const { error } = await supabase.from('trip_overrides').upsert(
+    {
+      user_id: userId,
+      start_date: startDate,
+      manual_end_date: endDate,
+      display_place_id: displayPlaceId,
+      promoted: true,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,start_date' }
+  );
+  if (error) throw error;
+}
+
+// --- Trip membership -----------------------------------------------------
+
+// "This review wasn't part of the trip." Keyed by the visit rather than by
+// the trip (see the migration): it applies before clustering, so removing a
+// stray review also corrects the trip's dates and its name, and no later
+// review can quietly drag it back in.
+export async function excludeVisitFromTrip(userId: string, visitId: string): Promise<void> {
+  const { error } = await supabase
+    .from('trip_excluded_visits')
+    .upsert({ user_id: userId, visit_id: visitId }, { onConflict: 'user_id,visit_id' });
+  if (error) throw error;
+}
+
+// Undo — the review rejoins whatever trip it naturally falls into.
+export async function restoreVisitToTrip(userId: string, visitId: string): Promise<void> {
+  const { error } = await supabase
+    .from('trip_excluded_visits')
+    .delete()
+    .eq('user_id', userId)
+    .eq('visit_id', visitId);
+  if (error) throw error;
+}
+
+// Reviews this user has removed from their trips, for an "excluded" list.
+export async function getExcludedVisitIds(userId: string): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('trip_excluded_visits')
+    .select('visit_id')
+    .eq('user_id', userId);
+  if (error) throw error;
+  return new Set((data ?? []).map((row) => row.visit_id));
+}
+
+// The span of the user's own reviews in or under a place — what a manually
+// created trip uses instead of asking for dates. Null when they haven't
+// reviewed anything there, since a trip with no reviews is nothing.
+//
+// One RPC call, not one per review: the containment test walks the place
+// hierarchy, so doing it client-side is an N+1 by construction.
+export async function getVisitRangeForPlace(
+  userId: string,
+  placeId: string
+): Promise<{ startDate: string; endDate: string; visitCount: number } | null> {
+  const { data, error } = await supabase.rpc('get_visit_range_for_place', {
+    target_user_id: userId,
+    target_place_id: placeId,
+  });
+  if (error) throw error;
+
+  const row = (data as unknown as { start_date: string; end_date: string; visit_count: number }[])?.[0];
+  if (!row) return null;
+  return {
+    startDate: row.start_date,
+    endDate: row.end_date,
+    visitCount: Number(row.visit_count),
+  };
+}
