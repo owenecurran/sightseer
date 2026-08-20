@@ -31,9 +31,9 @@ who you were with, and it lands in your followers' feed. On top of that:
 
 |                                 |                                                                                                                                                                                                              |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Automatic trip detection**    | Set up to 5 home locations. Reviews posted more than 10 miles from all of them get grouped into a **trip**, labelled with wherever the majority of it happened — and offered up as a travel book in one tap. |
+| **Automatic trip detection**    | Set up to 5 home locations. Reviews posted more than 10 miles from all of them get grouped into a **trip**, labelled with wherever the majority of it happened, and offered up as a travel book in one tap.           |
 | **Travel books**                | Collaborative, chronological trip journals. Invite people, and everyone's own reviews from the trip flow in. Publish a recap to the feed when it's done.                                                     |
-| **Boards**                      | Pinterest-style collections of any reviews — yours or anyone else's — with list, ranked, grid and map views.                                                                                                 |
+| **Boards**                      | Pinterest-style collections of any reviews with list, ranked, grid and map views.                                                                                                                            |
 | **Photo-first review creation** | Point it at your camera roll and it reads EXIF location and dates to build drafts for you: one review per photo, or one review for a whole batch.                                                            |
 | **Profile prompts**             | Answer prompts with text, a photo, a review, a board, a travel book, or a place. Each is rendered as its own card layout.                                                                                    |
 | **Maps everywhere**             | Discover reviewed places nearby, see a profile's visited regions, or open any trip full-screen.                                                                                                              |
@@ -94,28 +94,7 @@ per post, so it never reshuffles between renders.
 | [**EAS Build**](https://docs.expo.dev/build/introduction/) | Cloud builds and internal distribution for device testing                            |
 | [**Supabase CLI**](https://supabase.com/docs/guides/cli)   | Migrations and generated types (`database.types.ts` is generated, never hand-edited) |
 | **ESLint**                                                 | `expo lint`                                                                          |
-| [**Claude Code**](https://claude.com/claude-code)          | Used heavily as a pair-programmer throughout                                         |
-
----
-
-## Architecture notes
-
-A few decisions worth calling out:
-
-- **Trips are derived, not stored.** They're recomputed from `visits` on every read by a
-  `security definer` RPC, so a new review extends the right trip with no sync step. Only user
-  _overrides_ — the display level, the linked travel book, dismissals — are persisted.
-- **Trip labels use majority, not common ancestor.** Labelling a trip by the deepest place containing
-  _every_ review meant one airport layover in Chicago turned a Seattle trip into "United States." It
-  now picks the most specific place holding a strict majority of the reviews.
-- **Home locations are never readable by anyone else.** Trip grouping is visible to everyone, but only
-  because the RPC is `security definer` and returns the groupings — never the home locations behind them.
-- **The feed is a plain ScrollView, deliberately.** `FlatList` virtualises cells, which on Android
-  requires clipping each cell to its own bounds — that clipped the rating stamp's intentional overhang.
-- **Width caps live on scroll _content_, not the scroll frame.** Capping the frame makes a mouse wheel
-  in the margins of a wide browser window hit nothing.
-
----
+| [**Claude Code**](https://claude.com/claude-code)          | Used as a pair-programmer throughout                                                 |
 
 ## Getting started
 
