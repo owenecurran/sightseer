@@ -75,8 +75,16 @@ function SinglePhotoTile({ url, rawRatio, onPress }: SinglePhotoTileProps) {
 
   return (
     <View style={styles.singleOuter} onLayout={handleLayout}>
-      {containerWidth > 0 && (
+      {containerWidth > 0 ? (
         <PhotoTile url={url} style={[styles.singleInner, { width, height }]} onPress={onPress} />
+      ) : (
+        // Holds the photo's space on the very first frame, before onLayout
+        // reports a width. Rendering nothing here collapsed the whole card
+        // to zero height for a frame — invisible on a static screen, but
+        // very visible when stepping through a trip's reviews, where every
+        // new card flashed empty before popping open. aspectRatio gives the
+        // box a height without needing a measurement first.
+        <View style={{ width: '100%', aspectRatio: ratio, maxHeight: MAX_PHOTO_HEIGHT }} />
       )}
     </View>
   );

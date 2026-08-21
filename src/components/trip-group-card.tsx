@@ -212,6 +212,7 @@ export function TripGroupCard({
       {isOuting ? (
         <TripDayReviews
           day={days[0]}
+          tripKey={trip.key}
           dayNumber={1}
           photoUrls={photoUrls}
           avatarUrls={avatarUrls}
@@ -227,6 +228,7 @@ export function TripGroupCard({
             <TripDayReviews
               key={day.date}
               day={day}
+              tripKey={trip.key}
               dayNumber={dayNumber}
               photoUrls={photoUrls}
               avatarUrls={avatarUrls}

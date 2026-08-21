@@ -175,6 +175,7 @@ export default function TripScreen() {
                 <TripDayReviews
                   key={day.date}
                   day={day}
+                  tripKey={trip.key}
                   dayNumber={dayNumber}
                   photoUrls={photoUrls}
                   avatarUrls={avatarUrls}

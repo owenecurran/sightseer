@@ -1,18 +1,33 @@
-import { useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
+import type { StyleProp, ViewStyle } from 'react-native';
+
+import { Image } from 'expo-image';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { VisitCard } from '@/components/visit-card';
-import { Spacing } from '@/constants/theme';
+import { BrandColors, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { FeedVisit, TripDay } from '@/lib/feed';
+import { colorForRating } from '@/lib/rating-gradient';
+import { ArrowSticker } from '@/components/ui/arrow-sticker';
+import { pickStickerVariants } from '@/lib/sticker-shapes';
 
 type TripDayReviewsProps = {
   day: TripDay;
   dayNumber: number;
+  // Seeds the sticker artwork — per trip, not per day, so a trip's arrows
+  // keep one identity instead of reshuffling between days.
+  tripKey: string;
   photoUrls: Record<string, string>;
   avatarUrls: Record<string, string>;
   viewerId?: string;
@@ -57,9 +72,75 @@ function formatDate(date: string): string {
 // Nothing here clips: each card is the real feed VisitCard at its own
 // natural height, so tall reviews aren't cropped and the rating stamp is
 // free to lean off the card's corner the way it does everywhere else.
+const SPIN_DEGREES = 180;
+// Short and non-looping, matched to the card's own 220ms shuffle: a long
+// trip page can show ~20 arrows, and a spin still running when you tap
+// again is where repeated taps start to look messy.
+const SPIN_MS = 260;
+
+type StepArrowProps = {
+  direction: 'prev' | 'next';
+  variants: ReturnType<typeof pickStickerVariants>;
+  glyphColor: string;
+  stickerColor: string;
+  onPress: () => void;
+  style: StyleProp<ViewStyle>;
+};
+
+// Its own component so each arrow owns its animated values — the pressed
+// one animates alone, which reads as acknowledging that tap rather than the
+// whole row twitching.
+function StepArrow({ direction, variants, glyphColor, stickerColor, onPress, style }: StepArrowProps) {
+  const spin = useSharedValue(0);
+  const pop = useSharedValue(1);
+  const wobble = useSharedValue(0);
+  const fade = useSharedValue(1);
+
+  function handlePress() {
+    // Accumulated rather than reset, so rapid taps keep turning the same
+    // way instead of snapping back and re-spinning.
+    spin.value = withTiming(spin.value + (direction === 'next' ? SPIN_DEGREES : -SPIN_DEGREES), {
+      duration: SPIN_MS,
+    });
+    // Overshoot then settle on a spring — that's the bounce.
+    pop.value = withSequence(
+      withTiming(1.35, { duration: 110 }),
+      withSpring(1, { damping: 7, stiffness: 220 })
+    );
+    wobble.value = withSequence(
+      withTiming(-10, { duration: 60 }),
+      withTiming(10, { duration: 60 }),
+      withTiming(0, { duration: 90 })
+    );
+    // The dip is what sells the colour change: the new tint lands while the
+    // glyph is faded, so it reads as a transition rather than a snap.
+    fade.value = withSequence(withTiming(0.4, { duration: 90 }), withTiming(1, { duration: 170 }));
+    onPress();
+  }
+
+  return (
+    <Pressable onPress={handlePress} hitSlop={10} style={style}>
+      <ArrowSticker
+        size={ARROW_SIZE}
+        background={variants.background}
+        inner={variants.inner}
+        arrow={variants.arrow}
+        innerColor={stickerColor}
+        arrowColor={glyphColor}
+        flip={direction === 'prev'}
+        spin={spin}
+        pop={pop}
+        wobble={wobble}
+        fade={fade}
+      />
+    </Pressable>
+  );
+}
+
 export function TripDayReviews({
   day,
   dayNumber,
+  tripKey,
   photoUrls,
   avatarUrls,
   viewerId,
@@ -82,14 +163,33 @@ export function TripDayReviews({
   const fade = useSharedValue(1);
 
   const reviewCount = day.visits.length;
+  const stickerVariants = useMemo(() => pickStickerVariants(tripKey), [tripKey]);
+
+  // Warm every photo in the day up front. Stepping otherwise hits a cold
+  // image each time — the review is already on screen while its photo is
+  // still downloading, which is most of why shuffling felt slow.
+  useEffect(() => {
+    const urls = day.visits
+      .flatMap((visit) => visit.photoIds)
+      .map((id) => photoUrls[id])
+      .filter((url): url is string => url != null);
+    if (urls.length > 0) Image.prefetch(urls);
+  }, [day, photoUrls]);
+
+  // Each arrow is tinted by the review it leads to. Unrated neighbours fall
+  // back to the theme's own text colour rather than an arbitrary hue.
+  function neighbourColor(offset: number): string {
+    if (reviewCount < 2) return theme.text;
+    const neighbour = day.visits[(index + offset + reviewCount) % reviewCount];
+    return neighbour?.rating != null ? colorForRating(neighbour.rating) : theme.text;
+  }
   // Clamped: a delete can shrink the day out from under the current index.
   const activeIndex = Math.min(index, reviewCount - 1);
   const activeVisit = day.visits[activeIndex];
 
   function handlePhotoLayout(offsetY: number, height: number) {
     if (height <= 0) return;
-    const next = offsetY + height / 2;
-    setArrowAnchor((current) => (current != null && Math.abs(current - next) < 1 ? current : next));
+    setArrowAnchor((current) => current ?? offsetY + height / 2);
   }
 
   const cardStyle = useAnimatedStyle(() => ({
@@ -165,32 +265,30 @@ export function TripDayReviews({
 
           {reviewCount > 1 && (
             <>
-              <Pressable
+              <StepArrow
+                direction="prev"
+                variants={stickerVariants}
+                glyphColor={BrandColors.cream}
+                stickerColor={neighbourColor(-1)}
                 onPress={() => step(-1)}
-                hitSlop={10}
                 style={[
                   styles.arrow,
-                  { backgroundColor: theme.backgroundElement },
                   styles.arrowLeft,
-                  arrowAnchor != null
-                    ? { top: arrowAnchor - ARROW_SIZE / 2, marginTop: 0 }
-                    : null,
-                ]}>
-                <Ionicons name="chevron-back" size={ARROW_ICON_SIZE} color={theme.text} />
-              </Pressable>
-              <Pressable
+                  arrowAnchor != null ? { top: arrowAnchor - ARROW_SIZE / 2, marginTop: 0 } : null,
+                ]}
+              />
+              <StepArrow
+                direction="next"
+                variants={stickerVariants}
+                glyphColor={BrandColors.cream}
+                stickerColor={neighbourColor(1)}
                 onPress={() => step(1)}
-                hitSlop={10}
                 style={[
                   styles.arrow,
-                  { backgroundColor: theme.backgroundElement },
                   styles.arrowRight,
-                  arrowAnchor != null
-                    ? { top: arrowAnchor - ARROW_SIZE / 2, marginTop: 0 }
-                    : null,
-                ]}>
-                <Ionicons name="chevron-forward" size={ARROW_ICON_SIZE} color={theme.text} />
-              </Pressable>
+                  arrowAnchor != null ? { top: arrowAnchor - ARROW_SIZE / 2, marginTop: 0 } : null,
+                ]}
+              />
             </>
           )}
         </View>
