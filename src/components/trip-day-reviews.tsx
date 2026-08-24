@@ -6,7 +6,6 @@ import Animated, {
   withSequence,
   withSpring,
   withTiming,
-  type SharedValue,
 } from 'react-native-reanimated';
 import type { StyleProp, ViewStyle } from 'react-native';
 
@@ -50,7 +49,6 @@ const SHUFFLE_MS = 220;
 // Arrow buttons sit ON the card's left/right edges rather than under it, so
 // stepping through never moves the control you're tapping.
 const ARROW_SIZE = 56;
-const ARROW_ICON_SIZE = 28;
 
 function formatDate(date: string): string {
   const [year, month, day] = date.split('-').map(Number);

@@ -70,8 +70,6 @@ const FILL_HEIGHT_OVERSHOOT = 1.25;
 function fillScaleY(scaleX: number): number {
   return scaleX < 1 ? 1 / Math.sqrt(scaleX) : 1;
 }
-const OUTLINE_MAX_SCALE_Y = 1.6;
-const OUTLINE_MAX_SCALE_X = 1.6;
 const OUTLINE_STROKE_RADIUS = 2;
 const WEB_WIDTH_SAFETY_MARGIN = 2;
 

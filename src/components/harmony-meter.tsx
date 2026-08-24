@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { StickerLink } from '@/components/ui/sticker-link';
 import { ThemedText } from '@/components/themed-text';

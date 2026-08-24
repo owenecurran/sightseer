@@ -32,7 +32,7 @@ import { getAvatarViewUrls } from '@/lib/avatar';
 import type { Database } from '@/lib/database.types';
 import { deleteDraftPhoto, getDraftForEdit, publishDraft, updateDraftFields, uploadPhotoForDraft } from '@/lib/drafts';
 import { pickImageFromLibrary, takePhotoWithCamera } from '@/lib/image-picker';
-import { cachePlaceHierarchy, getPlaceBreadcrumb, resolveStateCountries } from '@/lib/places-cache';
+import { getPlaceBreadcrumb, resolveStateCountries } from '@/lib/places-cache';
 import { extractDateFromExif } from '@/lib/photo-clustering';
 import { uploadPhotoForVisit } from '@/lib/photo-upload';
 import { searchUsers, type SearchUserResult } from '@/lib/search';
@@ -134,7 +134,6 @@ export default function ReviewFormScreen() {
   const [peopleSuggestions, setPeopleSuggestions] = useState<SearchUserResult[]>([]);
   const [peopleAvatarUrls, setPeopleAvatarUrls] = useState<Record<string, string>>({});
   const [taggedUsers, setTaggedUsers] = useState<UserRow[]>([]);
-  const [isPeopleSearching, setIsPeopleSearching] = useState(false);
 
   const peopleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -148,15 +147,12 @@ export default function ReviewFormScreen() {
     }
 
     peopleDebounceRef.current = setTimeout(async () => {
-      setIsPeopleSearching(true);
       try {
         const results = await searchUsers(peopleQuery, session.user.id);
         setPeopleSuggestions(results);
         setPeopleAvatarUrls(results.length > 0 ? await getAvatarViewUrls(results.map((u) => u.id)) : {});
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Search failed.');
-      } finally {
-        setIsPeopleSearching(false);
       }
     }, DEBOUNCE_MS);
 

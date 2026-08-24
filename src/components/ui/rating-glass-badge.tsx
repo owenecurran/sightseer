@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Box, BoxShadow, Canvas, FractalNoise, LinearGradient, Path, Rect, Skia } from '@shopify/react-native-skia';
+import { Canvas, LinearGradient, Path, Rect, Skia } from '@shopify/react-native-skia';
 
 import { OutlinedText } from '@/components/ui/outlined-text';
 import { BrandColors } from '@/constants/theme';
@@ -93,8 +93,6 @@ export function RatingGlassBadge({ rating, size = DEFAULT_SIZE }: RatingGlassBad
       return { framePath: null, iconPath: null };
     }
   }, [scale, windowRect]);
-
-  const innerShadowBlur = Math.max(2, windowRect.width * 0.05);
 
   if (!framePath || !iconPath) {
     // Same colored-rect-plus-number shape as rating-glass-badge-gated.web.tsx's

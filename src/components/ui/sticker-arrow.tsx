@@ -1,13 +1,12 @@
-import { Canvas, Group, Path, Skia } from '@shopify/react-native-skia';
+import { Canvas, Group, Path } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { BrandColors } from '@/constants/theme';
-import { STICKER_SETS, type StickerLayer } from '@/lib/sticker-shape';
+import { buildStickerPaths, pickStickerVariants } from '@/lib/sticker-shapes';
 
-// Accent palette the inner blob is tinted from. Brand colours plus the
-// rating gradient's own ends, so a sticker never looks foreign next to a
-// stamp or a harmony meter.
+// Accent palette the inner layer is tinted from. Brand colours plus tones
+// from the rating gradient, so a sticker never looks foreign next to a stamp.
 const ACCENTS = ['#a0bd91', '#e0a458', '#c96a5b', '#6b8fb5', '#b58bbd', '#7fae9e'];
 
 export type StickerArrowDirection = 'left' | 'right';
@@ -15,23 +14,23 @@ export type StickerArrowDirection = 'left' | 'right';
 type StickerArrowProps = {
   direction?: StickerArrowDirection;
   size?: number;
-  // Anything stable per call site. The set and accent are picked from this,
-  // so a given screen's arrow looks the same every time it renders rather
-  // than reshuffling — the same reasoning FeedRatingStamp's seeding uses.
+  // Anything stable per call site. Variant, accent and jitter all derive
+  // from it, so a given arrow looks the same on every render rather than
+  // reshuffling.
   seed?: string;
 };
 
 const DEFAULT_SIZE = 34;
-// Stamp-like placement jitter. Same idea as FeedRatingStamp: a sticker
-// applied by hand is never perfectly square to the thing it is stuck on, and
-// a tiny deterministic offset reads as "placed" rather than "rendered".
-// Deliberately small -- this is a navigation control, so it has to still
-// look deliberate and stay comfortably tappable.
+// Stamp-like placement jitter: a sticker applied by hand is never perfectly
+// square to what it is stuck on. Deliberately small — this is a tap target,
+// so it has to stay looking deliberate and stay comfortably hittable.
 const JITTER_PX = 2;
 const JITTER_DEGREES = 3;
+// Matches ArrowSticker's own layer insets, so the static and animated
+// renderers produce visually identical stickers.
+const INNER_INSET = 0.78;
+const ARROW_INSET = 0.34;
 
-// mulberry32 -- the same small PRNG the rating stamps use, so seeded
-// placement behaves identically across the app.
 function mulberry32(seed: number) {
   let state = seed;
   return () => {
@@ -52,43 +51,30 @@ function hashSeed(seed: string): number {
   return h >>> 0;
 }
 
-// Fits a layer's own viewBox into a square box, centred, preserving its
-// aspect ratio. The three layers were drawn on different canvases, so each
-// needs its own transform rather than one shared scale.
-function layerTransform(layer: StickerLayer, box: number, inset: number) {
-  const available = box * inset;
-  const scale = Math.min(available / layer.viewBoxWidth, available / layer.viewBoxHeight);
-  return {
-    scale,
-    dx: (box - layer.viewBoxWidth * scale) / 2,
-    dy: (box - layer.viewBoxHeight * scale) / 2,
-  };
-}
-
-// A navigation arrow drawn as one of the brand's die-cut stickers: body,
-// rim, a tinted blob, and the chevron on top.
+// A static navigation arrow drawn as one of the brand's die-cut stickers.
 //
-// All four layers share ONE Canvas rather than one each. A Canvas holds a GL
-// surface, and these appear on every screen with a back link plus every row
-// with a chevron — four contexts per arrow would be wasteful for what is
-// ultimately four filled paths.
+// Shares its artwork and variant-picking with ArrowSticker (sticker-shapes.ts)
+// rather than carrying its own copy — the two differ only in that the trip
+// stepper's version is driven by animation values on press, which every other
+// arrow in the app has no use for. Keeping one data module means adding a new
+// sticker variant shows up everywhere at once.
+//
+// All layers share ONE Canvas: a Canvas holds a GL surface, and these appear
+// on nearly every screen.
 export function StickerArrow({
   direction = 'left',
   size = DEFAULT_SIZE,
   seed = 'default',
 }: StickerArrowProps) {
-  const { set, accent, jitter } = useMemo(() => {
+  const { variants, accent, jitter } = useMemo(() => {
     const h = hashSeed(seed);
     const next = mulberry32(h);
     return {
-      set: STICKER_SETS[h % STICKER_SETS.length],
-      // A second, decorrelated draw so the set and the colour don't move
-      // together across call sites.
+      variants: pickStickerVariants(seed),
       accent: ACCENTS[Math.floor(h / 7) % ACCENTS.length],
-      // Applied to the wrapper View rather than inside the Canvas: Skia
-      // clips to the canvas bounds, so rotating in there would shave the
-      // artwork's corners. Transforming the view moves already-drawn pixels
-      // and lets them hang past the box instead.
+      // Applied to the wrapper View, not inside the Canvas: Skia clips to
+      // its canvas bounds, so rotating in there would shave the artwork's
+      // corners. Transforming the view lets it hang past the box instead.
       jitter: {
         dx: (next() * 2 - 1) * JITTER_PX,
         dy: (next() * 2 - 1) * JITTER_PX,
@@ -97,28 +83,20 @@ export function StickerArrow({
     };
   }, [seed]);
 
-  const paths = useMemo(() => {
-    const build = (layer: StickerLayer, inset: number) => {
-      const path = Skia.Path.MakeFromSVGString(layer.d);
-      if (!path) return null;
-      const t = layerTransform(layer, size, inset);
-      const m = Skia.Matrix();
-      m.translate(t.dx, t.dy);
-      m.scale(t.scale, t.scale);
-      path.transform(m);
-      return path;
-    };
-    return {
-      // Insets stack the layers inward so each reads as sitting on the one
-      // beneath it rather than covering it edge to edge.
-      bgBody: build(set.bgBody, 1),
-      bgRim: build(set.bgRim, 1),
-      inner: build(set.inner, 0.74),
-      arrow: build(set.arrow, 0.3),
-    };
-  }, [set, size]);
+  const backgroundPaths = useMemo(
+    () => buildStickerPaths(variants.background, size),
+    [variants.background, size]
+  );
+  const innerPaths = useMemo(
+    () => buildStickerPaths(variants.inner, size * INNER_INSET),
+    [variants.inner, size]
+  );
+  const arrowPaths = useMemo(
+    () => buildStickerPaths(variants.arrow, size * ARROW_INSET),
+    [variants.arrow, size]
+  );
 
-  if (!paths.bgBody || !paths.arrow) {
+  if (!backgroundPaths || !arrowPaths) {
     // Skia not ready (web loads CanvasKit asynchronously) — hold the space
     // so nothing jumps when it arrives.
     return <View style={{ width: size, height: size }} />;
@@ -136,15 +114,24 @@ export function StickerArrow({
         ],
       }}>
       <Canvas style={StyleSheet.absoluteFill}>
-        <Path path={paths.bgBody} color={BrandColors.cream} />
-        {paths.bgRim && <Path path={paths.bgRim} color="rgba(255,255,255,0.55)" />}
-        {paths.inner && <Path path={paths.inner} color={accent} />}
+        {/* A background variant carries a body and a rim as separate paths,
+            which is what lets the two take different colours. */}
+        {backgroundPaths.map((path, i) => (
+          <Path
+            key={`bg-${i}`}
+            path={path}
+            color={i === 0 ? BrandColors.cream : 'rgba(255,255,255,0.55)'}
+          />
+        ))}
+        {innerPaths?.map((path, i) => <Path key={`in-${i}`} path={path} color={accent} />)}
         {/* The artwork points right, so a left arrow is the same shape
             mirrored about the centre rather than a second asset. */}
         <Group
           transform={direction === 'left' ? [{ scaleX: -1 }] : undefined}
           origin={{ x: size / 2, y: size / 2 }}>
-          <Path path={paths.arrow} color={BrandColors.background} />
+          {arrowPaths.map((path, i) => (
+            <Path key={`ar-${i}`} path={path} color={BrandColors.background} />
+          ))}
         </Group>
       </Canvas>
     </View>

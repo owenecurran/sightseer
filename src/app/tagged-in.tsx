@@ -1,7 +1,7 @@
-import { router, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { BackLink } from '@/components/ui/back-link';
 import { useCallback, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 

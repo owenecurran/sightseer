@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
-import { getDeviceContactsHashed, matchContactsToUsers, type DeviceContact, type MatchedUser } from '@/lib/contacts';
+import { getDeviceContactsHashed, matchContactsToUsers, type MatchedUser } from '@/lib/contacts';
 import { followUser } from '@/lib/follows';
 import { shareText } from '@/lib/share';
 
