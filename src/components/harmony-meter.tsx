@@ -30,25 +30,6 @@ export function HarmonyMeter({ harmony, userName, otherId }: HarmonyMeterProps) 
   const color = colorForRating(score / 10);
   const isThin = harmony.evidence < LOW_EVIDENCE_THRESHOLD;
 
-  const basis: string[] = [];
-  // Destinations lead: it's the most convincing thing to be able to say.
-  if (harmony.sharedDestinations > 0) {
-    basis.push(
-      `${harmony.sharedDestinations} place${harmony.sharedDestinations === 1 ? '' : 's'} you've both travelled to`
-    );
-  }
-  if (harmony.sharedLocal > 0) {
-    basis.push(
-      `${harmony.sharedLocal} local favourite${harmony.sharedLocal === 1 ? '' : 's'} in common`
-    );
-  }
-  if (harmony.sharedPlaces > 0) {
-    basis.push(`${harmony.sharedPlaces} you've both rated`);
-  }
-  if (harmony.sharedAreas > 0) {
-    basis.push(`${harmony.sharedAreas} area${harmony.sharedAreas === 1 ? '' : 's'} in common away from home`);
-  }
-
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <View style={styles.headerRow}>
@@ -62,13 +43,14 @@ export function HarmonyMeter({ harmony, userName, otherId }: HarmonyMeterProps) 
         <View style={[styles.fill, { width: `${score}%`, backgroundColor: color }]} />
       </View>
 
+      {/* One tagline, not a breakdown. The specifics moved to the "Learn
+          why" screen, where each shared place can be named and shown rather
+          than summarised into a sentence nobody can act on. */}
       <ThemedText type="smallBold">{harmonyLabel(score)}</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         {isThin
           ? `Not much to go on yet — you and ${userName} need more overlap before this means much.`
-          : basis.length > 0
-            ? `Based on ${basis.join(' and ')}.`
-            : `Based on how you and ${userName} rate.`}
+          : `How alike you and ${userName} travel.`}
       </ThemedText>
 
       {/* Opens its own screen rather than expanding here: the reasoning is

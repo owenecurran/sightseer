@@ -69,6 +69,10 @@ export type HarmonyReason = {
   // 0-1, where 1 is identical ratings.
   agreement: number;
   isLocal: boolean;
+  // A photo from this place, preferring the viewer's own — recognising the
+  // place at a glance is the point, and your own shot is more recognisable
+  // than a stranger's. Null where neither of you photographed it.
+  photoId: string | null;
 };
 
 // The specific places behind a score, closest agreement first. Fetched only
@@ -94,6 +98,7 @@ export async function getHarmonyBreakdown(
     their_rating: number;
     agreement: number;
     is_local: boolean;
+    photo_id: string | null;
   }[]).map((row) => ({
     kind: row.kind === 'place' ? 'place' : 'area',
     placeId: row.place_id,
@@ -102,5 +107,6 @@ export async function getHarmonyBreakdown(
     theirRating: Number(row.their_rating),
     agreement: Number(row.agreement),
     isLocal: row.is_local,
+    photoId: row.photo_id,
   }));
 }

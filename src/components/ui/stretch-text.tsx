@@ -67,8 +67,27 @@ const FILL_MAX_SCALE = 2.2;
 
 const OUTLINE_OVERSHOOT = 1.02;
 const FILL_HEIGHT_OVERSHOOT = 1.25;
-function fillScaleY(scaleX: number): number {
-  return scaleX < 1 ? 1 / Math.sqrt(scaleX) : 1;
+
+// Ceiling on `fill`'s vertical compensation, applied only to a name shown in
+// full past TRUNCATE_THRESHOLD (see `truncateLongText`).
+//
+// `fill` normally trades horizontal compression for vertical stretch —
+// 1/sqrt(scaleX) — so squeezed text keeps its visual weight. That works
+// while the squeeze is mild, but a name long enough to have been truncated
+// is squeezed hard, and the compensation then makes it *both* very narrow
+// and very tall: 40 characters would land at scaleX 0.5 and scaleY 1.41,
+// which is where the letterforms stop being readable. Capping the vertical
+// half lets the full name stay on screen without towering over the card.
+//
+// Deliberately NOT applied when the text is being truncated: a cut name is
+// short enough that the compensation is doing its intended job, and the
+// compact tiles (teaser cards, collection rows) rely on that look.
+const LONG_TEXT_MAX_SCALE_Y = 1.15;
+
+function fillScaleY(scaleX: number, maxScaleY?: number): number {
+  if (scaleX >= 1) return 1;
+  const compensated = 1 / Math.sqrt(scaleX);
+  return maxScaleY != null ? Math.min(compensated, maxScaleY) : compensated;
 }
 const OUTLINE_STROKE_RADIUS = 2;
 const WEB_WIDTH_SAFETY_MARGIN = 2;
@@ -94,6 +113,11 @@ export function StretchText({
   // always the same string -- measuring the full text and rendering a cut
   // one would compute the scale for text that is not on screen.
   const children = truncateLongText ? truncate(rawChildren) : rawChildren;
+  // A name past the cut-off that is being shown in full anyway — the one
+  // case where the vertical compensation needs a ceiling. See
+  // LONG_TEXT_MAX_SCALE_Y.
+  const isUntruncatedLongName =
+    !truncateLongText && rawChildren.length > TRUNCATE_THRESHOLD;
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [contentWidth, setContentWidth] = useState(0);
@@ -123,7 +147,7 @@ export function StretchText({
       ? fillHeight
         ? Math.max(rawScaleY, FILL_MIN_SCALE) *
           (fillHeightExact ? 1 : FILL_HEIGHT_OVERSHOOT)
-        : fillScaleY(scaleX)
+        : fillScaleY(scaleX, isUntruncatedLongName ? LONG_TEXT_MAX_SCALE_Y : undefined)
       : 1;
   // The centered-growth correction for `fillHeight` (and the plain
   // default case, where it's always a no-op since scaleY is 1 there) —

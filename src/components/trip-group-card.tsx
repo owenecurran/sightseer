@@ -138,7 +138,7 @@ export function TripGroupCard({
 
   return (
     <View style={styles.wrap}>
-      <ThemedView type="backgroundElement" style={styles.header}>
+      <View style={styles.header}>
         {/* Author first, exactly like a normal feed post. Without it the card
             opened straight onto a place name, and it wasn't clear the
             reviews below were somebody's — per direct feedback, that the
@@ -235,7 +235,7 @@ export function TripGroupCard({
             </Pressable>
           )
         )}
-      </ThemedView>
+      </View>
 
       {/* An outing is a single day, so it's just that day's reviews. */}
       {isOuting ? (
@@ -290,13 +290,29 @@ export function TripGroupCard({
 }
 
 const styles = StyleSheet.create({
+  // One frame around the whole trip: the destination header and every day
+  // previewed under it. Before this each day was a loose sibling of the
+  // header, so a trip read as a heading followed by unrelated posts rather
+  // than as one thing.
+  //
+  // Tinted-transparent rather than filled: the header used to be its own
+  // `backgroundElement` plate, and the VisitCards inside are that same
+  // colour, so a filled frame would have flattened into the cards it is
+  // meant to contain. A sage wash this faint separates the group from the
+  // screen without competing with anything in it.
+  //
+  // No `overflow: 'hidden'` anywhere here on purpose — rating stamps lean
+  // off their cards' corners and the day stepper's arrows sit slightly
+  // outside the cards, and all of that is supposed to cross the frame.
   wrap: {
     gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.four,
+    borderWidth: 1,
+    borderColor: 'rgba(160,189,145,0.22)',
+    backgroundColor: 'rgba(160,189,145,0.06)',
   },
   header: {
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
     gap: Spacing.one,
   },
   // The map square sits beside the trip's own text rather than above it —

@@ -1982,6 +1982,7 @@ export type Database = {
           kind: string
           my_rating: number
           name: string
+          photo_id: string
           place_id: string
           their_rating: number
         }[]
@@ -2016,6 +2017,13 @@ export type Database = {
           id: string
           level: string
           name: string
+        }[]
+      }
+      get_place_descendant_ids: {
+        Args: { target_place_id: string }
+        Returns: {
+          depth: number
+          place_id: string
         }[]
       }
       get_popular_places: {

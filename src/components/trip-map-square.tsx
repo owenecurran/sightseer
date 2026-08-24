@@ -8,7 +8,7 @@ import { Spacing } from '@/constants/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BoardVisitItem } from '@/lib/boards';
 import type { FeedVisit } from '@/lib/feed';
-import { colorForRating } from '@/lib/rating-gradient';
+import { readableColorForRating } from '@/lib/rating-gradient';
 
 // Matches location-search-modal's STYLE_URL, in the form the Static Images
 // API wants (`mapbox/dark-v10` rather than the `mapbox://styles/` URI).
@@ -28,7 +28,7 @@ const BOUNDS_PADDING_RATIO = 1.6;
 // Ring drawn around the thumbnail, tinted by the trip's average score — the
 // same gradient the rating stamps use, so a glance at the map square reads
 // as "how good was this trip" without a number on it.
-const BORDER_WIDTH = 3;
+const BORDER_WIDTH = 4;
 const MIN_SPAN_DEGREES = 0.02;
 // How many pins to actually draw. The Static API takes them as path
 // segments in the URL, so an unbounded list would build a URL long enough
@@ -44,33 +44,62 @@ type TripMapSquareProps = {
   center?: { lat: number; lng: number } | null;
 };
 
-type Coord = { lat: number; lng: number };
+// Rating rides along with the coordinate so each pin can be tinted by the
+// review it stands for, rather than the whole trip sharing one colour.
+type Coord = { lat: number; lng: number; rating: number | null };
 
 function coordsOf(visits: FeedVisit[]): Coord[] {
   return visits
     .filter((v): v is FeedVisit & { placeLat: number; placeLng: number } =>
       v.placeLat != null && v.placeLng != null
     )
-    .map((v) => ({ lat: v.placeLat, lng: v.placeLng }));
+    .map((v) => ({ lat: v.placeLat, lng: v.placeLng, rating: v.rating }));
+}
+
+// Which pin decides how far out to zoom. Framing to the OUTERMOST pin let a
+// single distant review wreck the thumbnail: a Seattle trip carrying one
+// Chicago stop framed at zoom 2.71 — most of North America, with neither
+// city legible at 72px. Centring on the destination was already fixed for
+// exactly this reason, but the centre and the zoom were computed
+// separately, so the outlier still dragged the zoom even once it had
+// stopped dragging the frame.
+//
+// A high percentile instead of the maximum keeps the thumbnail framed on
+// where the trip actually happened and simply lets a stray pin fall outside
+// it, which is the right trade for a 72px square: the expanded map still
+// fits every pin properly.
+const FRAME_PERCENTILE = 0.8;
+
+function percentileOf(values: number[], fraction: number): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  // floor, not ceil: with a handful of pins and one outlier, rounding up
+  // lands back on the outlier and undoes the point of this.
+  return sorted[Math.floor(fraction * (sorted.length - 1))];
 }
 
 // Rough web-mercator-ish fit: enough to frame a trip's pins in a 72px
 // square, not a precise viewport calculation (the real interactive map
 // below does its own proper fitBounds once expanded).
-function frameFor(coords: Coord[]): { center: Coord; zoom: number } {
+function frameFor(
+  coords: Coord[],
+  destination?: { lat: number; lng: number } | null
+): { center: { lat: number; lng: number }; zoom: number } {
   const lats = coords.map((c) => c.lat);
   const lngs = coords.map((c) => c.lng);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
+  // The destination wins when known; the midpoint of the pins is the
+  // fallback for a trip whose area has no coordinates cached.
+  const center = destination ?? {
+    lat: (Math.min(...lats) + Math.max(...lats)) / 2,
+    lng: (Math.min(...lngs) + Math.max(...lngs)) / 2,
+  };
 
-  const center = { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 };
-  const span = Math.max(
-    (maxLng - minLng) * BOUNDS_PADDING_RATIO,
-    (maxLat - minLat) * BOUNDS_PADDING_RATIO,
-    MIN_SPAN_DEGREES
+  // Spread measured from the centre outwards, so it means the same thing
+  // whether the centre came from the destination or from the pins.
+  const reach = Math.max(
+    percentileOf(coords.map((c) => Math.abs(c.lat - center.lat)), FRAME_PERCENTILE),
+    percentileOf(coords.map((c) => Math.abs(c.lng - center.lng)), FRAME_PERCENTILE)
   );
+  const span = Math.max(reach * 2 * BOUNDS_PADDING_RATIO, MIN_SPAN_DEGREES);
   const zoom = Math.min(MAX_ZOOM, Math.max(1, Math.log2(360 / span)));
   return { center, zoom };
 }
@@ -117,18 +146,23 @@ export function TripMapSquare({ visits, center: destination }: TripMapSquareProp
   if (coords.length === 0) return null;
 
   const token = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-  const framed = frameFor(coords);
-  // The destination wins when known; the pin frame is the fallback for a
-  // trip whose area has no coordinates cached.
-  const center = destination ?? framed.center;
-  const zoom = framed.zoom;
+  // Centre and zoom are decided together — computing them separately is
+  // what let an outlier keep control of the zoom after losing the centre.
+  const { center, zoom } = frameFor(coords, destination);
 
   const rated = visits.map((v) => v.rating).filter((r): r is number => r != null);
   const averageRating =
     rated.length > 0 ? rated.reduce((sum, r) => sum + r, 0) / rated.length : null;
+  // Each pin carries its own review's score. Previously every pin was flat
+  // cream, which told you where the trip went but nothing about how it
+  // went — and the Static API takes the colour per marker for free, so the
+  // information was being thrown away for nothing. Unrated stays cream.
   const pins = coords
     .slice(0, MAX_PINS)
-    .map((c) => `pin-s+EAE7CF(${c.lng.toFixed(5)},${c.lat.toFixed(5)})`)
+    .map((c) => {
+      const tint = c.rating != null ? readableColorForRating(c.rating).slice(1) : 'EAE7CF';
+      return `pin-s+${tint}(${c.lng.toFixed(5)},${c.lat.toFixed(5)})`;
+    })
     .join(',');
   const staticUrl = token
     ? `https://api.mapbox.com/styles/v1/${STATIC_STYLE}/static/${pins}/${center.lng.toFixed(5)},${center.lat.toFixed(5)},${zoom.toFixed(2)}/${SQUARE_SIZE}x${SQUARE_SIZE}${RETINA}?access_token=${token}&attribution=false&logo=false`
@@ -141,7 +175,7 @@ export function TripMapSquare({ visits, center: destination }: TripMapSquareProp
           source={staticUrl ? { uri: staticUrl } : undefined}
           style={[
             styles.square,
-            averageRating != null && { borderColor: colorForRating(averageRating) },
+            averageRating != null && { borderColor: readableColorForRating(averageRating) },
           ]}
         />
       </Pressable>

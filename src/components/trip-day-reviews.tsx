@@ -214,13 +214,23 @@ export function TripDayReviews({
 
   return (
     <View style={styles.wrap}>
+      {/* Set as an editorial dateline rather than a sentence of UI copy:
+          the wide label face the rest of the app uses for section headers,
+          the day number in sage so it leads, and a hairline running out to
+          the position counter. Previously this was plain secondary body
+          text, which was the one piece of a trip that looked like it came
+          from a different app than the stamps and stickers around it. */}
       <View style={styles.dayHeader}>
-        <ThemedText type="small" themeColor="textSecondary">
-          Day {dayNumber} · {formatDate(day.date)}
+        <ThemedText type="sectionLabel" themeColor="sage" style={styles.dayLabel}>
+          Day {dayNumber}
         </ThemedText>
+        <ThemedText type="sectionLabel" themeColor="textSecondary" style={styles.dayDate}>
+          {formatDate(day.date)}
+        </ThemedText>
+        <View style={styles.dayRule} />
         {reviewCount > 1 && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {activeIndex + 1} / {reviewCount}
+          <ThemedText type="sectionLabel" themeColor="textSecondary">
+            {activeIndex + 1}/{reviewCount}
           </ThemedText>
         )}
       </View>
@@ -304,9 +314,34 @@ const styles = StyleSheet.create({
   },
   dayHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.two,
     paddingHorizontal: Spacing.one,
+    // The cards behind the top one are shifted UP (8px and 16px, plus their
+    // tilt) so they peek out above it — which walks them straight into this
+    // line, and being a later sibling the stack painted over it. Lifting the
+    // dateline puts those faded edges behind the text instead of across it.
+    // React Native sorts by zIndex among siblings of one parent, so this
+    // orders the whole stack subtree against this row in one go and leaves
+    // the stepper arrows' own zIndex (scoped inside the stack) untouched.
+    zIndex: 1,
+  },
+  // Uppercased in style rather than in the string so the date keeps its
+  // normal casing for screen readers.
+  dayLabel: {
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  dayDate: {
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  // Takes the slack between the dateline and the counter, so the two ends
+  // stay pinned however long the date renders.
+  dayRule: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(160,189,145,0.25)',
   },
   // position:'relative' anchors the cards behind; no overflow:'hidden', so
   // the rating stamp still leans past the card's own corner.

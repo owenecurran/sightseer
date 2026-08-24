@@ -45,10 +45,21 @@ export function parseDefaultCamera(row: {
   return { lat: row.map_default_center_lat, lng: row.map_default_center_lng, zoom: row.map_default_zoom };
 }
 
-export const COUNTRY_FILL = '#1E88E5';
-export const COUNTRY_FILL_OPACITY = 0.2;
-export const COUNTRY_LINE = '#1E88E5';
-export const STATE_FILL = '#F4511E';
-export const STATE_FILL_OPACITY = 0.2;
-export const STATE_LINE = '#F4511E';
-export const NATIONAL_PARK_COLOR = '#2E7D32';
+// Overlay colours, drawn from the brand palette rather than stock Material
+// hues (they were #1E88E5 / #F4511E / #2E7D32 — a blue, an orange and a
+// green that belong to no other screen in this app). Two problems with
+// those, both fixed here: they read as someone else's palette on top of the
+// dark editorial map, and at 0.2 opacity the darker ones barely separated
+// from the dark-v10 basemap underneath.
+//
+// The three layers are told apart by hue, not brightness, so they stay
+// distinguishable when two overlap: cream for countries (the broadest wash,
+// deliberately the most neutral), amber for states, sage for parks — green
+// being the obvious one for parkland, and sage is the brand's own accent.
+export const COUNTRY_FILL = '#eae7cf';
+export const COUNTRY_FILL_OPACITY = 0.22;
+export const COUNTRY_LINE = '#eae7cf';
+export const STATE_FILL = '#e0a458';
+export const STATE_FILL_OPACITY = 0.3;
+export const STATE_LINE = '#e0a458';
+export const NATIONAL_PARK_COLOR = '#a0bd91';

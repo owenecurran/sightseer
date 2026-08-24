@@ -153,7 +153,15 @@ export function FeedCardHeaderText({
         setWrapHeight(e.nativeEvent.layout.height)
       }
     >
-      <StretchText type="headline" fill>
+      {/* Never cut here, however long the name. This one component renders
+          the title for every full review card in the app — the feed, a trip's
+          days, a board's reviews, the review form's preview — and the review
+          screen you land on from any of them, and those are the places where
+          the whole name is the point. An ellipsis left no way to find out
+          what "Greene Valley Scenic…" actually was. The compact tiles that
+          only reference a review (teaser cards, collection rows) still cut,
+          which is what StretchText's default is for. */}
+      <StretchText type="headline" fill truncateLongText={false}>
         {placeName || " "}
       </StretchText>
       {stateCountry && (

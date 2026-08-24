@@ -183,11 +183,33 @@ export async function getFeedVisits(myUserId: string): Promise<FeedVisit[]> {
 // by place_id instead of user_id; likeCount comes along for free, so
 // "popular" is just a client-side sort by it, same convention this file
 // already uses everywhere else (no DB view/RPC for popularity).
-export async function getVisitsForPlace(placeId: string, myUserId: string): Promise<FeedVisit[]> {
+// A visit on a place page, plus how far below that page's place it sits: 0
+// for a review of the place itself, 1 for something in its children, and so
+// on down to a venue inside a city inside a state. Carried so the screen can
+// rank the most specific reviews first.
+export type PlaceVisit = FeedVisit & { placeDepth: number };
+
+export async function getVisitsForPlace(placeId: string, myUserId: string): Promise<PlaceVisit[]> {
+  // Everything at or under this place, not just the place row itself. A
+  // country or continent is almost never reviewed directly — those pages
+  // were listing nothing while the header above them counted the reviews
+  // inside recursively, so the page disagreed with itself.
+  const { data: descendants, error: descendantsError } = await supabase.rpc(
+    'get_place_descendant_ids',
+    { target_place_id: placeId }
+  );
+  if (descendantsError) throw descendantsError;
+
+  const depthByPlace = new Map((descendants ?? []).map((row) => [row.place_id, row.depth]));
+  const placeIds = [...depthByPlace.keys()];
+  // An unknown place id resolves to nothing at all; `.in()` on an empty list
+  // would match every visit rather than none.
+  if (placeIds.length === 0) return [];
+
   const { data, error } = await supabase
     .from('visits')
     .select(FEED_VISIT_SELECT)
-    .eq('place_id', placeId)
+    .in('place_id', placeIds)
     .order('created_at', { ascending: false });
   if (error) throw error;
 
@@ -201,6 +223,7 @@ export async function getVisitsForPlace(placeId: string, myUserId: string): Prom
   return rawVisits.map((visit) => ({
     ...mapRawFeedVisit(visit, myUserId, stateCountryMap, likedIds),
     visitNumber: visitNumbers.get(visit.id) ?? 1,
+    placeDepth: depthByPlace.get(visit.place_id) ?? 0,
   }));
 }
 

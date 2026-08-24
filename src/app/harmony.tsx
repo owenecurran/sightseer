@@ -21,12 +21,28 @@ import {
   type Harmony,
   type HarmonyReason,
 } from '@/lib/harmony';
+import { Avatar } from '@/components/ui/avatar';
+import { LoadableImage } from '@/components/ui/loadable-image';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
+import { getAvatarViewUrls } from '@/lib/avatar';
+import { getPhotoViewUrls } from '@/lib/photo-view';
 import { colorForRating } from '@/lib/rating-gradient';
 
 // The full reasoning behind a harmony score, on its own screen rather than
 // expanded inline under the meter: the list can run long, every row links
 // somewhere else, and it splits into two genuinely different kinds of
 // evidence that deserve their own headings.
+// Small enough that two fit beside a place name without crowding it, big
+// enough that the number stays readable.
+const STAMP_SIZE = 34;
+// How many comparisons to show. Each row draws TWO rating stamps, and every
+// stamp is its own Skia Canvas holding a GL surface — at 20 rows that was 40
+// live GL contexts mounting at once, which reproducibly faulted the host
+// OpenGL driver and took the emulator down with it. It is also simply more
+// than anyone reads: the point is the handful of places you most agree on.
+const MAX_REASONS = 6;
+const ROW_PHOTO = 40;
+
 export default function HarmonyScreen() {
   const { user: otherId, name } = useLocalSearchParams<{ user?: string; name?: string }>();
   const { session } = useAuth();
@@ -35,6 +51,8 @@ export default function HarmonyScreen() {
 
   const [harmony, setHarmony] = useState<Harmony | null>(null);
   const [reasons, setReasons] = useState<HarmonyReason[]>([]);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,10 +68,22 @@ export default function HarmonyScreen() {
           // and this screen cannot render usefully with only half of it.
           const [result, breakdown] = await Promise.all([
             getHarmony(session.user.id, otherId),
-            getHarmonyBreakdown(session.user.id, otherId, 20),
+            getHarmonyBreakdown(session.user.id, otherId, MAX_REASONS),
           ]);
           setHarmony(result);
           setReasons(breakdown);
+
+          // Thumbnails for the rows, plus both faces so each rating is
+          // unmistakably attributed rather than relying on column order.
+          const photoIds = breakdown
+            .map((r) => r.photoId)
+            .filter((id): id is string => id != null);
+          const [photos, avatars] = await Promise.all([
+            photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
+            getAvatarViewUrls([session.user.id, otherId]),
+          ]);
+          setPhotoUrls(photos);
+          setAvatarUrls(avatars);
         } catch (err) {
           setError(err instanceof Error ? err.message : 'Could not work that out.');
         } finally {
@@ -72,12 +102,23 @@ export default function HarmonyScreen() {
   const places = reasons.filter((r) => r.kind === 'place');
   const areas = reasons.filter((r) => r.kind === 'area');
 
+  // Photo, name, then both ratings as the same stamps used everywhere else,
+  // each under its owner's avatar. Attribution is explicit rather than
+  // positional: "left column is you" is a convention nobody is told, and the
+  // two numbers are meaningless if you cannot tell whose is whose.
   function renderRow(reason: HarmonyReason) {
+    const photoUrl = reason.photoId ? photoUrls[reason.photoId] : undefined;
     return (
       <Pressable
         key={`${reason.kind}-${reason.placeId}`}
         onPress={() => router.push({ pathname: '/place/[id]', params: { id: reason.placeId } })}
         style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+        {photoUrl ? (
+          <LoadableImage source={{ uri: photoUrl }} style={styles.rowPhoto} />
+        ) : (
+          <View style={[styles.rowPhoto, styles.rowPhotoEmpty]} />
+        )}
+
         <View style={styles.rowName}>
           <ThemedText type="small" numberOfLines={1}>
             {reason.name}
@@ -88,15 +129,17 @@ export default function HarmonyScreen() {
             </ThemedText>
           )}
         </View>
-        <ThemedText type="smallBold" style={{ color: colorForRating(reason.myRating) }}>
-          {reason.myRating.toFixed(1)}
-        </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          vs
-        </ThemedText>
-        <ThemedText type="smallBold" style={{ color: colorForRating(reason.theirRating) }}>
-          {reason.theirRating.toFixed(1)}
-        </ThemedText>
+
+        <View style={styles.ratingPair}>
+          <View style={styles.ratingCell}>
+            <Avatar uri={avatarUrls[session?.user.id ?? '']} name="You" size={18} />
+            <RatingGlassBadgeGated rating={reason.myRating} size={STAMP_SIZE} />
+          </View>
+          <View style={styles.ratingCell}>
+            <Avatar uri={avatarUrls[otherId ?? '']} name={userName} size={18} />
+            <RatingGlassBadgeGated rating={reason.theirRating} size={STAMP_SIZE} />
+          </View>
+        </View>
       </Pressable>
     );
   }
@@ -208,6 +251,23 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.two,
   },
+  rowPhoto: {
+    width: ROW_PHOTO,
+    height: ROW_PHOTO,
+    borderRadius: Spacing.one,
+  },
+  rowPhotoEmpty: {
+    backgroundColor: 'rgba(234,231,207,0.08)',
+  },
   rowName: { flex: 1 },
+  ratingPair: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  // Avatar above its own stamp, so whose rating is whose needs no legend.
+  ratingCell: {
+    alignItems: 'center',
+    gap: Spacing.half,
+  },
   pressed: { opacity: 0.6 },
 });
