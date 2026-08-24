@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -74,9 +75,7 @@ export default function ContactsSyncScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Pressable onPress={() => router.back()}>
-          <ThemedText type="link">← Back</ThemedText>
-        </Pressable>
+        <BackLink seed="contacts-sync" />
         <ThemedText type="displaySerif">Find friends</ThemedText>
 
         {status === 'idle' && (

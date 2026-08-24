@@ -323,6 +323,21 @@ export type Database = {
           },
         ]
       }
+      country_continents: {
+        Row: {
+          continent_name: string
+          country_name: string
+        }
+        Insert: {
+          continent_name: string
+          country_name: string
+        }
+        Update: {
+          continent_name?: string
+          country_name?: string
+        }
+        Relationships: []
+      }
       draft_visits: {
         Row: {
           created_at: string
@@ -401,6 +416,80 @@ export type Database = {
           {
             foreignKeyName: "follows_follower_id_fkey"
             columns: ["follower_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      harmony_refresh_queue: {
+        Row: {
+          queued_at: string
+          user_id: string
+        }
+        Insert: {
+          queued_at?: string
+          user_id: string
+        }
+        Update: {
+          queued_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "harmony_refresh_queue_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      harmony_scores: {
+        Row: {
+          computed_at: string
+          evidence: number
+          score: number
+          shared_areas: number
+          shared_destinations: number
+          shared_local: number
+          shared_places: number
+          user_a: string
+          user_b: string
+        }
+        Insert: {
+          computed_at?: string
+          evidence?: number
+          score: number
+          shared_areas?: number
+          shared_destinations?: number
+          shared_local?: number
+          shared_places?: number
+          user_a: string
+          user_b: string
+        }
+        Update: {
+          computed_at?: string
+          evidence?: number
+          score?: number
+          shared_areas?: number
+          shared_destinations?: number
+          shared_local?: number
+          shared_places?: number
+          user_a?: string
+          user_b?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "harmony_scores_user_a_fkey"
+            columns: ["user_a"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "harmony_scores_user_b_fkey"
+            columns: ["user_b"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -582,6 +671,7 @@ export type Database = {
           id: string
           position: number
           r2_key: string
+          thumb_r2_key: string | null
           visit_id: string | null
           width: number | null
         }
@@ -592,6 +682,7 @@ export type Database = {
           id?: string
           position?: number
           r2_key: string
+          thumb_r2_key?: string | null
           visit_id?: string | null
           width?: number | null
         }
@@ -602,6 +693,7 @@ export type Database = {
           id?: string
           position?: number
           r2_key?: string
+          thumb_r2_key?: string | null
           visit_id?: string | null
           width?: number | null
         }
@@ -1721,12 +1813,17 @@ export type Database = {
             }
             Returns: string
           }
+      area_rating_shrinkage_k: { Args: never; Returns: number }
       can_view_user_content: {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
       }
       deepest_common_area: { Args: { p_ids: string[] }; Returns: string }
       disablelongtransactions: { Args: never; Returns: string }
+      drain_harmony_refresh_queue: {
+        Args: { batch_limit?: number }
+        Returns: number
+      }
       dropgeometrycolumn:
         | {
             Args: {
@@ -1866,6 +1963,29 @@ export type Database = {
           save_count: number
         }[]
       }
+      get_harmony: {
+        Args: { other_id: string; viewer_id: string }
+        Returns: {
+          evidence: number
+          score: number
+          shared_areas: number
+          shared_destinations: number
+          shared_local: number
+          shared_places: number
+        }[]
+      }
+      get_harmony_breakdown: {
+        Args: { max_rows?: number; other_id: string; viewer_id: string }
+        Returns: {
+          agreement: number
+          is_local: boolean
+          kind: string
+          my_rating: number
+          name: string
+          place_id: string
+          their_rating: number
+        }[]
+      }
       get_nearby_reviewed_places: {
         Args: {
           max_lat: number
@@ -1907,6 +2027,18 @@ export type Database = {
           name: string
           place_id: string
           review_count: number
+        }[]
+      }
+      get_top_matches: {
+        Args: { result_limit?: number; uid: string }
+        Returns: {
+          avatar_r2_key: string
+          evidence: number
+          handle: string
+          name: string
+          score: number
+          shared_destinations: number
+          user_id: string
         }[]
       }
       get_trip_suggestion: {
@@ -1956,6 +2088,7 @@ export type Database = {
       }
       gettransactionid: { Args: never; Returns: unknown }
       is_blocked: { Args: { user_a: string; user_b: string }; Returns: boolean }
+      is_home_place: { Args: { pid: string; uid: string }; Returns: boolean }
       is_travel_book_participant: {
         Args: { book_id: string; uid: string }
         Returns: boolean
@@ -2017,6 +2150,8 @@ export type Database = {
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
       publish_draft: { Args: { draft_id: string }; Returns: string }
+      rating_recency_weight: { Args: { rated_on: string }; Returns: number }
+      refresh_harmony_for_user: { Args: { uid: string }; Returns: number }
       resolve_state_countries: {
         Args: { place_ids: string[] }
         Returns: {
@@ -2653,6 +2788,29 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      user_area_ratings: {
+        Args: { uid: string }
+        Returns: {
+          area_id: string
+          has_explicit: boolean
+          rating: number
+          sample_size: number
+        }[]
+      }
+      user_away_areas: {
+        Args: { uid: string }
+        Returns: {
+          area_id: string
+          weight: number
+        }[]
+      }
+      user_away_places: {
+        Args: { uid: string }
+        Returns: {
+          place_id: string
+          rating: number
+        }[]
       }
     }
     Enums: {

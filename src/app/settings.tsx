@@ -4,6 +4,7 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -229,9 +230,7 @@ export default function SettingsScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="settings" />
 
           <ThemedText type="displaySerif">Settings</ThemedText>
 

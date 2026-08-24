@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { AttachmentPreview, type PreviewData } from '@/components/attachment-preview';
 import { AttachmentTypePicker } from '@/components/attachment-type-picker';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
@@ -556,9 +557,7 @@ export default function PromptEditorScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="prompt-editor" />
           <ThemedText type="displaySerif">{existingId ? 'Edit prompt' : 'Add a prompt'}</ThemedText>
         </View>
 

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { ThemedText } from '@/components/themed-text';
@@ -70,9 +71,7 @@ export default function NewTripScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAwareScroll contentContainerStyle={styles.scrollContent}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="new" />
 
           <ThemedText type="displaySerif">New trip</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">

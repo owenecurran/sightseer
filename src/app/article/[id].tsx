@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadableImage } from '@/components/ui/loadable-image';
@@ -39,9 +40,7 @@ export default function ArticleDetailScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="[id]" />
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">

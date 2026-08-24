@@ -38,7 +38,7 @@ export default {
     // where ownership (not just visibility) had to be checked explicitly.
     const { data: photos, error } = await ctx.supabase
       .from("photos")
-      .select("id, r2_key")
+      .select("id, r2_key, thumb_r2_key")
       .in("id", photoIds);
 
     if (error) {
@@ -53,6 +53,18 @@ export default {
           new GetObjectCommand({ Bucket: Deno.env.get("R2_BUCKET_NAME"), Key: photo.r2_key }),
           { expiresIn: VIEW_URL_TTL_SECONDS },
         ),
+        // Null for anything uploaded before thumbnails existed; the client
+        // falls back to the full image rather than rendering a gap.
+        thumbUrl: photo.thumb_r2_key
+          ? await getSignedUrl(
+            s3,
+            new GetObjectCommand({
+              Bucket: Deno.env.get("R2_BUCKET_NAME"),
+              Key: photo.thumb_r2_key,
+            }),
+            { expiresIn: VIEW_URL_TTL_SECONDS },
+          )
+          : null,
       })),
     );
 

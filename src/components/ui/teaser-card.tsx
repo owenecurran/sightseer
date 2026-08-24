@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { StickerArrow } from '@/components/ui/sticker-arrow';
 import { ThemedText } from '@/components/themed-text';
 import { StretchText } from '@/components/ui/stretch-text';
 import { Spacing } from '@/constants/theme';
@@ -48,6 +49,9 @@ export const TITLE_FONT_SIZE = 48;
 // `fillHeight` specifically (not plain `fill`) is what makes that capped
 // stretch actually correct rather than just clipped.
 const THUMBNAIL_SIZE = 64;
+// How far the corner sticker sits past the card's edge. Small enough to
+// still read as attached to this card rather than floating loose.
+const STICKER_HANG = Spacing.two;
 
 // Shared by profile.tsx's "Latest reviews"/"Tagged in" cards and
 // user-collections-section.tsx's "Boards & travel books" card. The
@@ -85,9 +89,11 @@ export function TeaserCard({ label, title, thumbnailUrl, onPress }: TeaserCardPr
             {title}
           </StretchText>
         </View>
-        <ThemedText type="headline" style={styles.chevron}>
-          ›
-        </ThemedText>
+        {/* Negative margins pull it past the card's own edge -- the card no
+            longer clips, so it reads as stuck on rather than tucked in. */}
+        <View style={styles.stickerHang}>
+          <StickerArrow direction="right" seed={label} />
+        </View>
       </View>
     </Pressable>
   );
@@ -103,7 +109,12 @@ const styles = StyleSheet.create({
     padding: CARD_PADDING,
     paddingLeft: CARD_PADDING_LEFT,
     gap: TIGHT_GAP,
-    overflow: 'hidden',
+    // Deliberately NOT overflow:'hidden' any more. It was here to clip a
+    // long title whose stretched box overshot the row, but two later changes
+    // removed that need: fillHeightExact stops the vertical overshoot, and
+    // StretchText now truncates past 24 characters rather than compressing
+    // without limit. Clipping is what stopped the corner sticker hanging off
+    // the card the way a real one would.
   },
   titleRow: {
     height: THUMBNAIL_SIZE,
@@ -121,11 +132,9 @@ const styles = StyleSheet.create({
   titleText: {
     fontSize: TITLE_FONT_SIZE,
   },
-  // The row stretches every child to a shared height by default — without
-  // this, the chevron's text box would stretch to match too and its glyph
-  // would sit top-aligned in that box instead of vertically centered next
-  // to the title.
-  chevron: {
+  stickerHang: {
     alignSelf: 'center',
+    marginRight: -STICKER_HANG,
+    marginTop: -STICKER_HANG,
   },
 });

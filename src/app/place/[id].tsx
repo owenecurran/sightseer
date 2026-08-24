@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -95,9 +96,7 @@ export default function PlaceDetailScreen() {
           scrollEventThrottle={16}
           ListHeaderComponent={
             <View style={[styles.contentWrap, styles.headerSection]}>
-              <Pressable onPress={() => router.back()}>
-                <ThemedText type="link">← Back</ThemedText>
-              </Pressable>
+              <BackLink seed="[id]" />
 
               {heroPhotoUrl && (
                 <View style={styles.heroWrap}>

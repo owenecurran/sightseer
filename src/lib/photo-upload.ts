@@ -1,4 +1,4 @@
-import { downscaleForUpload } from '@/lib/photo-downscale';
+import { downscaleForUpload, makeThumbForUpload } from '@/lib/photo-downscale';
 import { supabase } from '@/lib/supabase';
 
 const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -26,7 +26,12 @@ export async function uploadPhotoForVisit(params: UploadPhotoParams): Promise<st
     body: { visitId, contentType },
   });
   if (fnError) throw fnError;
-  const { uploadUrl, r2Key } = data as { uploadUrl: string; r2Key: string };
+  const { uploadUrl, r2Key, thumbUploadUrl, thumbR2Key } = data as {
+    uploadUrl: string;
+    r2Key: string;
+    thumbUploadUrl?: string;
+    thumbR2Key?: string;
+  };
 
   const fileResponse = await fetch(scaled.uri);
   const blob = await fileResponse.blob();
@@ -40,9 +45,29 @@ export async function uploadPhotoForVisit(params: UploadPhotoParams): Promise<st
     throw new Error(`Upload to storage failed (${uploadResponse.status})`);
   }
 
+  // Best-effort: a failed thumb leaves thumb_r2_key null and the grid falls
+  // back to the full image. Losing the optimisation is not worth failing an
+  // upload the user already completed.
+  let storedThumbKey: string | null = null;
+  if (thumbUploadUrl && thumbR2Key) {
+    try {
+      const thumb = await makeThumbForUpload(scaled.uri, scaled.width, scaled.height);
+      const thumbBlob = await (await fetch(thumb.uri)).blob();
+      const thumbResponse = await fetch(thumbUploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: thumbBlob,
+      });
+      if (thumbResponse.ok) storedThumbKey = thumbR2Key;
+    } catch {
+      // Swallowed deliberately -- see above.
+    }
+  }
+
   const { error: insertError } = await supabase.from('photos').insert({
     visit_id: visitId,
     r2_key: r2Key,
+    thumb_r2_key: storedThumbKey,
     width: scaled.width,
     height: scaled.height,
     position,

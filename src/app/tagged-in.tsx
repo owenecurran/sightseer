@@ -1,4 +1,5 @@
 import { router, useFocusEffect } from "expo-router";
+import { BackLink } from '@/components/ui/back-link';
 import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated from "react-native-reanimated";
@@ -159,9 +160,7 @@ export default function TaggedInScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="tagged-in" />
           <ThemedText type="displaySerif">Tagged in</ThemedText>
           {error && (
             <ThemedText type="small" themeColor="textSecondary">

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { LocationSearchModal } from '@/components/location-search-modal';
@@ -611,9 +612,7 @@ export default function ReviewFormScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="review-form" />
           <ThemedText type="displaySerif">{draftId ? 'Finish draft' : 'Add a review'}</ThemedText>
         </View>
 

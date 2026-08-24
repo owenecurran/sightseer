@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { PromptCard } from '@/components/prompt-card';
 import { ThemedText } from '@/components/themed-text';
@@ -171,9 +172,7 @@ export default function EditProfileScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="edit-profile" />
           <ThemedText type="displaySerif">Edit profile</ThemedText>
         </View>
 

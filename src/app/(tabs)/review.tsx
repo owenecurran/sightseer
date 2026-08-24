@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { StickerLink } from '@/components/ui/sticker-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -33,11 +34,11 @@ export default function CreateChooserScreen() {
         <ThemedText type="displaySerif">Create</ThemedText>
 
         {draftCount > 0 && (
-          <Pressable onPress={() => router.push('/drafts')}>
-            <ThemedText type="link">
-              You have {draftCount} draft{draftCount === 1 ? '' : 's'} →
-            </ThemedText>
-          </Pressable>
+          <StickerLink
+            label={`You have ${draftCount} draft${draftCount === 1 ? '' : 's'}`}
+            seed="drafts"
+            onPress={() => router.push('/drafts')}
+          />
         )}
 
         {/* One entry point instead of the old "New review" + "Bulk upload"

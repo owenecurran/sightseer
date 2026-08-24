@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
@@ -153,9 +154,7 @@ export default function EditVisitScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="[id]" />
 
           <ThemedText type="displaySerif">Edit review</ThemedText>
 

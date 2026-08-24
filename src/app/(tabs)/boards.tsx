@@ -107,18 +107,12 @@ export default function BoardsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        {/* Title stays constant. It used to change with the active mode
+            ("Your boards" / "Your travel books"), which meant the page
+            announced itself as whichever tab you happened to be on and gave
+            no hint the other two existed. */}
         <View style={styles.gutter}>
-          <ThemedText type="displaySerif">
-            {mode === 'boards' ? 'Your boards' : mode === 'trips' ? 'Your trips' : 'Your travel books'}
-          </ThemedText>
-
-          {/* Trips have no create button — they're detected, not made. */}
-          {mode !== 'trips' && (
-            <Button
-              label={mode === 'boards' ? 'New board' : 'New travel book'}
-              onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
-            />
-          )}
+          <ThemedText type="displaySerif">Your collections</ThemedText>
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -138,6 +132,17 @@ export default function BoardsScreen() {
           travelBookThumbnailUrls={travelBookThumbnailUrls}
           boardStats={boardStats}
           travelBookStats={travelBookStats}
+          headerAction={
+            // Below the switcher, so it reads as an action for the mode
+            // you're in rather than the page's whole purpose. Trips have no
+            // create button — they're detected, not made.
+            mode === 'trips' ? null : (
+              <Button
+                label={mode === 'boards' ? 'New board' : 'New travel book'}
+                onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
+              />
+            )
+          }
           trips={trips}
           tripAverageRatings={tripAverageRatings}
           isLoading={isLoading}

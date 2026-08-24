@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { StickerArrow } from '@/components/ui/sticker-arrow';
 import { ThemedText } from '@/components/themed-text';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { StretchText } from '@/components/ui/stretch-text';
@@ -38,7 +39,7 @@ export function GridPromptCard({ label, title, photoIds, photoUrls, onPress }: G
             {title}
           </StretchText>
         </View>
-        <ThemedText type="headline">›</ThemedText>
+        <StickerArrow direction="right" seed="grid-prompt" />
       </View>
     </Pressable>
   );

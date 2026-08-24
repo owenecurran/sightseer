@@ -1,0 +1,12 @@
+-- A smaller derivative of each photo, for grids.
+--
+-- A feed grid tile renders roughly 180pt wide -- about 540px on a 3x
+-- screen -- while uploads are capped at 2048px on the longest edge. That is
+-- nearly four times the linear resolution, so about fourteen times the
+-- pixels, downloaded four times over for a four-photo review. Serving a
+-- smaller file to grids is the single biggest remaining win on feed load.
+--
+-- Nullable on purpose: photos uploaded before this exists have no
+-- derivative, and the client falls back to the full image for them rather
+-- than showing nothing. New uploads populate it.
+alter table public.photos add column thumb_r2_key text;

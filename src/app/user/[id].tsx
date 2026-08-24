@@ -1,10 +1,12 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { ProfileMap } from '@/components/profile-map';
+import { HarmonyMeter } from '@/components/harmony-meter';
 import { ProfilePromptsSection } from '@/components/profile-prompts-section';
 import { UserCollectionsSection } from '@/components/user-collections-section';
 import { ThemedText } from '@/components/themed-text';
@@ -17,6 +19,7 @@ import { UserMenu } from '@/components/user-menu';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
+import { getHarmony, type Harmony } from '@/lib/harmony';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { blockUser, isBlocking, unblockUser } from '@/lib/blocks';
 import type { Database } from '@/lib/database.types';
@@ -46,6 +49,7 @@ export default function UserProfileScreen() {
   const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [totalVisits, setTotalVisits] = useState(0);
   const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
+  const [harmony, setHarmony] = useState<Harmony | null>(null);
   const [latestVisitPhotoUrl, setLatestVisitPhotoUrl] = useState<string | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [isUpdatingFollow, setIsUpdatingFollow] = useState(false);
@@ -173,6 +177,22 @@ export default function UserProfileScreen() {
   }
 
   const isSelf = session?.user.id === id;
+
+  // Only meaningful against someone else, and only when their content is
+  // visible — the RPC gates on the same rule, this just avoids the call.
+  useEffect(() => {
+    if (!session || !id || isSelf) return;
+    let cancelled = false;
+    getHarmony(session.user.id, id)
+      .then((result) => {
+        if (!cancelled) setHarmony(result);
+      })
+      // Best-effort: a missing meter is better than a broken profile.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [session, id, isSelf]);
   const canSeeContent = !isBlocked && (!user?.is_private || followStatus === 'accepted' || isSelf);
 
   if (!hasLoadedOnce) return <PageLoader />;
@@ -187,9 +207,7 @@ export default function UserProfileScreen() {
           scrollEventThrottle={16}>
           <View style={styles.contentWrap}>
             <View style={styles.topRow}>
-              <Pressable onPress={() => router.back()}>
-                <ThemedText type="link">← Back</ThemedText>
-              </Pressable>
+              <BackLink seed="[id]" />
               {!isSelf && session && user && (
                 <UserMenu
                   reporterId={session.user.id}
@@ -268,6 +286,14 @@ export default function UserProfileScreen() {
                 title={latestVisit.places?.name ?? 'Unknown place'}
                 thumbnailUrl={latestVisitPhotoUrl}
                 onPress={() => router.push({ pathname: '/reviews', params: { userId: user.id } })}
+              />
+            )}
+
+            {canSeeContent && !isSelf && harmony && user && (
+              <HarmonyMeter
+                harmony={harmony}
+                userName={user.name ?? user.handle ?? 'them'}
+                otherId={user.id}
               />
             )}
 

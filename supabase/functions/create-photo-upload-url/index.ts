@@ -38,6 +38,10 @@ export default {
 
     const extension = contentType.split("/")[1];
     const r2Key = `visits/${visitId}/${crypto.randomUUID()}.${extension}`;
+    // A second object alongside the original. Same folder and uuid with a
+    // suffix, so the pair is obvious when browsing the bucket and the thumb
+    // is trivially derivable from the full key if it is ever needed.
+    const thumbR2Key = r2Key.replace(/(\.[^.]+)$/, "_thumb$1");
 
     const uploadUrl = await getSignedUrl(
       s3,
@@ -49,6 +53,16 @@ export default {
       { expiresIn: UPLOAD_URL_TTL_SECONDS },
     );
 
-    return Response.json({ uploadUrl, r2Key });
+    const thumbUploadUrl = await getSignedUrl(
+      s3,
+      new PutObjectCommand({
+        Bucket: Deno.env.get("R2_BUCKET_NAME"),
+        Key: thumbR2Key,
+        ContentType: contentType,
+      }),
+      { expiresIn: UPLOAD_URL_TTL_SECONDS },
+    );
+
+    return Response.json({ uploadUrl, r2Key, thumbUploadUrl, thumbR2Key });
   }),
 };

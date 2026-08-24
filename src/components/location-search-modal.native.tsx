@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NearbyPlacePreviewCard } from '@/components/nearby-place-preview-card';
 import { ThemedText } from '@/components/themed-text';
+import { StickerArrow } from '@/components/ui/sticker-arrow';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -418,7 +419,8 @@ export function LocationSearchModal({
               instead of also prying these apart from each other. */}
           <View style={styles.topSection} pointerEvents="box-none">
           <Pressable onPress={onCancel} hitSlop={8} style={styles.backButton}>
-            <ThemedText type="link">← Back</ThemedText>
+            <StickerArrow direction="left" size={26} seed="map-back" />
+              <ThemedText type="link">Back</ThemedText>
           </Pressable>
 
           <View style={styles.searchBar}>
@@ -606,6 +608,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
     alignSelf: 'flex-start',
     marginBottom: Spacing.two,
     paddingVertical: Spacing.one,

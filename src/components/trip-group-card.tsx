@@ -2,7 +2,9 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { StickerLink } from '@/components/ui/sticker-link';
 import { ThemedText } from '@/components/themed-text';
+import { Avatar } from '@/components/ui/avatar';
 import { ThemedView } from '@/components/themed-view';
 import { TripDayReviews } from '@/components/trip-day-reviews';
 import { TripMapSquare } from '@/components/trip-map-square';
@@ -15,6 +17,7 @@ import { getAreaOptions, setTripDisplayPlace, type AreaOption } from '@/lib/trip
 type TripGroupCardProps = {
   feedTrip: FeedTrip;
   photoUrls: Record<string, string>;
+  photoThumbUrls?: Record<string, string>;
   avatarUrls: Record<string, string>;
   viewerId?: string;
   copiedVisitId: string | null;
@@ -57,6 +60,7 @@ function formatRange(startDate: string, endDate: string): string {
 export function TripGroupCard({
   feedTrip,
   photoUrls,
+  photoThumbUrls,
   avatarUrls,
   viewerId,
   copiedVisitId,
@@ -78,6 +82,9 @@ export function TripGroupCard({
   const isOwnTrip = viewerId != null && viewerId === trip.userId;
   const allVisits = days.flatMap((day) => day.visits);
   const visitCount = allVisits.length;
+  // Every review in a trip belongs to the same author (trips are clustered
+  // per user), so the first one speaks for all of them.
+  const authorName = allVisits[0]?.authorName ?? 'Someone';
   // An outing is a single dense day rather than a multi-day trip — see
   // TripKind. The whole block is otherwise identical, so only the label and
   // the day-by-day breakdown differ.
@@ -132,14 +139,38 @@ export function TripGroupCard({
   return (
     <View style={styles.wrap}>
       <ThemedView type="backgroundElement" style={styles.header}>
+        {/* Author first, exactly like a normal feed post. Without it the card
+            opened straight onto a place name, and it wasn't clear the
+            reviews below were somebody's — per direct feedback, that the
+            location didn't obviously relate to the posts under it. */}
+        <View style={styles.authorRow}>
+          <Pressable
+            onPress={() => router.push({ pathname: '/user/[id]', params: { id: trip.userId } })}
+            hitSlop={6}>
+            <Avatar uri={avatarUrls[trip.userId]} name={authorName} size={28} />
+          </Pressable>
+          <ThemedText
+            type="smallBold"
+            style={styles.authorName}
+            onPress={() => router.push({ pathname: '/user/[id]', params: { id: trip.userId } })}>
+            {authorName}
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {isOuting ? 'had a night out' : 'took a trip'}
+          </ThemedText>
+        </View>
+
         <View style={styles.headerRow}>
           <TripMapSquare
             visits={allVisits}
             center={trip.areaLat != null && trip.areaLng != null ? { lat: trip.areaLat, lng: trip.areaLng } : null}
           />
           <View style={styles.headerText}>
-            <ThemedText type="sectionLabel">{isOuting ? 'Night out' : 'Trip'}</ThemedText>
-            {/* The area name comes from the deepest place every review sits
+            {/* No "Trip"/"Night out" label here any more — the author line
+                above already says it, and having both put the same word on
+                screen twice within two lines.
+
+                The area name comes from the deepest place every review sits
                 inside — a city when it all stayed in one, a country once it
                 spans two (see deepest_common_area). Tapping it (your own
                 only) relabels it at a broader level; narrower isn't
@@ -185,15 +216,13 @@ export function TripGroupCard({
         )}
 
         {trip.travelBookId ? (
-          <Pressable
+          <StickerLink
+            label="View travel book"
+            seed={trip.key}
             onPress={() =>
               router.push({ pathname: '/travel-book/[id]', params: { id: trip.travelBookId! } })
             }
-            hitSlop={8}>
-            <ThemedText type="small" themeColor="sage">
-              View travel book →
-            </ThemedText>
-          </Pressable>
+          />
         ) : (
           // Only the person whose trip it is can turn it into a travel book
           // — travel_books rows are owned, and the RLS insert policy would
@@ -215,6 +244,7 @@ export function TripGroupCard({
           tripKey={trip.key}
           dayNumber={1}
           photoUrls={photoUrls}
+          photoThumbUrls={photoThumbUrls}
           avatarUrls={avatarUrls}
           viewerId={viewerId}
           copiedVisitId={copiedVisitId}
@@ -231,6 +261,7 @@ export function TripGroupCard({
               tripKey={trip.key}
               dayNumber={dayNumber}
               photoUrls={photoUrls}
+              photoThumbUrls={photoThumbUrls}
               avatarUrls={avatarUrls}
               viewerId={viewerId}
               copiedVisitId={copiedVisitId}
@@ -241,18 +272,16 @@ export function TripGroupCard({
           ))}
 
           {isLongTrip && (
-            <Pressable
+            <StickerLink
+              label={`See all ${days.length} days of this trip`}
+              seed={`${trip.key}-days`}
               onPress={() =>
                 router.push({
                   pathname: '/trip',
                   params: { user: trip.userId, start: trip.startDate },
                 })
               }
-              hitSlop={8}>
-              <ThemedText type="small" themeColor="sage" style={styles.dayLabel}>
-                See all {days.length} days of this trip →
-              </ThemedText>
-            </Pressable>
+            />
           )}
         </>
       )}
@@ -272,6 +301,16 @@ const styles = StyleSheet.create({
   },
   // The map square sits beside the trip's own text rather than above it —
   // the square is fixed-size, so the text column takes whatever's left.
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  // Sits between the avatar and the trailing descriptor, so a long name
+  // truncates rather than pushing "took a trip" off the card.
+  authorName: {
+    flexShrink: 1,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',

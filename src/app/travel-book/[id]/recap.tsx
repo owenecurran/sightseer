@@ -5,6 +5,7 @@ import { Pressable, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -143,9 +144,7 @@ export default function TravelBookRecapScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="recap" />
 
           <ThemedText type="displaySerif">Trip recap</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">

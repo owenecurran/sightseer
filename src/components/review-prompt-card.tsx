@@ -13,6 +13,7 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import { FeedRatingStamp, getStampCornerReach, getStampSide } from "@/components/ui/feed-rating-stamp";
 import { LoadableImage } from "@/components/ui/loadable-image";
+import { StickerArrow } from "@/components/ui/sticker-arrow";
 import { StretchText } from "@/components/ui/stretch-text";
 import { CARD_RADIUS } from "@/components/ui/teaser-card";
 import { BrandColors, Spacing } from "@/constants/theme";
@@ -289,9 +290,9 @@ export function ReviewPromptCard({
                 the outer Pressable), this just signals there's more to
                 read there. */}
             {useSidebarLayout && isNoteTruncated && (
-              <ThemedText type="headline" themeColor="background" style={styles.moreArrow}>
-                ›
-              </ThemedText>
+              <View style={styles.moreArrow}>
+                <StickerArrow direction="right" size={28} seed={visitId} />
+              </View>
             )}
           </View>
         )}

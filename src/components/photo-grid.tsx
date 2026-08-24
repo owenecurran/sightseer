@@ -92,6 +92,11 @@ function SinglePhotoTile({ url, rawRatio, onPress }: SinglePhotoTileProps) {
 
 type PhotoGridProps = {
   urls: string[];
+  // Parallel to urls. Used only in multi-photo layouts, where each tile is a
+  // fraction of the card's width and the full image is many times more
+  // resolution than the tile can show. A single photo renders large enough
+  // to warrant the real thing.
+  thumbUrls?: string[];
   // Parallel to urls — only consulted for the single-photo case.
   aspectRatios?: (number | null)[];
   // Fires on a double-tap on any tile — e.g. the feed's Instagram-style
@@ -103,7 +108,10 @@ type PhotoGridProps = {
 // Layouts match the standard 1/2/3/4-photo social-feed grid (Instagram-style):
 // 1 full width, 2 side-by-side, 3 as one tall + two stacked, 4 as a 2x2 grid.
 // Owns its own tap-to-focus lightbox.
-export function PhotoGrid({ urls, aspectRatios, onDoubleTap }: PhotoGridProps) {
+export function PhotoGrid({ urls, thumbUrls, aspectRatios, onDoubleTap }: PhotoGridProps) {
+  // Falls back per-index, so a photo without a derivative still renders.
+  const displayUrls =
+    urls.length > 1 && thumbUrls ? urls.map((url, i) => thumbUrls[i] ?? url) : urls;
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   // Plain RN Pressable + a manual tap-timestamp comparison, not an RNGH
   // gesture — an RNGH GestureDetector nested inside the feed's *outer*
@@ -160,17 +168,17 @@ export function PhotoGrid({ urls, aspectRatios, onDoubleTap }: PhotoGridProps) {
   } else if (urls.length === 2) {
     content = (
       <View style={styles.row}>
-        <PhotoTile url={urls[0]} style={styles.square} onPress={() => handleTilePress(0)} />
-        <PhotoTile url={urls[1]} style={styles.square} onPress={() => handleTilePress(1)} />
+        <PhotoTile url={displayUrls[0]} style={styles.square} onPress={() => handleTilePress(0)} />
+        <PhotoTile url={displayUrls[1]} style={styles.square} onPress={() => handleTilePress(1)} />
       </View>
     );
   } else if (urls.length === 3) {
     content = (
       <View style={styles.row}>
-        <PhotoTile url={urls[0]} style={styles.tall} onPress={() => handleTilePress(0)} />
+        <PhotoTile url={displayUrls[0]} style={styles.tall} onPress={() => handleTilePress(0)} />
         <View style={styles.column}>
-          <PhotoTile url={urls[1]} style={styles.square} onPress={() => handleTilePress(1)} />
-          <PhotoTile url={urls[2]} style={styles.square} onPress={() => handleTilePress(2)} />
+          <PhotoTile url={displayUrls[1]} style={styles.square} onPress={() => handleTilePress(1)} />
+          <PhotoTile url={displayUrls[2]} style={styles.square} onPress={() => handleTilePress(2)} />
         </View>
       </View>
     );
@@ -178,12 +186,12 @@ export function PhotoGrid({ urls, aspectRatios, onDoubleTap }: PhotoGridProps) {
     content = (
       <View style={styles.column}>
         <View style={styles.row}>
-          <PhotoTile url={urls[0]} style={styles.square} onPress={() => handleTilePress(0)} />
-          <PhotoTile url={urls[1]} style={styles.square} onPress={() => handleTilePress(1)} />
+          <PhotoTile url={displayUrls[0]} style={styles.square} onPress={() => handleTilePress(0)} />
+          <PhotoTile url={displayUrls[1]} style={styles.square} onPress={() => handleTilePress(1)} />
         </View>
         <View style={styles.row}>
-          <PhotoTile url={urls[2]} style={styles.square} onPress={() => handleTilePress(2)} />
-          {urls[3] != null && <PhotoTile url={urls[3]} style={styles.square} onPress={() => handleTilePress(3)} />}
+          <PhotoTile url={displayUrls[2]} style={styles.square} onPress={() => handleTilePress(2)} />
+          {urls[3] != null && <PhotoTile url={displayUrls[3]} style={styles.square} onPress={() => handleTilePress(3)} />}
         </View>
       </View>
     );

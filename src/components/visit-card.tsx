@@ -40,6 +40,9 @@ type VisitCardVisit = Omit<FeedVisit, "visitNumber"> & { visitNumber?: number };
 type VisitCardProps = {
   visit: VisitCardVisit;
   photoUrls: Record<string, string>;
+  // Grid-sized copies, keyed the same way. Optional: screens that haven't
+  // fetched them just render full images, exactly as before.
+  photoThumbUrls?: Record<string, string>;
   avatarUrl?: string;
   isOwner: boolean;
   isCopied: boolean;
@@ -72,6 +75,7 @@ type VisitCardProps = {
 export function VisitCard({
   visit,
   photoUrls,
+  photoThumbUrls,
   avatarUrl,
   isOwner,
   isCopied,
@@ -261,15 +265,19 @@ export function VisitCard({
         {(() => {
           const photos = visit.photoIds
             .map((id, i) => ({
+              id,
               url: photoUrls[id],
               ratio: visit.photoAspectRatios[i],
             }))
             .filter(
-              (p): p is { url: string; ratio: number | null } => p.url != null,
+              (p): p is { id: string; url: string; ratio: number | null } => p.url != null,
             );
           return (
             <PhotoGrid
               urls={photos.map((p) => p.url)}
+              thumbUrls={
+                photoThumbUrls ? photos.map((p) => photoThumbUrls[p.id] ?? p.url) : undefined
+              }
               aspectRatios={photos.map((p) => p.ratio)}
               onDoubleTap={handleDoubleTap}
             />

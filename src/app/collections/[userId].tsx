@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { CollectionsList } from '@/components/collections-list';
 import type { CollectionMode } from '@/components/collections-switcher';
 import type { CollectionSortMode } from '@/components/collections-sort-control';
@@ -114,20 +115,11 @@ export default function UserCollectionsScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.gutter}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="[userId]" />
 
           <ThemedText type="displaySerif">
-            {isSelf ? 'Your boards' : userName ? `${userName}’s boards` : 'Boards'}
+            {isSelf ? 'Your collections' : userName ? `${userName}’s collections` : 'Collections'}
           </ThemedText>
-
-          {isSelf && (
-            <Button
-              label={mode === 'boards' ? 'New board' : 'New travel book'}
-              onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
-            />
-          )}
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -147,6 +139,16 @@ export default function UserCollectionsScreen() {
           travelBookThumbnailUrls={travelBookThumbnailUrls}
           boardStats={boardStats}
           travelBookStats={travelBookStats}
+          headerAction={
+            // Under the switcher, matching (tabs)/boards.tsx — above it, a
+            // button labelled "New board" made the page look boards-only.
+            isSelf && mode !== 'trips' ? (
+              <Button
+                label={mode === 'boards' ? 'New board' : 'New travel book'}
+                onPress={() => router.push(mode === 'boards' ? '/board/new' : '/travel-book/new')}
+              />
+            ) : null
+          }
           trips={trips}
           tripAverageRatings={tripAverageRatings}
           isLoading={isLoading}

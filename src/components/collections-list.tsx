@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
+import type { ReactNode } from 'react';
 import Animated from 'react-native-reanimated';
 
 import { CollectionsSwitcher, type CollectionMode } from '@/components/collections-switcher';
@@ -41,6 +42,11 @@ type CollectionsListProps = {
   // ring. Empty for viewers who can't see any of this user's trips.
   trips: Trip[];
   tripAverageRatings: Record<string, number | null>;
+  // Rendered directly BELOW the switcher rather than above it by the host
+  // screen. The create button used to sit between the page title and the
+  // switcher, which buried Travel books and Trips under a button labelled
+  // "New board" — it read as a boards-only page.
+  headerAction?: ReactNode;
   isLoading: boolean;
   emptyBoardsMessage: string;
   emptyTravelBooksMessage: string;
@@ -84,6 +90,7 @@ export function CollectionsList({
   travelBookStats,
   trips,
   tripAverageRatings,
+  headerAction,
   isLoading,
   emptyBoardsMessage,
   emptyTravelBooksMessage,
@@ -105,6 +112,7 @@ export function CollectionsList({
       <View style={styles.controlsRow}>
         <CollectionsSwitcher active={mode} onChange={onModeChange} />
         <CollectionsSortControl active={sortMode} onChange={onSortModeChange} />
+        {headerAction}
       </View>
 
       {mode === 'boards' && !isLoading && boards.length === 0 && (

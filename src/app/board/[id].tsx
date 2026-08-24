@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { BoardMapView } from '@/components/board-views/map-view';
 import { FullReviewsView } from '@/components/board-views/full-reviews-view';
 import { ImagesGridView } from '@/components/board-views/images-grid-view';
@@ -263,9 +264,7 @@ export default function BoardDetailScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="[id]" />
 
           {customCoverUrl && (
             <View style={styles.coverWrap}>

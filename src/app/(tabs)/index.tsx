@@ -2,7 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
-import Animated from "react-native-reanimated";
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { DiscoverView } from "@/components/discover-view";
@@ -24,7 +27,7 @@ import {
   TopTabInset,
 } from "@/constants/theme";
 import { useBottomTabInset } from "@/hooks/use-bottom-tab-inset";
-import { useHideOnScrollHandler } from "@/hooks/use-hide-on-scroll";
+import { useHideOnScrollHandler, useNavBarHidden } from "@/hooks/use-hide-on-scroll";
 import { useTabFocusEffect } from "@/hooks/use-tab-pager";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/lib/auth-context";
@@ -38,7 +41,7 @@ import {
 } from "@/lib/feed";
 import { listHomeLocations } from "@/lib/home-locations";
 import { getUnreadNotificationCount } from "@/lib/notifications";
-import { getPhotoViewUrls } from "@/lib/photo-view";
+import { getPhotoThumbUrls, getPhotoViewUrls } from "@/lib/photo-view";
 import { shareText } from "@/lib/share";
 import { supabase } from "@/lib/supabase";
 import { getRecapCoverUrls, type FeedRecap } from "@/lib/travel-book-recaps";
@@ -48,6 +51,11 @@ import {
   type HomeLocationSuggestion,
   type TripSuggestion,
 } from "@/lib/trips";
+
+// Generous enough for the title row plus the switcher; maxHeight only ever
+// clips when collapsing, so overshooting costs nothing while a value that's
+// too small would crop the header at rest.
+const HEADER_MAX_HEIGHT = 140;
 
 export default function HomeScreen() {
   const { session, profile } = useAuth();
@@ -63,6 +71,7 @@ export default function HomeScreen() {
   // trip" is the only thing that stops it coming back.
   const [tripSuggestion, setTripSuggestion] = useState<TripSuggestion | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [photoThumbUrls, setPhotoThumbUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [recapCoverUrls, setRecapCoverUrls] = useState<Record<string, string>>(
     {},
@@ -79,6 +88,16 @@ export default function HomeScreen() {
     () => profile?.feed_last_viewed_at ?? null,
   );
   const scrollHandler = useHideOnScrollHandler();
+  // Same shared value the floating nav bar reads, so the top header and the
+  // bottom bar collapse and return together instead of drifting apart.
+  const navHidden = useNavBarHidden();
+  // Height is animated (not just opacity) so the feed actually reclaims the
+  // space — fading it out alone would leave a dead gap at the top.
+  const headerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(navHidden.value, [0, 1], [1, 0]),
+    maxHeight: interpolate(navHidden.value, [0, 1], [HEADER_MAX_HEIGHT, 0]),
+    transform: [{ translateY: interpolate(navHidden.value, [0, 1], [0, -12]) }],
+  }));
 
   const loadFeed = useCallback(async () => {
     if (!session) return;
@@ -102,14 +121,24 @@ export default function HomeScreen() {
         item.type === "recap" ? [item.recap] : [],
       );
       const photoIds = feedVisits.flatMap((v) => v.photoIds);
+      // Only multi-photo reviews render as a grid, and only grids benefit
+      // from the smaller copy — a lone photo renders large enough to want
+      // the real one. Requesting thumbs just for these keeps the extra call
+      // proportional to what actually uses them.
+      const gridPhotoIds = feedVisits.flatMap((v) =>
+        v.photoIds.length > 1 ? v.photoIds : [],
+      );
       const authorIds = [
         ...new Set([
           ...feedVisits.map((v) => v.user_id),
           ...feedRecaps.map((r) => r.authorId),
         ]),
       ];
-      const [photos, avatars, recapCovers] = await Promise.all([
+      const [photos, thumbs, avatars, recapCovers] = await Promise.all([
         photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
+        gridPhotoIds.length > 0
+          ? getPhotoThumbUrls(gridPhotoIds)
+          : Promise.resolve({}),
         authorIds.length > 0
           ? getAvatarViewUrls(authorIds)
           : Promise.resolve({}),
@@ -118,6 +147,7 @@ export default function HomeScreen() {
           : Promise.resolve({}),
       ]);
       setPhotoUrls(photos);
+      setPhotoThumbUrls(thumbs);
       setAvatarUrls(avatars);
       setRecapCoverUrls(recapCovers);
     } catch (err) {
@@ -299,6 +329,7 @@ export default function HomeScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <Animated.View style={headerStyle}>
         <View style={[styles.screenHeaderRow, styles.gutter]}>
           <ThemedText type="displaySerif">Feed</ThemedText>
           <Pressable
@@ -328,6 +359,7 @@ export default function HomeScreen() {
         <View style={styles.gutter}>
           <FeedSwitcher active={viewMode} onChange={setViewMode} />
         </View>
+        </Animated.View>
 
         {error && (
           <ThemedText
@@ -437,6 +469,7 @@ export default function HomeScreen() {
                     key={`trip-${item.feedTrip.trip.key}`}
                     feedTrip={item.feedTrip}
                     photoUrls={photoUrls}
+                    photoThumbUrls={photoThumbUrls}
                     avatarUrls={avatarUrls}
                     viewerId={session?.user.id}
                     copiedVisitId={copiedVisitId}

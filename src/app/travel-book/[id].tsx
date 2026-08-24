@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { FeedAuthorLine } from '@/components/feed-author-line';
 import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
@@ -325,9 +326,7 @@ export default function TravelBookDetailScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
-          <Pressable onPress={() => router.back()}>
-            <ThemedText type="link">← Back</ThemedText>
-          </Pressable>
+          <BackLink seed="[id]" />
 
           {customCoverUrl && (
             <View style={styles.coverWrap}>

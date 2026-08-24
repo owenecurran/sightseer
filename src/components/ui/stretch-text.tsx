@@ -32,7 +32,24 @@ type StretchTextProps = ThemedTextProps & {
   // transform math lands the scaled text exactly on the container's own
   // top and bottom edges.
   fillHeightExact?: boolean;
+  // On by default: long names are cut rather than crushed (see
+  // TRUNCATE_THRESHOLD). Opt out where the full string genuinely matters
+  // more than its legibility at a glance.
+  truncateLongText?: boolean;
 };
+
+// Past this many characters a name is truncated rather than stretched to
+// fit. `fill` mode has no lower bound worth relying on -- it will happily
+// compress a 40-character place name into a card's width, at which point the
+// letterforms are too narrow to read and the point of the stretch is lost.
+// Cutting is more legible than crushing.
+//
+// The two numbers differ on purpose: a name only slightly over the limit
+// would gain nothing from losing four characters plus an ellipsis, so
+// nothing is cut until it is comfortably past, and then it is cut back far
+// enough to be worth having done.
+const TRUNCATE_THRESHOLD = 24;
+const TRUNCATE_AT = 20;
 
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.3;
@@ -58,15 +75,27 @@ const OUTLINE_MAX_SCALE_X = 1.6;
 const OUTLINE_STROKE_RADIUS = 2;
 const WEB_WIDTH_SAFETY_MARGIN = 2;
 
+// Trailing whitespace is trimmed before the ellipsis so a cut landing on a
+// space does not render as "Seattle Public …".
+function truncate(text: string): string {
+  if (text.length <= TRUNCATE_THRESHOLD) return text;
+  return text.slice(0, TRUNCATE_AT).trimEnd() + '…';
+}
+
 export function StretchText({
-  children,
+  children: rawChildren,
   outline,
   fill,
   fillHeight,
   fillHeightExact,
+  truncateLongText = true,
   style,
   ...rest
 }: StretchTextProps) {
+  // Applied once, up front, so the measuring copy and the visible copy are
+  // always the same string -- measuring the full text and rendering a cut
+  // one would compute the scale for text that is not on screen.
+  const children = truncateLongText ? truncate(rawChildren) : rawChildren;
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [contentWidth, setContentWidth] = useState(0);

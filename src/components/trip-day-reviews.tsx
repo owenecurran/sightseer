@@ -29,6 +29,7 @@ type TripDayReviewsProps = {
   // keep one identity instead of reshuffling between days.
   tripKey: string;
   photoUrls: Record<string, string>;
+  photoThumbUrls?: Record<string, string>;
   avatarUrls: Record<string, string>;
   viewerId?: string;
   copiedVisitId: string | null;
@@ -142,6 +143,7 @@ export function TripDayReviews({
   dayNumber,
   tripKey,
   photoUrls,
+  photoThumbUrls,
   avatarUrls,
   viewerId,
   copiedVisitId,
@@ -243,6 +245,7 @@ export function TripDayReviews({
               onPhotoLayout={handlePhotoLayout}
               visit={activeVisit}
               photoUrls={photoUrls}
+              photoThumbUrls={photoThumbUrls}
               avatarUrl={avatarUrls[activeVisit.user_id]}
               isOwner={viewerId === activeVisit.user_id}
               isCopied={copiedVisitId === activeVisit.id}

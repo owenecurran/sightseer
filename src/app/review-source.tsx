@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -18,9 +19,7 @@ export default function ReviewSourceScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Pressable onPress={() => router.back()}>
-          <ThemedText type="link">← Back</ThemedText>
-        </Pressable>
+        <BackLink seed="review-source" />
 
         <ThemedText type="displaySerif">New review</ThemedText>
 
