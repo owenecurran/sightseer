@@ -24,6 +24,12 @@ A cross-platform social travel journal. Review a place, rate it out of 10, and s
 
 ---
 
+> **Mobile-first.** Sightseer is designed and tuned for iOS and Android. The web build shares the
+> same codebase and is kept working, but it's a lighter adaptation, not the primary experience.
+> Public TestFlight demo coming soon. 
+
+---
+
 ## What it does
 
 Sightseer is a social journal for places. You review somewhere on a 0–10 scale, attach photos, tag
@@ -129,6 +135,34 @@ npx supabase link --project-ref <your-project-ref>
 npx supabase db push          # apply migrations
 npx supabase functions deploy # deploy edge functions
 ```
+
+### Android SDK & emulator (for local Android builds)
+
+`npm run android` needs the Android SDK on your machine. The standard, most common way to get it
+is **Android Studio** — install it and its bundled SDK Manager / AVD Manager / emulator handle
+everything below through a GUI, and you can skip straight to [Run it](#run-it).
+
+The leaner, scriptable alternative (no IDE, useful for CI or a minimal setup) is the command-line
+tools alone:
+
+```bash
+# 1. Download & unzip the command-line tools into $ANDROID_HOME/cmdline-tools/latest
+#    (must be that exact subfolder name — see https://developer.android.com/studio#command-tools)
+
+# 2. Point the SDK at that folder and put its tools on PATH (add to your shell profile)
+export ANDROID_HOME="$HOME/Android"   # wherever you unzipped it
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
+
+# 3. Accept licenses, then create + boot a virtual device — the `android` CLI (ships inside
+#    cmdline-tools) pulls whatever platform/system-image/emulator packages it needs on its own
+sdkmanager --licenses
+android emulator create medium_phone   # --list-profiles for other device sizes
+android emulator start medium_phone
+```
+
+On Windows, set the env vars via System Properties → Environment Variables (or `setx`) instead of
+`export`.
 
 ### Run it
 
