@@ -1,4 +1,5 @@
-// Native (iOS/Android) — Skia is bundled natively and available synchronously,
-// no load-gating needed. See .web.tsx for why web can't just import
-// RatingGlassBadge directly. Mirrors liquid-glass-track-gated.tsx exactly.
-export { RatingGlassBadge as RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge';
+// Both platforms now render the stamp as an SVG image rather than through
+// Skia — see rating-stamp-svg.tsx. Kept as a re-export under the old name so
+// the eleven call sites don't each need touching, and so this stays the one
+// place a platform ever diverges again.
+export { RatingStampSvg as RatingGlassBadgeGated } from '@/components/ui/rating-stamp-svg';

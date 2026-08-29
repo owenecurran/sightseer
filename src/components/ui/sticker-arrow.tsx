@@ -1,10 +1,11 @@
-import { Canvas, Group, Path } from '@shopify/react-native-skia';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { BrandColors } from '@/constants/theme';
-import { buildStickerPaths, pickStickerVariants } from '@/lib/sticker-shapes';
+import { pickStickerVariants } from '@/lib/sticker-shapes';
+import { buildStickerArrowDataUri } from '@/lib/sticker-svg';
 
 // Tints the inner layer. Brand colours plus tones from the rating gradient,
 // so a sticker never looks foreign beside a stamp.
@@ -77,34 +78,30 @@ export function StickerArrow({
     };
   }, [seed]);
 
-  const backgroundPaths = useMemo(
-    () => buildStickerPaths(variants.background, size),
-    [variants.background, size]
+  // One SVG for the whole sticker instead of a Skia <Canvas> per arrow.
+  //
+  // The Skia version crashed every screen with a back button on web:
+  // buildStickerPaths calls Skia.Matrix(), Skia is undefined there, and
+  // unlike the rating stamp this had no try/catch, so it threw straight
+  // into the error boundary. It also cost a GL surface per arrow on native,
+  // and back links appear on nearly every screen.
+  const uri = useMemo(
+    () =>
+      buildStickerArrowDataUri({
+        size,
+        background: variants.background,
+        inner: variants.inner,
+        arrow: variants.arrow,
+        innerScale: INNER_SCALE,
+        arrowScale: ARROW_SCALE,
+        bodyColor: BrandColors.cream,
+        rimColor: '#ffffff',
+        innerColor: accent,
+        arrowColor: BrandColors.background,
+        direction,
+      }),
+    [variants, size, accent, direction]
   );
-  const innerPaths = useMemo(
-    () => buildStickerPaths(variants.inner, size * INNER_SCALE),
-    [variants.inner, size]
-  );
-  const arrowPaths = useMemo(
-    () => buildStickerPaths(variants.arrow, size * ARROW_SCALE),
-    [variants.arrow, size]
-  );
-
-  // buildStickerPaths fits each layer into the square it is GIVEN, so a
-  // layer scaled to a fraction of the sticker lands at the canvas's
-  // top-left. These offsets recentre it. Without them the blob and chevron
-  // sit in the corner rather than the middle.
-  const innerOffset = (size - size * INNER_SCALE) / 2;
-  const arrowOffset = (size - size * ARROW_SCALE) / 2;
-
-  if (!backgroundPaths || !innerPaths || !arrowPaths) {
-    // Same footprint as the real thing, so a parse failure (or CanvasKit
-    // still loading on web) degrades to a plain disc rather than collapsing
-    // the layout around it.
-    return (
-      <View style={[styles.fallback, { width: size, height: size, backgroundColor: accent }]} />
-    );
-  }
 
   return (
     <View
@@ -117,31 +114,13 @@ export function StickerArrow({
           { rotate: `${jitter.rotate}deg` },
         ],
       }}>
-      <Canvas style={StyleSheet.absoluteFill}>
-        {/* Background carries two paths — body and rim — which is what lets
-            the outer sticker read as die-cut rather than flat. */}
-        {backgroundPaths.map((path, i) => (
-          <Path key={`bg-${i}`} path={path} color={i === 0 ? BrandColors.cream : '#ffffff'} />
-        ))}
-        <Group transform={[{ translateX: innerOffset }, { translateY: innerOffset }]}>
-          {innerPaths.map((path, i) => (
-            <Path key={`in-${i}`} path={path} color={accent} />
-          ))}
-        </Group>
-        {/* The artwork points right; a left arrow is the same shape mirrored
-            about the sticker's centre, so there is one arrow file per
-            variant. Mirrored around the whole sticker (not the scaled-down
-            arrow box) so it lands centred either way. */}
-        <Group
-          transform={direction === 'left' ? [{ scaleX: -1 }] : undefined}
-          origin={{ x: size / 2, y: size / 2 }}>
-          <Group transform={[{ translateX: arrowOffset }, { translateY: arrowOffset }]}>
-            {arrowPaths.map((path, i) => (
-              <Path key={`ar-${i}`} path={path} color={BrandColors.background} />
-            ))}
-          </Group>
-        </Group>
-      </Canvas>
+      <Image
+        source={{ uri }}
+        style={StyleSheet.absoluteFill}
+        contentFit="fill"
+        cachePolicy="memory"
+        transition={0}
+      />
 
       {/* Fixed, not rotated with the sticker: a specular highlight comes
           from the light, not the object. */}
@@ -156,9 +135,3 @@ export function StickerArrow({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  fallback: {
-    borderRadius: 999,
-  },
-});

@@ -243,6 +243,18 @@ export function StretchText({
         // (e.g. the location line under a feed card's title) stays flush
         // against the text instead of getting pushed down by empty space.
         fill && containerHeightOverride ? styles.fillBottom : null,
+        // Web only, and only for plain `fill`: the child above is
+        // deliberately wider than this box (it gets scaled down to fit), and
+        // on web an element wider than its parent expands the DOCUMENT —
+        // one long place name pushed every page it appeared on sideways.
+        // Native has no document to widen, so it never showed this and is
+        // left exactly as it was.
+        //
+        // Nothing visible is lost: scaleX is containerWidth/contentWidth, so
+        // the scaled text lands at exactly this box's width. `fillHeight` is
+        // excluded because that mode deliberately overshoots its box
+        // vertically, which this would cut off.
+        Platform.OS === "web" && fill && !fillHeight ? styles.webFillClip : null,
         containerHeightOverride ? { height: containerHeightOverride } : null,
       ]}
     >
@@ -296,6 +308,13 @@ export function StretchText({
           withinRange ? styles.noMaxWidth : null,
           withinRange ? noEllipsisStyle : null,
 
+          // The text's own natural width, NOT the container's. `fill`
+          // relies on laying the whole string out at full size and then
+          // scaling it down with scaleX; clamping this box to the container
+          // instead makes the browser clip the string first, and the
+          // transform then shrinks an already-truncated line. The
+          // containing View is what stops this overflowing the page — see
+          // `webFillClip`.
           withinRange && contentWidth > 0
             ? {
                 width:
@@ -384,6 +403,11 @@ const styles = StyleSheet.create({
   // it in the surrounding layout.
   fillBottom: {
     justifyContent: "flex-end",
+  },
+  // See the call site: contains the intentionally-oversized child so it
+  // can't widen the page.
+  webFillClip: {
+    overflow: "hidden",
   },
   // outline-mode-only: without an explicit height, this View's own onLayout
   // just reports its natural content-driven height (close to the text's own

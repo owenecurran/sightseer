@@ -11,10 +11,19 @@ import { Skia, type SkPath } from '@shopify/react-native-skia';
 // rating-glass-badge.tsx (the static rating display reusing the same mark)
 // — moved here so both draw from one source of truth instead of two copies
 // silently drifting apart.
-const HEAD_PATH_SVG =
+export const HEAD_PATH_SVG =
   'M804.97,286.72c0,90.67-42.66,171.51-109.26,224.05-49.71,39.22-112.76,62.67-181.37,62.67-160.51,0-290.62-128.37-290.62-286.72S353.84,0,514.34,0s290.62,128.37,290.62,286.72Z';
-const MARK_POLYLINE_POINTS =
+export const MARK_POLYLINE_POINTS =
   '963.02 592.81 1141.14 560 1321.88 305.31 1475.53 393.75 1141.14 758.44 850.52 827.19 947.39 1333.44 1358.33 1545.94 1128.64 1694.38 703.66 1378.12 591.16 1379.69 428.66 1751.56 136.47 1721.88 355.22 1342.19 416.16 896.88 39.59 1379.69 0 1158.44 281.78 779.69 467.72 635.94 789.58 586.56';
+
+// The mark's tight bounds, which happen to be exactly the source SVG's
+// viewBox. Verified rather than assumed: the polyline alone spans
+// x 0->1475.53 and y 305.31->1751.56, and the head circle supplies the
+// missing y 0->573.44, so the union is the full viewBox in both axes.
+//
+// fitBrandMarkPath computes this with Skia's computeTightBounds; this
+// constant exists for the web renderer, which has no Skia to ask.
+export const BRAND_MARK_BOUNDS = { x: 0, y: 0, width: 1475.53, height: 1751.56 };
 
 function parsePolylinePoints(raw: string): { x: number; y: number }[] {
   const nums = raw.trim().split(/\s+/).map(Number);
