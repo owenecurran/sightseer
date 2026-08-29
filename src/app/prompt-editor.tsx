@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { PROFILE_PROMPT_CATEGORY_LABELS, PROFILE_PROMPTS, type ProfilePromptCategory } from '@/constants/profile-prompts';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -121,6 +122,10 @@ type OwnTravelBookOption = { id: string; title: string };
 // and every other prompt's slug to grey out already-used ones) rather than
 // receiving it via route params, since expo-router params are string-only
 // and this is little more than what edit-profile.tsx already fetched.
+// Sized to sit inside a chip without setting its height — small enough that
+// the chip still reads as a chip.
+const VISIT_CHIP_STAMP_SIZE = 22;
+
 export default function PromptEditorScreen() {
   const { promptId } = useLocalSearchParams<{ promptId?: string }>();
   const { session } = useAuth();
@@ -636,11 +641,11 @@ export default function PromptEditorScreen() {
                       <Pressable key={v.id} onPress={() => handleSelectVisit(index, v.id)}>
                         <ThemedView
                           type={attachment.visitId === v.id ? 'backgroundSelected' : 'background'}
-                          style={styles.chip}>
-                          <ThemedText type="small">
-                            {v.placeName}
-                            {v.rating != null ? ` · ${v.rating.toFixed(1)} ★` : ''}
-                          </ThemedText>
+                          style={[styles.chip, styles.visitChip]}>
+                          <ThemedText type="small">{v.placeName}</ThemedText>
+                          {v.rating != null && (
+                            <RatingGlassBadgeGated rating={v.rating} size={VISIT_CHIP_STAMP_SIZE} />
+                          )}
                         </ThemedView>
                       </Pressable>
                     ))}
@@ -853,6 +858,11 @@ const styles = StyleSheet.create({
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  visitChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.two,
   },
   chip: {

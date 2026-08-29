@@ -20,6 +20,7 @@ export type VisitDetail = {
   isLikedByMe: boolean;
   taggedUsers: { id: string; name: string }[];
   taggedPlaces: { name: string; category: PlaceCategory }[];
+  tags: { slug: string; label: string }[];
   commentCount: number;
   isViewerTagged: boolean;
 };
@@ -37,6 +38,7 @@ type RawVisitDetail = {
   likes: { count: number }[];
   visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
   visit_tagged_places: { places: { name: string; category: PlaceCategory } | null }[];
+  visit_tags: { tag_slug: string; tags: { label: string } | null }[];
   comments: { count: number }[];
 };
 
@@ -48,7 +50,7 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(count)'
+      'id, rating, note, visited_on, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), visit_tags(tag_slug, tags(label)), comments(count)'
     )
     .eq('id', visitId)
     .maybeSingle();
@@ -98,6 +100,9 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
     taggedPlaces: v.visit_tagged_places
       .map((t) => t.places)
       .filter((place): place is { name: string; category: PlaceCategory } => place != null),
+    tags: v.visit_tags
+      .filter((row) => row.tags != null)
+      .map((row) => ({ slug: row.tag_slug, label: row.tags!.label })),
     commentCount: v.comments[0]?.count ?? 0,
     isViewerTagged: v.visit_tagged_users.some((t) => t.user_id === myUserId),
   };

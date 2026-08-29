@@ -8,6 +8,7 @@ import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -99,11 +100,14 @@ export default function ModerationScreen() {
             <ThemedView key={report.id} type="backgroundElement" style={styles.card}>
               <ThemedText type="smallBold">{report.placeName ?? report.authorName}</ThemedText>
               {report.placeName && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  {report.authorName}
-                  {report.visitRating != null ? ` · ${report.visitRating.toFixed(1)} ★` : ''}
-                  {report.visitNote ? ` · ${report.visitNote}` : ''}
-                </ThemedText>
+                <View style={styles.reportMeta}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.reportMetaText}>
+                    {[report.authorName, report.visitNote].filter(Boolean).join(' · ')}
+                  </ThemedText>
+                  {report.visitRating != null && (
+                    <RatingGlassBadgeGated rating={report.visitRating} size={REPORT_STAMP_SIZE} />
+                  )}
+                </View>
               )}
               <ThemedText type="small">
                 Reported for {REASON_LABELS[report.reason]} by {report.reporterName}
@@ -145,6 +149,10 @@ export default function ModerationScreen() {
   );
 }
 
+// Small: an admin triage row, where the rating is a supporting detail
+// rather than the subject.
+const REPORT_STAMP_SIZE = 26;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -163,6 +171,16 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: Spacing.three,
+  },
+  reportMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  // Takes the slack so a long note wraps rather than shoving the stamp off
+  // the row.
+  reportMetaText: {
+    flex: 1,
   },
   card: {
     paddingVertical: Spacing.three,

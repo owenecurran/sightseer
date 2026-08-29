@@ -157,6 +157,8 @@ export default function VisitDetailScreen() {
               visitedLine={[visit.rating == null ? 'Visited' : null, visit.note || null].filter(Boolean).join(' · ')}
               rating={visit.rating}
               stampSeed={visit.id}
+              tags={visit.tags}
+              tagSeed={visit.id}
               stampCanSeep={visit.photoIds.length > 0}
             />
 
@@ -181,7 +183,12 @@ export default function VisitDetailScreen() {
             />
 
             {isCommentsOpen && (
-              <CommentsThread visitId={visit.id} visitOwnerId={visit.user_id} onCountChange={setCommentCount} />
+              <CommentsThread
+                visitId={visit.id}
+                visitOwnerId={visit.user_id}
+                knownCount={commentCount}
+                onCountChange={setCommentCount}
+              />
             )}
           </ThemedView>
         )}

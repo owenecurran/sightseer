@@ -1,6 +1,6 @@
 import { useFocusEffect } from 'expo-router';
 import { createContext, useContext, useEffect, useRef, type RefObject } from 'react';
-import { Platform } from 'react-native';
+import { InteractionManager, Platform } from 'react-native';
 import type PagerView from 'react-native-pager-view';
 
 // Shared between the root layout (src/app/_layout.tsx, which owns this
@@ -48,12 +48,47 @@ export function usePagerFocusEffect(pageIndex: number, callback: () => void | ((
   const { activeIndex } = useTabPager();
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
+  // Set as soon as this page is genuinely focused, so the warm-up below can
+  // tell "nobody has loaded this yet" from "the user got here first".
+  const hasFocusedRef = useRef(false);
 
   useEffect(() => {
     if (activeIndex !== pageIndex) return;
+    hasFocusedRef.current = true;
     return callbackRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, pageIndex]);
+
+  // Warm-up: load each tab's data at launch instead of on first visit.
+  //
+  // All 5 screens already MOUNT together (they're PagerView children), but
+  // their data didn't — every screen gates its first render on
+  // `hasLoadedOnce` and only fetched once it became the active page, so the
+  // first switch to each tab showed a PageLoader while a round trip you
+  // could have made at startup went out. Prefetching here is what turns
+  // that first switch into an instant one; later switches already reused
+  // what was loaded.
+  //
+  // Mount-only, and safe as such: the root layout renders nothing until
+  // auth resolves (`if (isLoading) return null`) and the tabs sit behind an
+  // authenticated guard, so `session` is always present by the time this
+  // runs — there is no later arrival to re-fire for.
+  //
+  // Deferred rather than immediate so the tab the app actually opened on
+  // isn't racing four hidden ones for the network on the slowest frame of
+  // the whole launch.
+  useEffect(() => {
+    // The active page is the focus effect's own job — warming it here would
+    // just double every launch request.
+    if (activeIndex === pageIndex) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      // Beaten to it by a fast swipe; the focus effect already loaded it.
+      if (hasFocusedRef.current) return;
+      callbackRef.current();
+    });
+    return () => task.cancel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
 
 // Drop-in replacement for `useFocusEffect` at the 5 main tab screens' call

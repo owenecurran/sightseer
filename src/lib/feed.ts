@@ -39,6 +39,10 @@ export type FeedVisit = {
   isLikedByMe: boolean;
   taggedUsers: { id: string; name: string }[];
   taggedPlaces: TaggedPlace[];
+  // Descriptive tags the author put on this review — at most 3, see
+  // MAX_VISIT_TAGS. Distinct from taggedUsers/taggedPlaces, which link to
+  // other rows rather than describing this one.
+  tags: { slug: string; label: string }[];
   commentCount: number;
   visitNumber: number;
   isViewerTagged: boolean;
@@ -50,7 +54,7 @@ export type FeedVisit = {
 // can't come from an aggregate, so it's resolved separately in one batched
 // query per list — see getMyLikedVisitIds.
 export const FEED_VISIT_SELECT =
-  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(count)';
+  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), visit_tags(tag_slug, tags(label)), comments(count)';
 
 export type RawFeedVisit = {
   id: string;
@@ -66,6 +70,7 @@ export type RawFeedVisit = {
   likes: { count: number }[];
   visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
   visit_tagged_places: { places: { name: string; category: PlaceCategory } | null }[];
+  visit_tags: { tag_slug: string; tags: { label: string } | null }[];
   comments: { count: number }[];
 };
 
@@ -113,6 +118,12 @@ export function mapRawFeedVisit(
     taggedPlaces: visit.visit_tagged_places
       .map((t) => t.places)
       .filter((place): place is { name: string; category: PlaceCategory } => place != null),
+    // The join row carries the slug and the vocabulary row carries the
+    // label; a tag whose vocabulary row somehow didn't come back is dropped
+    // rather than rendered as a blank sticker.
+    tags: visit.visit_tags
+      .filter((row) => row.tags != null)
+      .map((row) => ({ slug: row.tag_slug, label: row.tags!.label })),
     commentCount: visit.comments[0]?.count ?? 0,
     isViewerTagged: visit.visit_tagged_users.some((t) => t.user_id === myUserId),
   };

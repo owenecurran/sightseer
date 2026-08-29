@@ -61,6 +61,22 @@ export function TabPager() {
       ref={pagerRef}
       style={styles.pager}
       initialPage={0}
+      // One page either side, NOT all four.
+      //
+      // Holding every page attached looked like a free win — until it
+      // turned out the cost isn't memory, it's GL surfaces: these screens
+      // are full of rating stamps, each stamp is a Skia canvas, and pinning
+      // all five pages keeps every one of those contexts alive for the
+      // whole session no matter which tab you're on. That is steady-state
+      // pressure on exactly the thing that has faulted the host OpenGL
+      // driver repeatedly.
+      //
+      // Almost nothing is lost by dialling it back: what actually made tab
+      // switching feel slow was each tab fetching its data on first visit,
+      // and that's fixed separately by the warm-up in usePagerFocusEffect.
+      // Rebuilding a page's views on arrival is cheap; waiting on a network
+      // round trip was not.
+      offscreenPageLimit={1}
       onPageSelected={(e) => setActiveIndexInternal(e.nativeEvent.position)}>
       {SCREENS.map((Screen, index) => (
         // collapsable={false}: without it, Android's view-flattening

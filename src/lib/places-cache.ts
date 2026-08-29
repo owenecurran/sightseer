@@ -189,6 +189,33 @@ export async function cachePlaceHierarchy(details: PlaceDetails): Promise<PlaceR
 // Walks parent_id up to the root for display (breadcrumb), e.g.
 // "United States > Colorado > Denver". Hierarchy is at most 4 levels deep
 // by design, so this is always a short, bounded chain of lookups.
+// One step of the containment chain above a place, broadest first — the
+// scopes a place page can widen out to.
+export type PlaceAncestor = { id: string; name: string; level: string };
+
+// The places that CONTAIN this one, as rows you can navigate to rather than
+// the flat string getPlaceBreadcrumb returns.
+//
+// One RPC rather than that function's loop, which issues a separate query
+// per level (up to four sequential round trips for a venue: locality,
+// state, country, continent). The ids are the point — a breadcrumb you can
+// only read is a dead end on a page whose whole purpose is moving between
+// scopes.
+export async function getPlaceAncestors(placeId: string): Promise<PlaceAncestor[]> {
+  const { data, error } = await supabase.rpc('get_place_ancestry', { p_id: placeId });
+  if (error) throw error;
+
+  return (data as { id: string; name: string; level: string; depth: number }[])
+    // depth 0 is the place being viewed. It's already the page's title, and
+    // it's only present at all for non-POI places (the RPC filters POIs out
+    // of its own result), so this is what makes a country page list just
+    // its continent rather than leading with itself.
+    .filter((row) => row.depth > 0)
+    // The RPC returns narrowest-first; reading order is the other way round.
+    .sort((a, b) => b.depth - a.depth)
+    .map(({ id, name, level }) => ({ id, name, level }));
+}
+
 export async function getPlaceBreadcrumb(place: PlaceRow): Promise<string> {
   const names: string[] = [place.name];
   let currentParentId = place.parent_id;

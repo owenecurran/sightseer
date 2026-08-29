@@ -11,22 +11,39 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { TagSticker } from '@/components/ui/tag-sticker';
+import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getFollowedUserIds, getVisitsForPlace, type PlaceVisit } from '@/lib/feed';
 import type { Database } from '@/lib/database.types';
-import { getPlaceBreadcrumb } from '@/lib/places-cache';
+import { getPlaceAncestors, type PlaceAncestor } from '@/lib/places-cache';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
+import { countTagsForVisits } from '@/lib/visit-tags';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
 // Ratings run 0-10 here, so 5.0 is the midpoint the "good/bad" split hangs
 // off — not a five-star scale's ceiling.
 const RATING_SPLIT = 5;
+
+// The stamp is the app's rating display everywhere else (feed cards, the
+// harmony breakdown), so these pages use it too rather than a "8.6 ★" that
+// appeared nowhere else. Row stamps are smaller than the header's, which is
+// summarising the whole place.
+const ROW_STAMP_SIZE = 44;
+const HEADER_STAMP_SIZE = 52;
+
+// How many tag filters to offer. A country page surfaces well over a dozen,
+// which at two stickers per row pushed the reviews themselves most of a
+// screen further down — and the tail of that list matches one or two
+// reviews each, so it costs the most space for the least filtering. The
+// commonest tags are the ones worth sifting by.
+const MAX_TAG_FILTERS = 8;
 
 type SortMode = 'specific' | 'recent' | 'popular' | 'highest' | 'lowest';
 // Mutually exclusive by nature: nothing is both at-or-above and below the
@@ -82,7 +99,7 @@ export default function PlaceDetailScreen() {
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [place, setPlace] = useState<PlaceRow | null>(null);
-  const [breadcrumb, setBreadcrumb] = useState('');
+  const [ancestors, setAncestors] = useState<PlaceAncestor[]>([]);
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [visits, setVisits] = useState<PlaceVisit[]>([]);
@@ -92,6 +109,10 @@ export default function PlaceDetailScreen() {
   const [sortMode, setSortMode] = useState<SortMode>('specific');
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('none');
   const [friendsOnly, setFriendsOnly] = useState(false);
+  // Tag filters are additive (AND): picking "Cozy" and "Affordable" asks for
+  // places that were both, which is how someone actually searches — not for
+  // anything that was either.
+  const [tagSlugs, setTagSlugs] = useState<string[]>([]);
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +141,7 @@ export default function PlaceDetailScreen() {
         if (aggregateError) throw aggregateError;
 
         setPlace(placeData);
-        setBreadcrumb(await getPlaceBreadcrumb(placeData));
+        setAncestors(await getPlaceAncestors(id));
         setAvgRating(aggregate?.avg_rating ? Number(aggregate.avg_rating) : null);
         setReviewCount(aggregate?.review_count ? Number(aggregate.review_count) : 0);
         setVisits(visitsData);
@@ -138,11 +159,30 @@ export default function PlaceDetailScreen() {
     })();
   }, [id, session]);
 
+  // Only the tags actually present on this place's reviews, commonest
+  // first. Offering the whole vocabulary would mostly be filters that
+  // produce nothing, which is worse than not offering them.
+  const availableTags = useMemo(() => {
+    const counted = countTagsForVisits(visits.map((visit) => visit.tags));
+    // An active filter always stays visible, even if it falls outside the
+    // cut — otherwise turning one on could hide the control that turns it
+    // back off.
+    const shown = counted.slice(0, MAX_TAG_FILTERS);
+    const missing = counted.filter(
+      (tag) => tagSlugs.includes(tag.slug) && !shown.includes(tag)
+    );
+    return [...shown, ...missing];
+  }, [visits, tagSlugs]);
+
   // Filter first, then sort — sorting the discarded rows is wasted work, and
   // it keeps "5 of 24" style reasoning about the result straightforward.
   const visibleVisits = useMemo(() => {
     const filtered = visits.filter((visit) => {
       if (friendsOnly && !followedIds.has(visit.user_id)) return false;
+      if (tagSlugs.length > 0) {
+        const own = new Set(visit.tags.map((tag) => tag.slug));
+        if (!tagSlugs.every((slug) => own.has(slug))) return false;
+      }
       if (ratingFilter === 'high') return visit.rating != null && visit.rating >= RATING_SPLIT;
       if (ratingFilter === 'low') return visit.rating != null && visit.rating < RATING_SPLIT;
       return true;
@@ -162,7 +202,7 @@ export default function PlaceDetailScreen() {
       default:
         return filtered;
     }
-  }, [visits, sortMode, ratingFilter, friendsOnly, followedIds]);
+  }, [visits, sortMode, ratingFilter, friendsOnly, followedIds, tagSlugs]);
 
   if (!hasLoadedOnce) return <PageLoader />;
 
@@ -181,6 +221,20 @@ export default function PlaceDetailScreen() {
           keyExtractor={(item: PlaceVisit) => item.id}
           contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
+          // Every row draws a rating stamp, and each stamp is a Skia canvas
+          // holding its own GL surface. These rows are short — eight or so
+          // fit on a screen — so FlatList's default window (21 screens'
+          // worth) would mount dozens of live GL contexts at once on a
+          // country or continent page. That is the same shape of load that
+          // faulted the host OpenGL driver on the harmony screen, and it is
+          // wasted work regardless of which machine it runs on: the feed
+          // gets away with the default only because its cards are a full
+          // screen each, so few exist at a time. These numbers keep roughly
+          // a screen either side live, which is what smooth scrolling
+          // actually needs.
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          windowSize={5}
           onScroll={scrollHandler}
           scrollEventThrottle={16}
           ListHeaderComponent={
@@ -193,17 +247,58 @@ export default function PlaceDetailScreen() {
                 </View>
               )}
 
-              <StretchText type="headline">{place?.name ?? 'Place'}</StretchText>
-              {breadcrumb.length > 0 && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  {breadcrumb}
-                </ThemedText>
+              {/* Never truncated here, unlike a compact list row: this page
+                  is ABOUT this one place, so its full name is the whole
+                  point. Without `fill` there's no vertical stretch to fight
+                  either — a long name simply wraps onto a second line
+                  instead of ending in an ellipsis you can't expand. */}
+              <StretchText type="headline" truncateLongText={false}>
+                {place?.name ?? 'Place'}
+              </StretchText>
+
+              {/* The containing scopes, broadest first, each one a link.
+                  This was a flat "North America > United States" string
+                  before — correct, and a dead end: the one page where
+                  widening out to the country or continent is the obvious
+                  next move had no way to do it. */}
+              {ancestors.length > 0 && (
+                <View style={styles.scopeRow}>
+                  {ancestors.map((ancestor, index) => (
+                    <View key={ancestor.id} style={styles.scopeItem}>
+                      {index > 0 && (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          ›
+                        </ThemedText>
+                      )}
+                      <Pressable
+                        onPress={() =>
+                          router.push({ pathname: '/place/[id]', params: { id: ancestor.id } })
+                        }
+                        hitSlop={6}>
+                        <ThemedText type="small" themeColor="sage">
+                          {ancestor.name}
+                        </ThemedText>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
               )}
-              <ThemedText type="default">
-                {avgRating !== null
-                  ? `${avgRating.toFixed(1)} ★ · ${reviewCount} review${reviewCount === 1 ? '' : 's'}`
-                  : 'No reviews yet'}
-              </ThemedText>
+              {/* Count decides whether anything is here; the average only
+                  decides whether a score is worth showing. Keyed off the
+                  average alone, a place whose only visits were logged
+                  WITHOUT a rating (avg_rating comes back null, review_count
+                  does not) announced "No reviews yet" directly above the
+                  list of them. */}
+              <View style={styles.aggregateRow}>
+                {avgRating !== null && (
+                  <RatingGlassBadgeGated rating={avgRating} size={HEADER_STAMP_SIZE} />
+                )}
+                <ThemedText type="default">
+                  {reviewCount === 0
+                    ? 'No reviews yet'
+                    : `${reviewCount} review${reviewCount === 1 ? '' : 's'}`}
+                </ThemedText>
+              </View>
 
               <Button
                 label="Add your review"
@@ -263,6 +358,41 @@ export default function PlaceDetailScreen() {
                     </View>
                   </View>
 
+                  {availableTags.length > 0 && (
+                    <View style={styles.controlGroup}>
+                      <ThemedText type="sectionLabel" themeColor="textSecondary" style={styles.controlLabel}>
+                        Tags
+                      </ThemedText>
+                      <View style={styles.chipRow}>
+                        {availableTags.map((tag) => {
+                          const isSelected = tagSlugs.includes(tag.slug);
+                          return (
+                            <Pressable
+                              key={tag.slug}
+                              onPress={() =>
+                                setTagSlugs((prev) =>
+                                  prev.includes(tag.slug)
+                                    ? prev.filter((s) => s !== tag.slug)
+                                    : [...prev, tag.slug]
+                                )
+                              }
+                              // Selection is marked with a sage ring rather
+                              // than by dimming everything else: at an
+                              // opacity low enough to clearly mean "off",
+                              // the labels stopped being readable, and an
+                              // unreadable filter is not a filter.
+                              style={[
+                                styles.tagFilter,
+                                isSelected ? styles.tagFilterOn : styles.tagFilterIdle,
+                              ]}>
+                              <TagSticker slug={tag.slug} label={`${tag.label} ${tag.count}`} />
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  )}
+
                   {visibleVisits.length !== visits.length && (
                     <ThemedText type="small" themeColor="textSecondary">
                       Showing {visibleVisits.length} of {visits.length}
@@ -287,6 +417,15 @@ export default function PlaceDetailScreen() {
             // whole country. On a venue's own page that would just repeat
             // the title above, so there the author leads instead.
             const isNested = item.placeDepth > 0;
+            const metaLine = [
+              isNested ? item.authorName : null,
+              item.rating == null ? 'Visited' : null,
+              item.likeCount > 0
+                ? `${item.likeCount} like${item.likeCount === 1 ? '' : 's'}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
             return (
               <Pressable
                 onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}
@@ -294,18 +433,29 @@ export default function PlaceDetailScreen() {
                 <ThemedView type="backgroundElement" style={styles.visitCard}>
                   <PhotoGrid urls={visitPhotoUrls} aspectRatios={item.photoAspectRatios} />
                   <View style={styles.visitInfo}>
-                    <ThemedText type="smallBold">
-                      {isNested ? item.placeName : item.authorName}
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {isNested ? `${item.authorName} · ` : ''}
-                      {item.rating != null ? `${item.rating.toFixed(1)} ★` : 'Visited'}
-                      {item.likeCount > 0 ? ` · ${item.likeCount} like${item.likeCount === 1 ? '' : 's'}` : ''}
-                    </ThemedText>
-                    {item.note && (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {item.note}
+                    <View style={styles.visitText}>
+                      <ThemedText type="smallBold">
+                        {isNested ? item.placeName : item.authorName}
                       </ThemedText>
+                      {/* The rating has moved to the stamp beside this, so
+                          the line carries only what the stamp can't say —
+                          and "Visited" only where there is no stamp to
+                          replace it. Joined rather than concatenated so it
+                          can't render a stray leading separator when the
+                          pieces before it happen to be absent. */}
+                      {metaLine.length > 0 && (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {metaLine}
+                        </ThemedText>
+                      )}
+                      {item.note && (
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {item.note}
+                        </ThemedText>
+                      )}
+                    </View>
+                    {item.rating != null && (
+                      <RatingGlassBadgeGated rating={item.rating} size={ROW_STAMP_SIZE} />
                     )}
                   </View>
                 </ThemedView>
@@ -347,8 +497,34 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  // Wraps: a venue can sit under city > state > country > continent, which
+  // doesn't fit one phone-width line.
+  scopeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  scopeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
   controls: {
     gap: Spacing.two,
+  },
+  // Transparent ring by default so selecting one doesn't shift the layout.
+  tagFilter: {
+    borderRadius: Spacing.three,
+    padding: 2,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  tagFilterOn: {
+    borderColor: BrandColors.sage,
+  },
+  tagFilterIdle: {
+    opacity: 0.8,
   },
   controlGroup: {
     gap: Spacing.one,
@@ -374,9 +550,22 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     overflow: 'hidden',
   },
+  aggregateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  // Row layout: text takes the slack, the stamp keeps its natural size at
+  // the end of the row.
   visitInfo: {
-    gap: Spacing.half,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
+  },
+  visitText: {
+    flex: 1,
+    gap: Spacing.half,
   },
 });

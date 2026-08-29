@@ -89,6 +89,15 @@ function fillScaleY(scaleX: number, maxScaleY?: number): number {
   const compensated = 1 / Math.sqrt(scaleX);
   return maxScaleY != null ? Math.min(compensated, maxScaleY) : compensated;
 }
+// Leading for the wrapping path, as a multiple of one measured line.
+//
+// `tightFont` turns includeFontPadding off so a line measures as its
+// glyphs — necessary for the scale math, and fine while text stays on one
+// line. Wrapped, it leaves the lines with almost no gap: a long place name
+// on its own page rendered with each line crashing into the one above it.
+// Derived from the measured single-line height rather than a fixed px
+// value so it holds for every `type` this component is used with.
+const WRAP_LINE_HEIGHT_RATIO = 1.25;
 const OUTLINE_STROKE_RADIUS = 2;
 const WEB_WIDTH_SAFETY_MARGIN = 2;
 
@@ -293,6 +302,13 @@ export function StretchText({
                   contentWidth +
                   (Platform.OS === "web" ? WEB_WIDTH_SAFETY_MARGIN : 0),
               }
+            : null,
+
+          // Only the wrapping path needs this — see WRAP_LINE_HEIGHT_RATIO.
+          // Single-line text is unaffected, so nothing that fits today
+          // changes.
+          !withinRange && contentHeight > 0
+            ? { lineHeight: contentHeight * WRAP_LINE_HEIGHT_RATIO }
             : null,
 
           {

@@ -9,6 +9,7 @@ import { FeedRatingStamp, getStampTextReserve } from '@/components/ui/feed-ratin
 import { StretchText } from '@/components/ui/stretch-text';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { Spacing } from '@/constants/theme';
 import type { BoardItem } from '@/lib/boards';
 
@@ -98,9 +99,7 @@ export function ListView({
                   </ThemedText>
                 )}
                 {showOwnRating && (
-                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                    Your rating: {ownRating.toFixed(1)} ★
-                  </ThemedText>
+                  <OwnRatingLine rating={ownRating} />
                 )}
               </View>
             </ThemedView>

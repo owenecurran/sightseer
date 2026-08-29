@@ -15,6 +15,8 @@ import {
   STAMP_EFFECTIVE_HEIGHT,
 } from "@/components/ui/feed-rating-stamp";
 import { StretchText } from "@/components/ui/stretch-text";
+import { TagSticker } from "@/components/ui/tag-sticker";
+import { Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
 // How much of the location line the stamp's top edge is allowed to cover,
@@ -63,6 +65,12 @@ export type FeedCardHeaderTextProps = {
   // one after its stamps read as sitting too high. Undefined leaves the
   // location line as the only ceiling, which is the feed's own look.
   maxStampRise?: number;
+  // The review's descriptive tags, at most 3 (see MAX_VISIT_TAGS). Rendered
+  // as stickers under the review line.
+  tags?: { slug: string; label: string }[];
+  // Stable per review, so a tag's tilt varies between reviews but holds
+  // still across re-renders and re-scrolls.
+  tagSeed?: string;
 };
 
 // The place-name/rating text portion of a feed visit card's header — pulled
@@ -84,6 +92,8 @@ export function FeedCardHeaderText({
   stampSeed,
   stampCanSeep = false,
   maxStampRise,
+  tags = [],
+  tagSeed,
 }: FeedCardHeaderTextProps) {
   const theme = useTheme();
   // The stamp anchors to *this* block's own bottom-right corner (see
@@ -161,9 +171,24 @@ export function FeedCardHeaderText({
           what "Greene Valley Scenic…" actually was. The compact tiles that
           only reference a review (teaser cards, collection rows) still cut,
           which is what StretchText's default is for. */}
-      <StretchText type="headline" fill truncateLongText={false}>
-        {placeName || " "}
-      </StretchText>
+      {/* The name goes to the place, same as the location line under it.
+          Tapping the name of somewhere is the obvious way to ask about
+          that somewhere, and it previously did one of two wrong things:
+          nothing at all, or — inside a feed card, where this whole header
+          sits in a Pressable to the review — it opened the review you were
+          already looking at. Nested Pressables resolve inner-first, which
+          is what lets this take the tap while the rest of the header still
+          opens the review. */}
+      <Pressable
+        disabled={!placeId}
+        onPress={() =>
+          placeId && router.push({ pathname: "/place/[id]", params: { id: placeId } })
+        }
+      >
+        <StretchText type="headline" fill truncateLongText={false}>
+          {placeName || " "}
+        </StretchText>
+      </Pressable>
       {stateCountry && (
         <Pressable
           disabled={!placeId}
@@ -208,6 +233,21 @@ export function FeedCardHeaderText({
           {visitedLine}
         </ThemedText>
       )}
+      {/* Under the review line, sharing the stamp's reserved space so a row
+          of stickers can't run underneath the stamp leaning off the corner.
+          Wraps, since three of the longer labels don't fit one phone line. */}
+      {tags.length > 0 && (
+        <View style={[styles.tagRow, stampReserveStyle]}>
+          {tags.map((tag) => (
+            <TagSticker
+              key={tag.slug}
+              slug={tag.slug}
+              label={tag.label}
+              placementSeed={tagSeed}
+            />
+          ))}
+        </View>
+      )}
       {rating != null && stampSeed != null && (
         <FeedRatingStamp
           rating={rating}
@@ -222,6 +262,12 @@ export function FeedCardHeaderText({
 }
 
 const styles = StyleSheet.create({
+  tagRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
   // zIndex here (not just on the stamp itself) matters whenever this block
   // sits as a *direct* sibling of a photo it might seep into (review-form's
   // preview: FeedCardHeaderText and PhotoGrid both direct children of the

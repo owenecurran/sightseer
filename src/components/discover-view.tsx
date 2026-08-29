@@ -6,6 +6,7 @@ import Animated from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { BrandColors, Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -22,6 +23,8 @@ type BoardRow = Database['public']['Tables']['boards']['Row'];
 // sections — matches how this app's other multi-source screens (search,
 // notifications) stay a single list rather than adding yet another layer of
 // sub-tabs on top of the Feed/Discover switcher.
+const LEADERBOARD_STAMP_SIZE = 34;
+
 export function DiscoverView() {
   const bottomInset = useBottomTabInset();
   const scrollHandler = useHideOnScrollHandler();
@@ -135,9 +138,7 @@ export function DiscoverView() {
                     )}
                   </View>
                   <View style={styles.leaderboardScore}>
-                    <ThemedText type="roundedStat" style={styles.leaderboardRating}>
-                      {place.avgRating.toFixed(1)} ★
-                    </ThemedText>
+                    <RatingGlassBadgeGated rating={place.avgRating} size={LEADERBOARD_STAMP_SIZE} />
                     <ThemedText type="small" themeColor="textSecondary">
                       {place.reviewCount} review{place.reviewCount === 1 ? '' : 's'}
                     </ThemedText>
@@ -222,8 +223,5 @@ const styles = StyleSheet.create({
   leaderboardScore: {
     alignItems: 'flex-end',
     gap: Spacing.half,
-  },
-  leaderboardRating: {
-    fontSize: 16,
   },
 });

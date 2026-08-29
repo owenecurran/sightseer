@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
+import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { Spacing } from '@/constants/theme';
 import type { BoardItem } from '@/lib/boards';
 
@@ -93,9 +94,7 @@ export function RankedListView({
                     : (item.stateCountry ?? 'No review yet')}
                 </ThemedText>
                 {showOwnRating && (
-                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                    Your rating: {ownRating.toFixed(1)} ★
-                  </ThemedText>
+                  <OwnRatingLine rating={ownRating} />
                 )}
               </View>
               {isVisit && item.rating != null && <RatingGlassBadgeGated rating={item.rating} size={32} />}

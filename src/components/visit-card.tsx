@@ -181,6 +181,8 @@ export function VisitCard({
             .join(" · ")}
           rating={visit.rating}
           stampSeed={visit.id}
+          tags={visit.tags}
+          tagSeed={visit.id}
           stampCanSeep={hasPhotos}
           maxStampRise={maxStampRise}
         />
@@ -207,6 +209,7 @@ export function VisitCard({
         <CommentsThread
           visitId={visit.id}
           visitOwnerId={visit.user_id}
+          knownCount={commentCount}
           onCountChange={setCommentCount}
         />
       )}

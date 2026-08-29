@@ -5,6 +5,7 @@ import Animated from 'react-native-reanimated';
 import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
+import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -40,6 +41,14 @@ export function FullReviewsView({ items, photoUrls, viewerId, ownRatings }: Full
       showsVerticalScrollIndicator={false}
       onScroll={scrollHandler}
       scrollEventThrottle={16}
+      // Each row draws at least one rating stamp, and every stamp is a Skia
+      // canvas holding a GL surface. FlatList's default window is 21
+      // screens' worth, which on a long board mounts far more live GL
+      // contexts than anything on screen needs — the same load that faulted
+      // the host OpenGL driver on the harmony and place screens.
+      initialNumToRender={5}
+      maxToRenderPerBatch={5}
+      windowSize={5}
       renderItem={({ item }: { item: BoardVisitItem }) => {
         const ownRating = ownRatings?.[item.placeId];
         const showOwnRating = ownRating != null && item.authorId !== viewerId;
@@ -64,9 +73,7 @@ export function FullReviewsView({ items, photoUrls, viewerId, ownRatings }: Full
                 />
               </Pressable>
               {showOwnRating && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  Your rating: {ownRating.toFixed(1)} ★
-                </ThemedText>
+                <OwnRatingLine rating={ownRating} />
               )}
             </View>
             <PhotoGrid urls={photos.map((p) => p.url)} aspectRatios={photos.map((p) => p.ratio)} />

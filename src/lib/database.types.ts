@@ -1075,6 +1075,27 @@ export type Database = {
         }
         Relationships: []
       }
+      tags: {
+        Row: {
+          created_at: string
+          label: string
+          slug: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string
+          label: string
+          slug: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string
+          label?: string
+          slug?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       travel_book_collaborators: {
         Row: {
           added_at: string
@@ -1588,6 +1609,39 @@ export type Database = {
           },
           {
             foreignKeyName: "visit_tagged_users_visit_id_fkey"
+            columns: ["visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      visit_tags: {
+        Row: {
+          created_at: string
+          tag_slug: string
+          visit_id: string
+        }
+        Insert: {
+          created_at?: string
+          tag_slug: string
+          visit_id: string
+        }
+        Update: {
+          created_at?: string
+          tag_slug?: string
+          visit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visit_tags_tag_slug_fkey"
+            columns: ["tag_slug"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "visit_tags_visit_id_fkey"
             columns: ["visit_id"]
             isOneToOne: false
             referencedRelation: "visits"

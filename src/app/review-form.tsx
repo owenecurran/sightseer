@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
+import { TagSticker } from '@/components/ui/tag-sticker';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -37,6 +38,7 @@ import { extractDateFromExif } from '@/lib/photo-clustering';
 import { uploadPhotoForVisit } from '@/lib/photo-upload';
 import { searchUsers, type SearchUserResult } from '@/lib/search';
 import { supabase } from '@/lib/supabase';
+import { listTags, setVisitTags, MAX_VISIT_TAGS, type Tag } from '@/lib/visit-tags';
 
 // Mirrors edit-visit/[id].tsx's own PhotoSlot pattern — needed only for
 // resuming a draft, which (unlike a fresh review) can arrive with photos
@@ -134,6 +136,8 @@ export default function ReviewFormScreen() {
   const [peopleSuggestions, setPeopleSuggestions] = useState<SearchUserResult[]>([]);
   const [peopleAvatarUrls, setPeopleAvatarUrls] = useState<Record<string, string>>({});
   const [taggedUsers, setTaggedUsers] = useState<UserRow[]>([]);
+  const [tagVocabulary, setTagVocabulary] = useState<Tag[]>([]);
+  const [selectedTagSlugs, setSelectedTagSlugs] = useState<string[]>([]);
 
   const peopleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -182,6 +186,24 @@ export default function ReviewFormScreen() {
   // LocationSearchModal already runs the fetchPlaceDetails/cachePlaceHierarchy
   // steps internally (see its onSelect) before handing back the final
   // PlaceRow — this just resets the rest of the review form for it.
+  // Best-effort: an empty vocabulary just means no tag picker, never a
+  // review that can't be written.
+  useEffect(() => {
+    listTags()
+      .then(setTagVocabulary)
+      .catch(() => setTagVocabulary([]));
+  }, []);
+
+  function handleToggleTag(slug: string) {
+    setSelectedTagSlugs((prev) => {
+      if (prev.includes(slug)) return prev.filter((s) => s !== slug);
+      // Silently ignoring the tap past the limit would look broken; the
+      // picker dims unpicked tags once full, so this only guards the race.
+      if (prev.length >= MAX_VISIT_TAGS) return prev;
+      return [...prev, slug];
+    });
+  }
+
   async function handlePlaceSelected(place: PlaceRow) {
     setError(null);
     setIsPickerOpen(false);
@@ -204,6 +226,7 @@ export default function ReviewFormScreen() {
       setPeopleQuery('');
       setPeopleSuggestions([]);
       setTaggedUsers([]);
+      setSelectedTagSlugs([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load that place.');
     }
@@ -551,6 +574,10 @@ export default function ReviewFormScreen() {
           .insert(taggedUsers.map((user) => ({ visit_id: visitId, user_id: user.id })));
       }
 
+      if (selectedTagSlugs.length > 0) {
+        await setVisitTags(visitId, selectedTagSlugs);
+      }
+
       // The draft path already uploaded its new photo slots above, before
       // publish_draft ran — only the fresh-review path still has photos
       // waiting to go up.
@@ -796,6 +823,48 @@ export default function ReviewFormScreen() {
                   multiline
                 />
               </View>
+
+              {tagVocabulary.length > 0 && (
+                <View style={styles.section}>
+                  <ThemedText type="sectionLabel">
+                    Tags (up to {MAX_VISIT_TAGS})
+                  </ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    What was this place good for? These are how other people
+                    find it.
+                  </ThemedText>
+                  <View style={styles.tagRow}>
+                    {tagVocabulary.map((tag) => {
+                      const isSelected = selectedTagSlugs.includes(tag.slug);
+                      // Once three are picked the rest dim rather than
+                      // disappear — a picker that reflows as you use it
+                      // makes the next tap land on the wrong thing.
+                      const isDisabled = !isSelected && selectedTagSlugs.length >= MAX_VISIT_TAGS;
+                      return (
+                        <Pressable
+                          key={tag.slug}
+                          onPress={() => handleToggleTag(tag.slug)}
+                          disabled={isDisabled}
+                          style={isDisabled ? styles.tagOptionDisabled : undefined}>
+                          {isSelected ? (
+                            // Picked tags show as the sticker they'll
+                            // actually be on the review, so the picker is a
+                            // preview rather than a separate vocabulary of
+                            // its own.
+                            <TagSticker slug={tag.slug} label={tag.label} />
+                          ) : (
+                            <ThemedView type="backgroundElement" style={styles.tagChip}>
+                              <ThemedText type="small" themeColor="textSecondary">
+                                {tag.label}
+                              </ThemedText>
+                            </ThemedView>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
 
               <View style={styles.section}>
                 <ThemedText type="sectionLabel">Date visited</ThemedText>
@@ -1082,6 +1151,10 @@ const styles = StyleSheet.create({
   peopleSuggestionInfo: {
     flex: 1,
     gap: Spacing.half,
+  },
+  // Dimmed rather than hidden once the limit is reached — see the picker.
+  tagOptionDisabled: {
+    opacity: 0.4,
   },
   tagChip: {
     paddingVertical: Spacing.one,

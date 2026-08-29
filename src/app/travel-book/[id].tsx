@@ -21,6 +21,7 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { StretchText } from '@/components/ui/stretch-text';
+import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -475,9 +476,7 @@ export default function TravelBookDetailScreen() {
                           stampCanSeep={item.photoIds.length > 0}
                         />
                         {showOwnRating && (
-                          <ThemedText type="small" themeColor="textSecondary">
-                            Your rating: {ownRating.toFixed(1)} ★
-                          </ThemedText>
+                          <OwnRatingLine rating={ownRating} />
                         )}
                         <PhotoGrid urls={item.photoIds.map((pid) => photoUrls[pid]).filter((url): url is string => url != null)} />
                         {session && book?.user_id === session.user.id && item.photoIds[0] && (
@@ -495,9 +494,7 @@ export default function TravelBookDetailScreen() {
                           {item.stateCountry ?? 'No review yet'}
                         </ThemedText>
                         {showOwnRating && (
-                          <ThemedText type="small" themeColor="textSecondary">
-                            Your rating: {ownRating.toFixed(1)} ★
-                          </ThemedText>
+                          <OwnRatingLine rating={ownRating} />
                         )}
                       </>
                     )}

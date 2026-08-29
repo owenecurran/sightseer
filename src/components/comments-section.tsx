@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
@@ -60,26 +60,41 @@ export function CommentsTrigger({ count, isOpen, onPress }: CommentsTriggerProps
 type CommentsThreadProps = {
   visitId: string;
   visitOwnerId: string;
+  // How many comments the surrounding post already knows about. Every visit
+  // carries `commentCount` with it (the feed loads it per post, and the
+  // detail screen sets it from the loaded visit), so in practice the answer
+  // is on screen before this component ever mounts. Optional so a caller
+  // without one still gets the plain fetch-then-show behaviour.
+  knownCount?: number;
   onCountChange: (count: number) => void;
 };
 
 // The expanded fetch/list/add-comment panel — mounted only while open
 // (isCommentsOpen lifted to the caller alongside CommentsTrigger), so this
 // fetches on every mount rather than gating internally on its own isExpanded.
-export function CommentsThread({ visitId, visitOwnerId, onCountChange }: CommentsThreadProps) {
+export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChange }: CommentsThreadProps) {
   const { session } = useAuth();
   const theme = useTheme();
   const [comments, setComments] = useState<Comment[]>([]);
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [newComment, setNewComment] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  // Captured at mount, not read live: once a comment is added the count
+  // changes, and this must keep meaning "what was known when the thread
+  // opened" rather than re-deciding and re-fetching on every change.
+  const knewEmptyRef = useRef(knownCount === 0);
+  // A post with no comments already has its answer, so it renders the empty
+  // state on the first frame instead of showing "Loading…" for a round trip
+  // that can only confirm what the card above it already said. The fetch
+  // still runs underneath — a comment added from somewhere else since the
+  // feed loaded still appears when it lands.
+  const [isLoading, setIsLoading] = useState(!knewEmptyRef.current);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    setIsLoading(true);
+    if (!knewEmptyRef.current) setIsLoading(true);
     setError(null);
     listComments(visitId)
       .then((fetched) => {
