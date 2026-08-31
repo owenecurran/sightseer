@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
@@ -27,6 +27,7 @@ import {
 } from '@/lib/profile-sections';
 import { supabase } from '@/lib/supabase';
 import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
+import { goBack } from '@/lib/navigation';
 import { Avatar } from '@/components/ui/avatar';
 
 const BIO_MAX_LENGTH = 160;
@@ -122,7 +123,7 @@ export default function EditProfileScreen() {
       return;
     }
     await refreshProfile();
-    router.back();
+    goBack();
   }
 
   async function handleReorderPrompts(next: ProfilePrompt[]) {

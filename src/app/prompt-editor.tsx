@@ -41,6 +41,7 @@ import {
 } from '@/lib/profile-prompts';
 import { supabase } from '@/lib/supabase';
 import { listUserTravelBooks } from '@/lib/travel-books';
+import { goBack } from '@/lib/navigation';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -538,7 +539,7 @@ export default function PromptEditorScreen() {
         attachments: resolved,
       });
 
-      router.back();
+      goBack();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save that prompt.');
       setIsSaving(false);
@@ -550,7 +551,7 @@ export default function PromptEditorScreen() {
     setError(null);
     try {
       await deletePrompt(existingId);
-      router.back();
+      goBack();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove that prompt.');
     }
@@ -784,7 +785,7 @@ export default function PromptEditorScreen() {
 
           <View style={styles.row}>
             <Button label="Save" onPress={handleSave} loading={isSaving} />
-            <Pressable onPress={() => router.back()}>
+            <Pressable onPress={() => goBack()}>
               <ThemedText type="small" themeColor="textSecondary">
                 Cancel
               </ThemedText>

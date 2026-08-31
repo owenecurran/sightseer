@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -22,6 +22,7 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
+import { goBack } from '@/lib/navigation';
 
 // One screen for both create and edit (?id=), same pattern review-form.tsx
 // already uses for a fresh review vs. resuming a draft — the form/fields are
@@ -90,7 +91,7 @@ export default function ArticleComposeScreen() {
       if (pendingCoverUri) {
         await uploadCoverPhoto({ table: 'articles', id: articleId, uri: pendingCoverUri, mimeType: pendingCoverMimeType });
       }
-      router.back();
+      goBack();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save that article.');
     } finally {

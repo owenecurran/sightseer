@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,6 +39,7 @@ import { uploadPhotoForVisit } from '@/lib/photo-upload';
 import { searchUsers, type SearchUserResult } from '@/lib/search';
 import { supabase } from '@/lib/supabase';
 import { listTags, setVisitTags, MAX_VISIT_TAGS, type Tag } from '@/lib/visit-tags';
+import { goBack } from '@/lib/navigation';
 
 // Mirrors edit-visit/[id].tsx's own PhotoSlot pattern — needed only for
 // resuming a draft, which (unlike a fresh review) can arrive with photos
@@ -241,7 +242,7 @@ export default function ReviewFormScreen() {
   // should just close it back to the filled-in form, not navigate away.
   function handlePickerCancel() {
     setIsPickerOpen(false);
-    if (!selectedPlace) router.back();
+    if (!selectedPlace) goBack();
   }
 
   // Arriving from place/[id]'s "Add your review" button — the place is
@@ -970,7 +971,7 @@ export default function ReviewFormScreen() {
 
               <SaveToBoard visitId={savedVisitId} isOwnerOrTagged />
 
-              {/* router.back() (not a fixed destination) is what makes "back
+              {/* goBack() (not a fixed destination) is what makes "back
                   to your remaining drafts after a bulk upload" fall out for
                   free: a draft was reached by pushing this screen ON TOP of
                   /drafts (see drafts.tsx's own row onPress), so popping back
@@ -979,7 +980,7 @@ export default function ReviewFormScreen() {
                   fresh (non-draft) review pops back to wherever it was
                   started from instead, same as this screen's own header
                   back button already does. */}
-              <Button label="Done" onPress={() => router.back()} />
+              <Button label="Done" onPress={() => goBack()} />
             </View>
           ))}
 

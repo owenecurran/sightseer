@@ -24,6 +24,7 @@ import { likeVisit, unlikeVisit } from '@/lib/feed';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 import { getVisitDetail, type VisitDetail } from '@/lib/visit-detail';
+import { goBack } from '@/lib/navigation';
 
 export default function VisitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -140,7 +141,7 @@ export default function VisitDetailScreen() {
               <VisitMenu
                 visitId={visit.id}
                 isOwner={session?.user.id === visit.user_id}
-                onDeleted={() => router.back()}
+                onDeleted={() => goBack()}
                 authorId={visit.user_id}
                 authorName={visit.authorName}
                 authorAvatarUrl={avatarUrl}

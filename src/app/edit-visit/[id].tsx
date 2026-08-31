@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +24,7 @@ import { useAuth } from '@/lib/auth-context';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { uploadPhotoForVisit } from '@/lib/photo-upload';
 import { deleteVisitPhoto, getVisitForEdit, updateVisitFields, type VisitForEdit } from '@/lib/visit-edit';
+import { goBack } from '@/lib/navigation';
 
 type PhotoSlot =
   | { kind: 'existing'; id: string; url: string; position: number }
@@ -136,7 +137,7 @@ export default function EditVisitScreen() {
         nextPosition += 1;
       }
 
-      router.back();
+      goBack();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save your changes.');
     } finally {

@@ -1,9 +1,9 @@
-import { router } from 'expo-router';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { StickerArrow } from '@/components/ui/sticker-arrow';
 import { Spacing } from '@/constants/theme';
+import { goBack } from '@/lib/navigation';
 
 type BackLinkProps = {
   label?: string;
@@ -23,7 +23,7 @@ type BackLinkProps = {
 export function BackLink({ label = 'Back', onPress, seed = 'back' }: BackLinkProps) {
   return (
     <Pressable
-      onPress={onPress ?? (() => router.back())}
+      onPress={onPress ?? goBack}
       hitSlop={8}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <StickerArrow direction="left" seed={seed} />
