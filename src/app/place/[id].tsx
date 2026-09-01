@@ -14,6 +14,7 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
 import { TagSticker } from '@/components/ui/tag-sticker';
+import { FilterSortMenu, type MenuOption } from '@/components/ui/filter-sort-menu';
 import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -66,32 +67,6 @@ function byRating(a: PlaceVisit, b: PlaceVisit, direction: 1 | -1): number {
   if (a.rating == null) return 1;
   if (b.rating == null) return -1;
   return (b.rating - a.rating) * direction;
-}
-
-// Sort and filter both want the same control, so it exists once. Selected
-// state is passed in rather than derived — a sort chip is selected when it
-// IS the mode, a filter chip when its filter is on, and those aren't the
-// same question.
-function ControlChip({
-  label,
-  isSelected,
-  onPress,
-}: {
-  label: string;
-  isSelected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable onPress={onPress} hitSlop={4}>
-      <ThemedView
-        type={isSelected ? 'backgroundSelected' : 'backgroundElement'}
-        style={styles.sortChip}>
-        <ThemedText type="small" themeColor={isSelected ? 'text' : 'textSecondary'}>
-          {label}
-        </ThemedText>
-      </ThemedView>
-    </Pressable>
-  );
 }
 
 export default function PlaceDetailScreen() {
@@ -313,85 +288,81 @@ export default function PlaceDetailScreen() {
 
               {visits.length > 0 && (
                 <View style={styles.controls}>
-                  {/* Wrapped rather than put in a horizontal scroller: a
-                      nested horizontal scroller inside the tab pager kept
-                      handing the drag off to the pager, which is what the
-                      trip stepper had to abandon swiping over. */}
-                  <View style={styles.controlGroup}>
-                    <ThemedText type="sectionLabel" themeColor="textSecondary" style={styles.controlLabel}>
-                      Sort
-                    </ThemedText>
-                    <View style={styles.chipRow}>
-                      {SORT_OPTIONS.map((option) => (
-                        <ControlChip
-                          key={option.key}
-                          label={option.label}
-                          isSelected={sortMode === option.key}
-                          onPress={() => setSortMode(option.key)}
-                        />
-                      ))}
-                    </View>
-                  </View>
-
-                  <View style={styles.controlGroup}>
-                    <ThemedText type="sectionLabel" themeColor="textSecondary" style={styles.controlLabel}>
-                      Filter
-                    </ThemedText>
-                    <View style={styles.chipRow}>
-                      {/* Tapping the active one clears it, so there's no
-                          separate "all" chip to keep in sync. */}
-                      <ControlChip
-                        label={`${RATING_SPLIT.toFixed(1)} and up`}
-                        isSelected={ratingFilter === 'high'}
-                        onPress={() => setRatingFilter((f) => (f === 'high' ? 'none' : 'high'))}
-                      />
-                      <ControlChip
-                        label={`Under ${RATING_SPLIT.toFixed(1)}`}
-                        isSelected={ratingFilter === 'low'}
-                        onPress={() => setRatingFilter((f) => (f === 'low' ? 'none' : 'low'))}
-                      />
-                      <ControlChip
-                        label="Friends"
-                        isSelected={friendsOnly}
-                        onPress={() => setFriendsOnly((on) => !on)}
-                      />
-                    </View>
-                  </View>
-
-                  {availableTags.length > 0 && (
-                    <View style={styles.controlGroup}>
-                      <ThemedText type="sectionLabel" themeColor="textSecondary" style={styles.controlLabel}>
-                        Tags
-                      </ThemedText>
-                      <View style={styles.chipRow}>
-                        {availableTags.map((tag) => {
-                          const isSelected = tagSlugs.includes(tag.slug);
-                          return (
-                            <Pressable
-                              key={tag.slug}
-                              onPress={() =>
+                  {/* One trigger rather than a row of chips per group. See
+                      FilterSortMenu: this page carries three groups and the
+                      tag group alone can be eight options, which as chips
+                      filled the screen between the header and the reviews. */}
+                  <FilterSortMenu
+                    groups={[
+                      {
+                        kind: 'single',
+                        key: 'sort',
+                        label: 'Sort',
+                        options: SORT_OPTIONS.map((o) => ({ value: o.key, label: o.label })),
+                        value: sortMode,
+                        onChange: (value) => setSortMode(value as SortMode),
+                      },
+                      {
+                        kind: 'multi',
+                        key: 'rating',
+                        // Mutually exclusive in effect — picking one clears
+                        // the other — but modelled as a multi group so both
+                        // read as filters rather than as a second sort.
+                        label: 'Rating',
+                        options: [
+                          { value: 'high', label: `${RATING_SPLIT.toFixed(1)} and up` },
+                          { value: 'low', label: `Under ${RATING_SPLIT.toFixed(1)}` },
+                        ],
+                        values: ratingFilter === 'none' ? [] : [ratingFilter],
+                        onToggle: (value) =>
+                          setRatingFilter((current) =>
+                            current === value ? 'none' : (value as RatingFilter)
+                          ),
+                      },
+                      {
+                        kind: 'multi',
+                        key: 'people',
+                        label: 'People',
+                        options: [{ value: 'friends', label: 'Friends only' }],
+                        values: friendsOnly ? ['friends'] : [],
+                        onToggle: () => setFriendsOnly((on) => !on),
+                      },
+                      ...(availableTags.length > 0
+                        ? ([
+                            {
+                              kind: 'multi' as const,
+                              key: 'tags',
+                              label: 'Tags',
+                              options: availableTags.map((tag) => ({
+                                value: tag.slug,
+                                label: tag.label,
+                                count: tag.count,
+                              })),
+                              values: tagSlugs,
+                              onToggle: (value: string) =>
                                 setTagSlugs((prev) =>
-                                  prev.includes(tag.slug)
-                                    ? prev.filter((s) => s !== tag.slug)
-                                    : [...prev, tag.slug]
-                                )
-                              }
-                              // Selection is marked with a sage ring rather
-                              // than by dimming everything else: at an
-                              // opacity low enough to clearly mean "off",
-                              // the labels stopped being readable, and an
-                              // unreadable filter is not a filter.
-                              style={[
-                                styles.tagFilter,
-                                isSelected ? styles.tagFilterOn : styles.tagFilterIdle,
-                              ]}>
-                              <TagSticker slug={tag.slug} label={`${tag.label} ${tag.count}`} />
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  )}
+                                  prev.includes(value)
+                                    ? prev.filter((s) => s !== value)
+                                    : [...prev, value]
+                                ),
+                              // Tags keep their sticker in the sheet — they
+                              // are the same objects that appear on reviews,
+                              // and the colour is how you recognise them.
+                              renderOption: (option: MenuOption) => (
+                                <TagSticker
+                                  slug={option.value}
+                                  label={
+                                    option.count != null
+                                      ? `${option.label} ${option.count}`
+                                      : option.label
+                                  }
+                                />
+                              ),
+                            },
+                          ] as const)
+                        : []),
+                    ]}
+                  />
 
                   {visibleVisits.length !== visits.length && (
                     <ThemedText type="small" themeColor="textSecondary">
@@ -512,36 +483,6 @@ const styles = StyleSheet.create({
   },
   controls: {
     gap: Spacing.two,
-  },
-  // Transparent ring by default so selecting one doesn't shift the layout.
-  tagFilter: {
-    borderRadius: Spacing.three,
-    padding: 2,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  tagFilterOn: {
-    borderColor: BrandColors.sage,
-  },
-  tagFilterIdle: {
-    opacity: 0.8,
-  },
-  controlGroup: {
-    gap: Spacing.one,
-  },
-  controlLabel: {
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  sortChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
   },
   list: {
     gap: Spacing.two,

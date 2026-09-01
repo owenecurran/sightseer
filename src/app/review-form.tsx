@@ -24,6 +24,7 @@ import { DateCarousel } from '@/components/ui/date-carousel';
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
 import { TagSticker } from '@/components/ui/tag-sticker';
+import { TagPickerModal } from '@/components/tag-picker-modal';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -139,6 +140,9 @@ export default function ReviewFormScreen() {
   const [taggedUsers, setTaggedUsers] = useState<UserRow[]>([]);
   const [tagVocabulary, setTagVocabulary] = useState<Tag[]>([]);
   const [selectedTagSlugs, setSelectedTagSlugs] = useState<string[]>([]);
+  // Named for the sheet, not "picker": isTagPickerOpen above is the
+  // tagged-specific-spots place picker, which is a different feature.
+  const [isTagSheetOpen, setIsTagSheetOpen] = useState(false);
 
   const peopleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -204,6 +208,10 @@ export default function ReviewFormScreen() {
       return [...prev, slug];
     });
   }
+
+  // The picked tags in vocabulary order, as the shape both the chosen-row
+  // and the preview render from.
+  const selectedTags = tagVocabulary.filter((tag) => selectedTagSlugs.includes(tag.slug));
 
   async function handlePlaceSelected(place: PlaceRow) {
     setError(null);
@@ -828,42 +836,29 @@ export default function ReviewFormScreen() {
               {tagVocabulary.length > 0 && (
                 <View style={styles.section}>
                   <ThemedText type="sectionLabel">
-                    Tags (up to {MAX_VISIT_TAGS})
+                    Tags (optional, up to {MAX_VISIT_TAGS})
                   </ThemedText>
                   <ThemedText type="small" themeColor="textSecondary">
                     What was this place good for? These are how other people
                     find it.
                   </ThemedText>
-                  <View style={styles.tagRow}>
-                    {tagVocabulary.map((tag) => {
-                      const isSelected = selectedTagSlugs.includes(tag.slug);
-                      // Once three are picked the rest dim rather than
-                      // disappear — a picker that reflows as you use it
-                      // makes the next tap land on the wrong thing.
-                      const isDisabled = !isSelected && selectedTagSlugs.length >= MAX_VISIT_TAGS;
-                      return (
-                        <Pressable
-                          key={tag.slug}
-                          onPress={() => handleToggleTag(tag.slug)}
-                          disabled={isDisabled}
-                          style={isDisabled ? styles.tagOptionDisabled : undefined}>
-                          {isSelected ? (
-                            // Picked tags show as the sticker they'll
-                            // actually be on the review, so the picker is a
-                            // preview rather than a separate vocabulary of
-                            // its own.
-                            <TagSticker slug={tag.slug} label={tag.label} />
-                          ) : (
-                            <ThemedView type="backgroundElement" style={styles.tagChip}>
-                              <ThemedText type="small" themeColor="textSecondary">
-                                {tag.label}
-                              </ThemedText>
-                            </ThemedView>
-                          )}
+                  {/* The chosen ones stay on the form as the stickers they
+                      will be; the whole vocabulary lives in its own sheet
+                      rather than pushing the rest of the form off screen. */}
+                  {selectedTags.length > 0 && (
+                    <View style={styles.tagRow}>
+                      {selectedTags.map((tag) => (
+                        <Pressable key={tag.slug} onPress={() => handleToggleTag(tag.slug)}>
+                          <TagSticker slug={tag.slug} label={tag.label} />
                         </Pressable>
-                      );
-                    })}
-                  </View>
+                      ))}
+                    </View>
+                  )}
+                  <Pressable onPress={() => setIsTagSheetOpen(true)} hitSlop={6}>
+                    <ThemedText type="small" themeColor="sage">
+                      {selectedTags.length > 0 ? 'Edit tags' : 'Add tags'}
+                    </ThemedText>
+                  </Pressable>
                 </View>
               )}
 
@@ -924,6 +919,8 @@ export default function ReviewFormScreen() {
                     rating={rating}
                     stampSeed={currentDraftId ?? selectedPlace.id}
                     stampCanSeep={previewPhotos.length > 0}
+                    tags={selectedTags}
+                    tagSeed={currentDraftId ?? selectedPlace.id}
                   />
                   {previewPhotos.length > 0 && (
                     <PhotoGrid
@@ -1009,7 +1006,16 @@ export default function ReviewFormScreen() {
           }
         />
 
-        <PhotoSourceModal
+        <TagPickerModal
+        visible={isTagSheetOpen}
+        tags={tagVocabulary}
+        selectedSlugs={selectedTagSlugs}
+        max={MAX_VISIT_TAGS}
+        onToggle={handleToggleTag}
+        onClose={() => setIsTagSheetOpen(false)}
+      />
+
+      <PhotoSourceModal
           visible={isPhotoSourceModalOpen}
           onCancel={handlePhotoSourceCancel}
           onPickCamera={() => handlePhotoSourceChoice('camera')}
@@ -1152,10 +1158,6 @@ const styles = StyleSheet.create({
   peopleSuggestionInfo: {
     flex: 1,
     gap: Spacing.half,
-  },
-  // Dimmed rather than hidden once the limit is reached — see the picker.
-  tagOptionDisabled: {
-    opacity: 0.4,
   },
   tagChip: {
     paddingVertical: Spacing.one,

@@ -1,8 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { FilterSortMenu } from '@/components/ui/filter-sort-menu';
 
 export type CollectionSortMode = 'recently_edited' | 'mean_rating' | 'most_saves';
 
@@ -17,31 +13,23 @@ type CollectionsSortControlProps = {
   onChange: (mode: CollectionSortMode) => void;
 };
 
+// A row of chips before, now the same trigger-and-sheet every other sort and
+// filter in the app uses — so the pattern is consistent whether a screen has
+// three options or twenty, and adding one here never turns into another row
+// of chips above the list.
 export function CollectionsSortControl({ active, onChange }: CollectionsSortControlProps) {
   return (
-    <View style={styles.row}>
-      {SORT_MODES.map((mode) => (
-        <Pressable key={mode.key} onPress={() => onChange(mode.key)}>
-          <ThemedView type={active === mode.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
-            <ThemedText type="small" themeColor={active === mode.key ? 'text' : 'textSecondary'}>
-              {mode.label}
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
-      ))}
-    </View>
+    <FilterSortMenu
+      groups={[
+        {
+          kind: 'single',
+          key: 'sort',
+          label: 'Sort',
+          options: SORT_MODES.map((mode) => ({ value: mode.key, label: mode.label })),
+          value: active,
+          onChange: (value) => onChange(value as CollectionSortMode),
+        },
+      ]}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  chip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
-  },
-});
