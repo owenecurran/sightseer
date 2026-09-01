@@ -10,7 +10,8 @@ export type NotificationType =
   | 'follow'
   | 'friend_visit'
   | 'nearby_review_digest'
-  | 'tagged';
+  | 'tagged'
+  | 'friend_review_digest';
 
 export type AppNotification = {
   id: string;

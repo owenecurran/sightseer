@@ -39,6 +39,21 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_config: {
+        Row: {
+          key: string
+          value: string
+        }
+        Insert: {
+          key: string
+          value: string
+        }
+        Update: {
+          key?: string
+          value?: string
+        }
+        Relationships: []
+      }
       articles: {
         Row: {
           author_id: string
@@ -1496,6 +1511,7 @@ export type Database = {
           invite_exempt: boolean
           is_admin: boolean
           is_private: boolean
+          last_friend_digest_at: string
           last_nearby_digest_at: string
           map_default_center_lat: number | null
           map_default_center_lng: number | null
@@ -1505,6 +1521,7 @@ export type Database = {
           notify_comments: boolean
           notify_follows: boolean
           notify_friend_activity: boolean
+          notify_friend_digest: boolean
           notify_likes: boolean
           notify_nearby_reviews: boolean
           notify_saves: boolean
@@ -1531,6 +1548,7 @@ export type Database = {
           invite_exempt?: boolean
           is_admin?: boolean
           is_private?: boolean
+          last_friend_digest_at?: string
           last_nearby_digest_at?: string
           map_default_center_lat?: number | null
           map_default_center_lng?: number | null
@@ -1540,6 +1558,7 @@ export type Database = {
           notify_comments?: boolean
           notify_follows?: boolean
           notify_friend_activity?: boolean
+          notify_friend_digest?: boolean
           notify_likes?: boolean
           notify_nearby_reviews?: boolean
           notify_saves?: boolean
@@ -1566,6 +1585,7 @@ export type Database = {
           invite_exempt?: boolean
           is_admin?: boolean
           is_private?: boolean
+          last_friend_digest_at?: string
           last_nearby_digest_at?: string
           map_default_center_lat?: number | null
           map_default_center_lng?: number | null
@@ -1575,6 +1595,7 @@ export type Database = {
           notify_comments?: boolean
           notify_follows?: boolean
           notify_friend_activity?: boolean
+          notify_friend_digest?: boolean
           notify_likes?: boolean
           notify_nearby_reviews?: boolean
           notify_saves?: boolean
@@ -2263,6 +2284,7 @@ export type Database = {
           state_name: string
         }[]
       }
+      run_friend_review_digest: { Args: never; Returns: undefined }
       run_nearby_review_digest: { Args: never; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

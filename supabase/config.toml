@@ -472,3 +472,10 @@ enabled = true
 # checked inside the function instead.
 verify_jwt = false
 import_map = "./functions/send-push/deno.json"
+
+[functions.delete-account]
+enabled = true
+# Caller is authenticated as themselves; the function then uses the service
+# role to remove the auth user, which a client can never do directly.
+verify_jwt = true
+import_map = "./functions/delete-account/deno.json"

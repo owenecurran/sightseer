@@ -55,6 +55,10 @@ function describe(notification: AppNotification): string {
       return `${notification.actorName} tagged you in a review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
     case 'follow':
       return `${notification.actorName} started following you`;
+    case 'friend_review_digest': {
+      const missed = notification.digestReviewCount ?? 0;
+      return `You missed ${missed} review${missed === 1 ? '' : 's'} from people you follow`;
+    }
     case 'nearby_review_digest':
       return `${notification.digestReviewCount ?? 0} new review${notification.digestReviewCount === 1 ? '' : 's'} at ${notification.digestPlaceCount ?? 0} place${notification.digestPlaceCount === 1 ? '' : 's'} you've been`;
   }

@@ -108,6 +108,26 @@ export async function registerForPush(userId: string): Promise<string | null> {
   }
 }
 
+// What the OS currently thinks, without asking for anything.
+//
+// 'blocked' is the case that makes priming worth building: iOS gives you one
+// permission alert, and once it is declined requestPermissionsAsync returns
+// denied without rendering a dialog at all. There is no point priming
+// someone in that state, and no point priming someone already granted.
+export type PushPermissionState = 'unavailable' | 'granted' | 'undetermined' | 'blocked';
+
+export async function getPushPermissionState(): Promise<PushPermissionState> {
+  if (!Notifications) return 'unavailable';
+  if (!Device.isDevice && Platform.OS === 'ios') return 'unavailable';
+  try {
+    const { status, canAskAgain } = await Notifications.getPermissionsAsync();
+    if (status === 'granted') return 'granted';
+    return canAskAgain ? 'undetermined' : 'blocked';
+  } catch {
+    return 'unavailable';
+  }
+}
+
 // Called on sign-out. Without it the next person to sign in on this device
 // keeps receiving the previous account's notifications, since the token
 // belongs to the device and the row still points at the old user.

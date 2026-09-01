@@ -47,7 +47,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Sightseer uses your location to center the map on where you are."
+          "locationWhenInUsePermission": "Sightseer uses your location to show places near you, center the map, and attach a place to reviews you write. Location is only used while you are using the app."
         }
       ],
       "@react-native-google-signin/google-signin",
@@ -55,13 +55,14 @@
       [
         "expo-contacts",
         {
-          "contactsPermission": "Sightseer uses your contacts to help you find friends who are already using the app."
+          "contactsPermission": "Sightseer checks your contacts to find friends already using the app. Phone numbers are hashed on your device before they are sent, and are never stored or shown as plain text."
         }
       ],
       [
         "expo-image-picker",
         {
-          "cameraPermission": "Sightseer uses your camera so you can take a photo directly for a review."
+          "cameraPermission": "Sightseer uses your camera so you can take a photo directly for a review.",
+          "photosPermission": "Sightseer needs access to your photos so you can add them to a review and set your profile picture."
         }
       ]
     ],

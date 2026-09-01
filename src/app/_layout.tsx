@@ -10,11 +10,13 @@ import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { FloatingNavBar } from '@/components/floating-nav-bar';
 import { KeyboardProviderWrapper } from '@/components/keyboard-provider-wrapper';
+import { PushPrimingModal } from '@/components/push-priming-modal';
 import { TAB_ROUTES } from '@/constants/tab-routes';
 import { NavBarVisibilityProvider } from '@/hooks/use-hide-on-scroll';
 import { TabPagerProvider } from '@/hooks/use-tab-pager';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { addPushTapListener, registerForPush } from '@/lib/push';
+import { addPushTapListener, getPushPermissionState, registerForPush } from '@/lib/push';
+import { TERMS_VERSION } from '@/lib/terms';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -29,6 +31,8 @@ function RootNavigator() {
   const [activeIndex, setActiveIndex] = useState(0);
 
   const isAuthenticated = session !== null;
+  const hasAcceptedTerms =
+    profile?.terms_accepted_at != null && profile?.terms_version === TERMS_VERSION;
   const hasCompletedOnboarding = profile?.handle != null;
   const hasSetDemographics = profile?.has_set_demographics === true;
   const hasSetPrivacy = profile?.has_set_privacy === true;
@@ -39,13 +43,14 @@ function RootNavigator() {
   // to needing their own in-content back control, same as a normal Stack
   // push. Previously this was intentionally *not* scoped (nav present on
   // every authenticated screen); reversed per explicit follow-up feedback.
-  const showNavBar =
+  const hasFinishedSignup =
     isAuthenticated &&
+    hasAcceptedTerms &&
     hasCompletedOnboarding &&
     hasSetDemographics &&
     hasSetPrivacy &&
-    hasPassedInviteGate &&
-    isOnMainTab;
+    hasPassedInviteGate;
+  const showNavBar = hasFinishedSignup && isOnMainTab;
 
   function setActivePage(index: number) {
     if (Platform.OS === 'web') {
@@ -73,10 +78,36 @@ function RootNavigator() {
   // Register this device for push once there is someone to register it to,
   // and re-register if the account changes — the token belongs to the
   // device, so it has to be repointed rather than assumed still correct.
+  // Deliberately gated on finishing signup, not on having a session.
+  //
+  // Keyed on `session` alone this fired the instant auth completed — which
+  // on iOS meant the system "Allow Notifications?" alert appeared over the
+  // Terms screen, before the account even had a handle. iOS gives you that
+  // prompt exactly once: decline it and requestPermissionsAsync returns
+  // denied forever without showing anything, and the only way back is
+  // Settings. Spending it mid-signup, before anyone has seen a review or
+  // followed a soul, is spending it at the moment it is most likely to be
+  // declined.
+  //
+  // Still not ideal — the strongest version asks after some first taste of
+  // value, or primes with an explaining screen first, since the system alert
+  // itself cannot be customised. This at least waits until there is an
+  // account to notify.
+  // Re-registers a device that has ALREADY granted permission, which is a
+  // silent token refresh — tokens rotate, and the row has to follow the
+  // account currently signed in. It deliberately does not ask: the first ask
+  // belongs to PushPrimingModal, which explains what we would send before
+  // the OS spends its one uncustomisable alert.
   useEffect(() => {
-    if (!session) return;
-    registerForPush(session.user.id);
-  }, [session]);
+    if (!hasFinishedSignup || !session) return;
+    let isActive = true;
+    getPushPermissionState().then((state) => {
+      if (isActive && state === 'granted') registerForPush(session.user.id);
+    });
+    return () => {
+      isActive = false;
+    };
+  }, [hasFinishedSignup, session]);
 
   // A notification tapped from the lock screen or tray. Routed here rather
   // than per-screen because the app may not be running when it arrives, and
@@ -97,22 +128,34 @@ function RootNavigator() {
               <Stack.Screen name="(auth)/forgot-password" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && !hasCompletedOnboarding}>
+            <Stack.Protected guard={isAuthenticated && !hasAcceptedTerms}>
+              <Stack.Screen name="terms" />
+            </Stack.Protected>
+
+            <Stack.Protected
+              guard={isAuthenticated && hasAcceptedTerms && !hasCompletedOnboarding}>
               <Stack.Screen name="onboarding" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && hasCompletedOnboarding && !hasSetDemographics}>
+            <Stack.Protected guard={isAuthenticated && hasAcceptedTerms && hasCompletedOnboarding && !hasSetDemographics}>
               <Stack.Screen name="demographics" />
             </Stack.Protected>
 
             <Stack.Protected
-              guard={isAuthenticated && hasCompletedOnboarding && hasSetDemographics && !hasSetPrivacy}>
+              guard={
+                isAuthenticated &&
+                hasAcceptedTerms &&
+                hasCompletedOnboarding &&
+                hasSetDemographics &&
+                !hasSetPrivacy
+              }>
               <Stack.Screen name="privacy-choice" />
             </Stack.Protected>
 
             <Stack.Protected
               guard={
                 isAuthenticated &&
+                hasAcceptedTerms &&
                 hasCompletedOnboarding &&
                 hasSetDemographics &&
                 hasSetPrivacy &&
@@ -124,6 +167,7 @@ function RootNavigator() {
             <Stack.Protected
               guard={
                 isAuthenticated &&
+                hasAcceptedTerms &&
                 hasCompletedOnboarding &&
                 hasSetDemographics &&
                 hasSetPrivacy &&
@@ -138,6 +182,7 @@ function RootNavigator() {
               visibility became route-scoped (isOnMainTab) rather than just
               auth-scoped. */}
           {showNavBar && <FloatingNavBar />}
+      <PushPrimingModal userId={hasFinishedSignup ? (session?.user.id ?? null) : null} />
         </View>
       </TabPagerProvider>
     </NavBarVisibilityProvider>

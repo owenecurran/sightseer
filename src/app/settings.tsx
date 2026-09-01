@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
+import { DeleteAccountModal } from '@/components/delete-account-modal';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -26,7 +27,8 @@ type NotificationKey =
   | 'notify_tags'
   | 'notify_saves'
   | 'notify_friend_activity'
-  | 'notify_nearby_reviews';
+  | 'notify_nearby_reviews'
+  | 'notify_friend_digest';
 
 const NOTIFICATION_OPTIONS: { key: NotificationKey; label: string; defaultValue: boolean }[] = [
   { key: 'notify_likes', label: 'Likes on my visits', defaultValue: true },
@@ -36,6 +38,7 @@ const NOTIFICATION_OPTIONS: { key: NotificationKey; label: string; defaultValue:
   { key: 'notify_saves', label: 'Someone saves my board or travel book', defaultValue: true },
   { key: 'notify_friend_activity', label: 'People I follow post a new review', defaultValue: false },
   { key: 'notify_nearby_reviews', label: 'Weekly digest: new reviews at places I’ve been', defaultValue: false },
+  { key: 'notify_friend_digest', label: 'Weekly digest: reviews I missed from people I follow', defaultValue: true },
 ];
 
 function CheckboxRow({
@@ -73,6 +76,7 @@ export default function SettingsScreen() {
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [savingNotification, setSavingNotification] = useState<NotificationKey | null>(null);
 
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -393,7 +397,24 @@ export default function SettingsScreen() {
               </ThemedText>
             )}
           </View>
+          <View style={styles.section}>
+            <ThemedText type="sectionLabel">Delete account</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Permanently deletes your account and everything in it. This cannot be undone.
+            </ThemedText>
+            <Pressable onPress={() => setIsDeleteOpen(true)} hitSlop={8}>
+              <ThemedText type="small" themeColor="sage">
+                Delete my account
+              </ThemedText>
+            </Pressable>
+          </View>
         </Animated.ScrollView>
+        <DeleteAccountModal
+          visible={isDeleteOpen}
+          handle={profile?.handle ?? null}
+          onCancel={() => setIsDeleteOpen(false)}
+          onDeleted={() => setIsDeleteOpen(false)}
+        />
       </SafeAreaView>
     </ThemedView>
   );

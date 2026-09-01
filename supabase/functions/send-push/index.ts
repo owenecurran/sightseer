@@ -55,6 +55,10 @@ function buildBody(n: NotificationRow): string {
       return `${who} added to a board you saved`;
     case "travel_book_item_added":
       return `${who} added to a travel book you saved`;
+    case "friend_review_digest": {
+      const missed = n.digest_review_count ?? 0;
+      return `You missed ${missed} review${missed === 1 ? "" : "s"} from people you follow`;
+    }
     case "nearby_review_digest": {
       const reviews = n.digest_review_count ?? 0;
       const places = n.digest_place_ids?.length ?? 0;
