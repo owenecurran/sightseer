@@ -17,11 +17,13 @@ import { listBlockedUsers, unblockUser, type BlockedUser } from '@/lib/blocks';
 import { setDiscoverableByContacts, setMyPhoneNumber } from '@/lib/contacts';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
+import { unregisterPush } from '@/lib/push';
 
 type NotificationKey =
   | 'notify_likes'
   | 'notify_comments'
   | 'notify_follows'
+  | 'notify_tags'
   | 'notify_saves'
   | 'notify_friend_activity'
   | 'notify_nearby_reviews';
@@ -30,6 +32,7 @@ const NOTIFICATION_OPTIONS: { key: NotificationKey; label: string; defaultValue:
   { key: 'notify_likes', label: 'Likes on my visits', defaultValue: true },
   { key: 'notify_comments', label: 'Comments on my visits', defaultValue: true },
   { key: 'notify_follows', label: 'New followers and follow requests', defaultValue: true },
+  { key: 'notify_tags', label: 'Someone tags me in a review', defaultValue: true },
   { key: 'notify_saves', label: 'Someone saves my board or travel book', defaultValue: true },
   { key: 'notify_friend_activity', label: 'People I follow post a new review', defaultValue: false },
   { key: 'notify_nearby_reviews', label: 'Weekly digest: new reviews at places I’ve been', defaultValue: false },
@@ -137,6 +140,10 @@ export default function SettingsScreen() {
 
   async function handleSignOut() {
     setIsSigningOut(true);
+    // Before signOut, not after: the delete is RLS-scoped to auth.uid(), so
+    // once the session is gone the row can no longer be removed and the next
+    // account on this device would inherit these notifications.
+    await unregisterPush();
     await supabase.auth.signOut();
     setIsSigningOut(false);
   }
@@ -178,15 +185,11 @@ export default function SettingsScreen() {
   async function handleToggleNotification(key: NotificationKey) {
     if (!session || !profile) return;
     setSavingNotification(key);
-    const update: Record<NotificationKey, boolean> = {
-      notify_likes: profile.notify_likes,
-      notify_comments: profile.notify_comments,
-      notify_follows: profile.notify_follows,
-      notify_saves: profile.notify_saves,
-      notify_friend_activity: profile.notify_friend_activity,
-      notify_nearby_reviews: profile.notify_nearby_reviews,
-    };
-    update[key] = !profile[key];
+    // Just the toggled column. This used to resend every preference, spelled
+    // out by hand — which meant adding a new one silently required editing
+    // this list too, and failed to compile only because the type happened to
+    // demand every key.
+    const update = { [key]: !profile[key] } as Partial<Record<NotificationKey, boolean>>;
     const { error } = await supabase.from('users').update(update).eq('id', session.user.id);
     setSavingNotification(null);
     if (!error) await refreshProfile();

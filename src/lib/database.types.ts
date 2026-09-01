@@ -912,6 +912,38 @@ export type Database = {
           },
         ]
       }
+      push_tokens: {
+        Row: {
+          created_at: string
+          platform: string
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          platform: string
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          platform?: string
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reports: {
         Row: {
           created_at: string
@@ -1476,8 +1508,11 @@ export type Database = {
           notify_likes: boolean
           notify_nearby_reviews: boolean
           notify_saves: boolean
+          notify_tags: boolean
           profile_section_order: string[] | null
           show_map: boolean
+          terms_accepted_at: string | null
+          terms_version: string | null
         }
         Insert: {
           avatar_r2_key?: string | null
@@ -1508,8 +1543,11 @@ export type Database = {
           notify_likes?: boolean
           notify_nearby_reviews?: boolean
           notify_saves?: boolean
+          notify_tags?: boolean
           profile_section_order?: string[] | null
           show_map?: boolean
+          terms_accepted_at?: string | null
+          terms_version?: string | null
         }
         Update: {
           avatar_r2_key?: string | null
@@ -1540,8 +1578,11 @@ export type Database = {
           notify_likes?: boolean
           notify_nearby_reviews?: boolean
           notify_saves?: boolean
+          notify_tags?: boolean
           profile_section_order?: string[] | null
           show_map?: boolean
+          terms_accepted_at?: string | null
+          terms_version?: string | null
         }
         Relationships: [
           {

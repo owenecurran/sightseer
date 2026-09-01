@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "1008231061316",
+    "project_id": "alien-app-503223",
+    "storage_bucket": "alien-app-503223.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1008231061316:android:2e62a3d8e9ca97391e2911",
+        "android_client_info": {
+          "package_name": "com.owenecurran.alienapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1008231061316-6jkr4dp439ski115ooa0brje68q25n25.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAI9SVl8ABLO59Wq_w8ACNMZPRRVvNWAGs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1008231061316-6jkr4dp439ski115ooa0brje68q25n25.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1008231061316-tf2p84i3h2uiiv75m1v6f3nn3dg5b5u3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.owenecurran.alienapp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

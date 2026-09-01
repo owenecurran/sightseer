@@ -16,6 +16,7 @@
     },
     "android": {
       "package": "com.owenecurran.alienapp",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#031009",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

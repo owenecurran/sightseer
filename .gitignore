@@ -41,3 +41,11 @@ example
 # generated native folders
 /ios
 /android
+
+# FCM service-account keys (the JSON from Firebase → Service accounts).
+# These grant server-side access to the Firebase project — unlike
+# google-services.json, which ships inside the app binary and is not a
+# secret. Uploaded to EAS credentials, never committed.
+*-firebase-adminsdk-*.json
+service-account*.json
+firebase-service-account*.json

@@ -14,6 +14,7 @@ import { TAB_ROUTES } from '@/constants/tab-routes';
 import { NavBarVisibilityProvider } from '@/hooks/use-hide-on-scroll';
 import { TabPagerProvider } from '@/hooks/use-tab-pager';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { addPushTapListener, registerForPush } from '@/lib/push';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -68,6 +69,19 @@ function RootNavigator() {
     if (AUTH_PATHS.includes(pathname)) return;
     router.replace('/sign-in');
   }, [isAuthenticated, isLoading, pathname]);
+
+  // Register this device for push once there is someone to register it to,
+  // and re-register if the account changes — the token belongs to the
+  // device, so it has to be repointed rather than assumed still correct.
+  useEffect(() => {
+    if (!session) return;
+    registerForPush(session.user.id);
+  }, [session]);
+
+  // A notification tapped from the lock screen or tray. Routed here rather
+  // than per-screen because the app may not be running when it arrives, and
+  // this is the one component guaranteed to be mounted.
+  useEffect(() => addPushTapListener((route) => router.push(route as never)), []);
 
   if (isLoading) return null;
 

@@ -51,6 +51,8 @@ function describe(notification: AppNotification): string {
       return `${notification.actorName} commented on your review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
     case 'friend_visit':
       return `${notification.actorName} posted a new review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+    case 'tagged':
+      return `${notification.actorName} tagged you in a review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
     case 'follow':
       return `${notification.actorName} started following you`;
     case 'nearby_review_digest':
@@ -108,6 +110,7 @@ export default function NotificationsScreen() {
       case 'like':
       case 'comment':
       case 'friend_visit':
+      case 'tagged':
         if (notification.visitId) {
           router.push({ pathname: '/visit/[id]', params: { id: notification.visitId } });
         }

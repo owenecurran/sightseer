@@ -464,3 +464,11 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/resolve-username-signin/deno.json"
 entrypoint = "./functions/resolve-username-signin/index.ts"
+
+[functions.send-push]
+enabled = true
+# Called by the notify_push database trigger via pg_net, which has no user
+# JWT to present — it authenticates with the x-push-secret shared secret
+# checked inside the function instead.
+verify_jwt = false
+import_map = "./functions/send-push/deno.json"
