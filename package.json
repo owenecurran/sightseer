@@ -51,7 +51,6 @@
   "devDependencies": {
     "@types/mapbox-gl": "^3.4.1",
     "@types/react": "~19.2.2",
-    "eas-cli": "^21.0.3",
     "supabase": "^2.109.1",
     "typescript": "~6.0.3"
   },
