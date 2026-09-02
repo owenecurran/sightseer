@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { BackLink } from '@/components/ui/back-link';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
@@ -18,7 +19,12 @@ import { TERMS_SECTIONS, TERMS_VERSION } from '@/lib/terms';
 // you out would be a worse version of the same thing. Anyone who wants out
 // can sign out from the account they already have.
 export default function TermsScreen() {
-  const { session, refreshProfile } = useAuth();
+  const { session, profile, refreshProfile } = useAuth();
+  // Already agreed to the version in force? Then this is a re-read from
+  // Settings, not the gate — no button to press, and a way back out. The
+  // gate deliberately has neither.
+  const isReview =
+    profile?.terms_accepted_at != null && profile?.terms_version === TERMS_VERSION;
   const [isAccepting, setIsAccepting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,10 +59,13 @@ export default function TermsScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
+          {isReview && <BackLink seed="terms" />}
           <ThemedText type="displaySerif">Terms of use</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            Please read and accept these to continue.
-          </ThemedText>
+          {!isReview && (
+            <ThemedText type="small" themeColor="textSecondary">
+              Please read and accept these to continue.
+            </ThemedText>
+          )}
 
           {TERMS_SECTIONS.map((section) => (
             <View key={section.heading} style={styles.section}>
@@ -73,11 +82,13 @@ export default function TermsScreen() {
             </ThemedText>
           )}
 
-          <Button
-            label={isAccepting ? 'Saving…' : 'I agree'}
-            onPress={handleAccept}
-            disabled={isAccepting}
-          />
+          {!isReview && (
+            <Button
+              label={isAccepting ? 'Saving…' : 'I agree'}
+              onPress={handleAccept}
+              disabled={isAccepting}
+            />
+          )}
 
           <ThemedText type="small" themeColor="textSecondary" style={styles.version}>
             Version {TERMS_VERSION}

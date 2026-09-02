@@ -5,6 +5,7 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
+import { listBannedUsers, setUserBanned, UNDERAGE_REASON, type BannedUser } from '@/lib/bans';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
@@ -13,6 +14,7 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import {
+  banUserAndResolveReport,
   dismissReport,
   listPendingReports,
   removeVisitAndResolveReport,
@@ -32,14 +34,21 @@ export default function ModerationScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // Which row is mid-confirm, if any. Holding the id rather than a boolean
+  // means opening the confirm on one report closes it on any other.
+  const [confirmingBanId, setConfirmingBanId] = useState<string | null>(null);
+  const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
   const scrollHandler = useHideOnScrollHandler();
 
   useFocusEffect(
     useCallback(() => {
       setIsLoading(true);
       setError(null);
-      listPendingReports()
-        .then(setReports)
+      Promise.all([listPendingReports(), listBannedUsers()])
+        .then(([pending, banned]) => {
+          setReports(pending);
+          setBannedUsers(banned);
+        })
         .catch((err) => setError(err instanceof Error ? err.message : 'Could not load reports.'))
         .finally(() => {
           setIsLoading(false);
@@ -55,6 +64,34 @@ export default function ModerationScreen() {
       setReports((prev) => prev.filter((r) => r.id !== reportId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not dismiss that report.');
+    }
+  }
+
+  // A ban is reversible by another admin, so it gets an inline confirm
+  // rather than the typed-handle modal account deletion uses — but it still
+  // gets a confirm, because it is one tap away from Dismiss and lands on a
+  // real person.
+  async function handleBan(report: PendingReport) {
+    if (!report.reportedUserId) return;
+    setError(null);
+    try {
+      await banUserAndResolveReport(report.id, report.reportedUserId, report.reason);
+      setReports((prev) => prev.filter((r) => r.id !== report.id));
+      setBannedUsers(await listBannedUsers());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not ban that user.');
+    } finally {
+      setConfirmingBanId(null);
+    }
+  }
+
+  async function handleUnban(userId: string) {
+    setError(null);
+    try {
+      await setUserBanned(userId, null);
+      setBannedUsers((prev) => prev.filter((u) => u.id !== userId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not lift that ban.');
     }
   }
 
@@ -128,21 +165,71 @@ export default function ModerationScreen() {
                 </ThemedText>
               )}
 
-              <View style={styles.actionsRow}>
-                <Pressable onPress={() => handleDismiss(report.id)}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Dismiss
+              {confirmingBanId === report.id ? (
+                <View style={styles.actionsRow}>
+                  <ThemedText type="small" themeColor="textSecondary" style={styles.reportMetaText}>
+                    Ban {report.authorName}?
                   </ThemedText>
-                </Pressable>
-                {report.visitId && (
-                  <Pressable onPress={() => handleRemove(report)}>
-                    <ThemedText type="smallBold">Delete visit</ThemedText>
+                  <Pressable onPress={() => setConfirmingBanId(null)}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Cancel
+                    </ThemedText>
                   </Pressable>
-                )}
-              </View>
+                  <Pressable onPress={() => handleBan(report)}>
+                    <ThemedText type="smallBold">Confirm ban</ThemedText>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.actionsRow}>
+                  <Pressable onPress={() => handleDismiss(report.id)}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Dismiss
+                    </ThemedText>
+                  </Pressable>
+                  {report.visitId && (
+                    <Pressable onPress={() => handleRemove(report)}>
+                      <ThemedText type="smallBold">Delete visit</ThemedText>
+                    </Pressable>
+                  )}
+                  {/* Absent when the visit is already gone and the report
+                      named no user — there is no one left to act against. */}
+                  {report.reportedUserId && (
+                    <Pressable onPress={() => setConfirmingBanId(report.id)}>
+                      <ThemedText type="smallBold">Ban user</ThemedText>
+                    </Pressable>
+                  )}
+                </View>
+              )}
             </ThemedView>
           ))}
         </View>
+
+        {/* The way back out of a ban. Empty by default, so it costs nothing
+            visually until there is something to undo — and an underage ban
+            in particular is expected to show up here for exactly one
+            reason: someone mistyped their birth year. */}
+        {bannedUsers.length > 0 && (
+          <>
+            <ThemedText type="sectionLabel">Banned</ThemedText>
+            <View style={styles.list}>
+              {bannedUsers.map((user) => (
+                <ThemedView key={user.id} type="backgroundElement" style={styles.card}>
+                  <ThemedText type="smallBold">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {user.reason === UNDERAGE_REASON
+                      ? 'Under the age minimum'
+                      : (user.reason ?? 'No reason recorded')}
+                  </ThemedText>
+                  <View style={styles.actionsRow}>
+                    <Pressable onPress={() => handleUnban(user.id)}>
+                      <ThemedText type="smallBold">Lift ban</ThemedText>
+                    </Pressable>
+                  </View>
+                </ThemedView>
+              ))}
+            </View>
+          </>
+        )}
         </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>

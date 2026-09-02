@@ -56,7 +56,7 @@ export type Database = {
       }
       articles: {
         Row: {
-          author_id: string
+          author_id: string | null
           body: string
           cover_photo_r2_key: string | null
           created_at: string
@@ -67,7 +67,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          author_id: string
+          author_id?: string | null
           body: string
           cover_photo_r2_key?: string | null
           created_at?: string
@@ -78,7 +78,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          author_id?: string
+          author_id?: string | null
           body?: string
           cover_photo_r2_key?: string | null
           created_at?: string
@@ -1496,6 +1496,8 @@ export type Database = {
       users: {
         Row: {
           avatar_r2_key: string | null
+          ban_reason: string | null
+          banned_at: string | null
           bio: string | null
           birthdate: string | null
           created_at: string
@@ -1533,6 +1535,8 @@ export type Database = {
         }
         Insert: {
           avatar_r2_key?: string | null
+          ban_reason?: string | null
+          banned_at?: string | null
           bio?: string | null
           birthdate?: string | null
           created_at?: string
@@ -1570,6 +1574,8 @@ export type Database = {
         }
         Update: {
           avatar_r2_key?: string | null
+          ban_reason?: string | null
+          banned_at?: string | null
           bio?: string | null
           birthdate?: string | null
           created_at?: string
@@ -1972,6 +1978,7 @@ export type Database = {
         | { Args: { table_name: string }; Returns: string }
       enablelongtransactions: { Args: never; Returns: string }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      flag_self_underage: { Args: never; Returns: undefined }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
         Args: { geom1: unknown; geom2: unknown }
@@ -2211,6 +2218,7 @@ export type Database = {
         }[]
       }
       gettransactionid: { Args: never; Returns: unknown }
+      is_banned: { Args: { p_user_id: string }; Returns: boolean }
       is_blocked: { Args: { user_a: string; user_b: string }; Returns: boolean }
       is_home_place: { Args: { pid: string; uid: string }; Returns: boolean }
       is_travel_book_participant: {
@@ -2286,6 +2294,10 @@ export type Database = {
       }
       run_friend_review_digest: { Args: never; Returns: undefined }
       run_nearby_review_digest: { Args: never; Returns: undefined }
+      set_user_banned: {
+        Args: { p_reason: string; p_user_id: string }
+        Returns: undefined
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       st_3dclosestpoint: {

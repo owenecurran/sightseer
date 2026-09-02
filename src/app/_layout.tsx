@@ -37,6 +37,10 @@ function RootNavigator() {
   const hasSetDemographics = profile?.has_set_demographics === true;
   const hasSetPrivacy = profile?.has_set_privacy === true;
   const hasPassedInviteGate = profile?.has_shared_invite === true || profile?.invite_exempt === true;
+  // Supersedes every other gate below, including terms and onboarding: an
+  // account banned mid-signup should land on the ban screen rather than be
+  // walked through the rest of the flow first.
+  const isBanned = profile?.banned_at != null;
   const isOnMainTab = (TAB_ROUTES as readonly string[]).includes(pathname);
   // Nav bar now only shows on the 5 main tab screens — Stack-pushed detail
   // screens (user/[id], place/[id], visit/[id], follow-list, etc.) go back
@@ -45,6 +49,7 @@ function RootNavigator() {
   // every authenticated screen); reversed per explicit follow-up feedback.
   const hasFinishedSignup =
     isAuthenticated &&
+    !isBanned &&
     hasAcceptedTerms &&
     hasCompletedOnboarding &&
     hasSetDemographics &&
@@ -74,6 +79,22 @@ function RootNavigator() {
     if (AUTH_PATHS.includes(pathname)) return;
     router.replace('/sign-in');
   }, [isAuthenticated, isLoading, pathname]);
+
+  // Exactly the same problem as the block above, for the same reason. A ban
+  // invalidates the Stack.Protected routes, but every ordinary Stack route
+  // (settings, visit/[id], user/[id], ...) stays perfectly valid underneath
+  // a banned profile, so a ban landing while someone is deep in the app
+  // would leave them sitting there. Catching the condition rather than
+  // enumerating the screens, again.
+  //
+  // This fires when the profile is next fetched, not the instant an admin
+  // acts — the account's writes are already refused by RLS in the meantime,
+  // so the gap costs nothing but a stale screen.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || !isBanned) return;
+    if (pathname === '/banned') return;
+    router.replace('/banned');
+  }, [isAuthenticated, isBanned, isLoading, pathname]);
 
   // Register this device for push once there is someone to register it to,
   // and re-register if the account changes — the token belongs to the
@@ -128,22 +149,38 @@ function RootNavigator() {
               <Stack.Screen name="(auth)/forgot-password" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && !hasAcceptedTerms}>
+            {/* Registered for ANY signed-in user, not only those who have yet
+                to accept. Scoped to the gate's own guard, the route stopped
+                existing the moment it was accepted — so Settings' "Terms of
+                use" link pushed a route the navigator did not have and
+                silently did nothing.
+                The gate still works: every screen past this point is guarded
+                on hasAcceptedTerms, so someone who has not accepted has
+                nowhere else to be. */}
+            <Stack.Protected guard={isAuthenticated && !isBanned}>
               <Stack.Screen name="terms" />
             </Stack.Protected>
 
+            {/* The only route a banned account has. Every guard below also
+                requires !isBanned, so there is nowhere else for the
+                navigator to put them. */}
+            <Stack.Protected guard={isAuthenticated && isBanned}>
+              <Stack.Screen name="banned" />
+            </Stack.Protected>
+
             <Stack.Protected
-              guard={isAuthenticated && hasAcceptedTerms && !hasCompletedOnboarding}>
+              guard={isAuthenticated && !isBanned && hasAcceptedTerms && !hasCompletedOnboarding}>
               <Stack.Screen name="onboarding" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && hasAcceptedTerms && hasCompletedOnboarding && !hasSetDemographics}>
+            <Stack.Protected guard={isAuthenticated && !isBanned && hasAcceptedTerms && hasCompletedOnboarding && !hasSetDemographics}>
               <Stack.Screen name="demographics" />
             </Stack.Protected>
 
             <Stack.Protected
               guard={
                 isAuthenticated &&
+                !isBanned &&
                 hasAcceptedTerms &&
                 hasCompletedOnboarding &&
                 hasSetDemographics &&
@@ -155,6 +192,7 @@ function RootNavigator() {
             <Stack.Protected
               guard={
                 isAuthenticated &&
+                !isBanned &&
                 hasAcceptedTerms &&
                 hasCompletedOnboarding &&
                 hasSetDemographics &&
@@ -167,6 +205,7 @@ function RootNavigator() {
             <Stack.Protected
               guard={
                 isAuthenticated &&
+                !isBanned &&
                 hasAcceptedTerms &&
                 hasCompletedOnboarding &&
                 hasSetDemographics &&

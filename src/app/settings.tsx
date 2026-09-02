@@ -1,3 +1,4 @@
+import * as Linking from 'expo-linking';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
@@ -19,6 +20,7 @@ import { setDiscoverableByContacts, setMyPhoneNumber } from '@/lib/contacts';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 import { unregisterPush } from '@/lib/push';
+import { hasPrivacyPolicy, hasSupportEmail, PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '@/lib/legal';
 
 type NotificationKey =
   | 'notify_likes'
@@ -397,6 +399,32 @@ export default function SettingsScreen() {
               </ThemedText>
             )}
           </View>
+          <View style={styles.section}>
+            <ThemedText type="sectionLabel">About</ThemedText>
+            <Pressable onPress={() => router.push('/terms')} hitSlop={8}>
+              <ThemedText type="small" themeColor="sage">
+                Terms of use
+              </ThemedText>
+            </Pressable>
+            {/* Both render only once a real destination is configured — see
+                legal.ts. A link that 404s reads worse to a reviewer than no
+                link at all. */}
+            {hasPrivacyPolicy && (
+              <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={8}>
+                <ThemedText type="small" themeColor="sage">
+                  Privacy policy
+                </ThemedText>
+              </Pressable>
+            )}
+            {hasSupportEmail && (
+              <Pressable onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} hitSlop={8}>
+                <ThemedText type="small" themeColor="sage">
+                  Contact support
+                </ThemedText>
+              </Pressable>
+            )}
+          </View>
+
           <View style={styles.section}>
             <ThemedText type="sectionLabel">Delete account</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
