@@ -277,7 +277,7 @@ export function FeedRatingStamp({
         },
       ]}
     >
-      <RatingGlassBadgeGated rating={rating} size={size} />
+      <RatingGlassBadgeGated rating={rating} size={size} seed={seed} />
     </View>
   );
 }

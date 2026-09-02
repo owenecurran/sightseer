@@ -426,7 +426,7 @@ export default function PlaceDetailScreen() {
                       )}
                     </View>
                     {item.rating != null && (
-                      <RatingGlassBadgeGated rating={item.rating} size={ROW_STAMP_SIZE} />
+                      <RatingGlassBadgeGated rating={item.rating} size={ROW_STAMP_SIZE} seed={item.id} />
                     )}
                   </View>
                 </ThemedView>

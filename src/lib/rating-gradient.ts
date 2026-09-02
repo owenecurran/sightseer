@@ -88,3 +88,82 @@ export function readableColorForRating(rating: number, max = 10): string {
   const [r, g, b] = hexToRgb(base);
   return rgbToHex([r + (255 - r) * t, g + (255 - g) * t, b + (255 - b) * t]);
 }
+
+// Where a stamp's two design layers sit relative to the rating colour
+// behind them. Both are DARKER than that background; layer 2 is darker
+// still and more saturated, so the detail reads as the strongest mark on
+// the stamp and layer 1 as the mass underneath it.
+//
+// Proportional to the background's own lightness rather than a fixed step.
+// The gradient's dark end (#3a0142 at rating 0) is already nearly black, so
+// a fixed "subtract 0.2 lightness" would bottom both layers out at pure
+// black and lose the two-layer read entirely. Scaling instead means each
+// rating divides whatever room it actually has.
+const LAYER1_LIGHTNESS = 0.62;
+// Deliberately close to layer 1 rather than as dark as it can go. The two
+// layers separate mostly on saturation now, with lightness doing just
+// enough to keep an edge between them — a wider lightness gap read as two
+// unrelated shapes rather than one object with detail on it.
+const LAYER2_LIGHTNESS = 0.47;
+
+// Saturation climbs as lightness falls, which is what keeps the layers
+// apart by hue as well as by value — important at the dark end, where there
+// is very little lightness range left to separate them with.
+const LAYER1_SATURATION = 1.06;
+const LAYER2_SATURATION = 1.35;
+
+function rgbToHsl([r, g, b]: [number, number, number]): [number, number, number] {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
+  else if (max === gn) h = ((bn - rn) / d + 2) / 6;
+  else h = ((rn - gn) / d + 4) / 6;
+  return [h, s, l];
+}
+
+function hueToChannel(p: number, q: number, t: number): number {
+  let tt = t;
+  if (tt < 0) tt += 1;
+  if (tt > 1) tt -= 1;
+  if (tt < 1 / 6) return p + (q - p) * 6 * tt;
+  if (tt < 1 / 2) return q;
+  if (tt < 2 / 3) return p + (q - p) * (2 / 3 - tt) * 6;
+  return p;
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  if (s === 0) return rgbToHex([l * 255, l * 255, l * 255]);
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return rgbToHex([
+    hueToChannel(p, q, h + 1 / 3) * 255,
+    hueToChannel(p, q, h) * 255,
+    hueToChannel(p, q, h - 1 / 3) * 255,
+  ]);
+}
+
+// The two colours a stamp's design layers take, derived from the rating
+// colour rather than fixed — so the artwork stays legible whether the stamp
+// is deep plum at 0.5 or bright teal at 9.8, and still reads as one object
+// rather than a fixed motif pasted onto a changing background.
+//
+// Hue is carried through untouched, so both layers stay the same colour as
+// their background, only deeper.
+export function layerColorsForRating(
+  rating: number,
+  max = 10
+): { layer1: string; layer2: string } {
+  const [h, s, l] = rgbToHsl(hexToRgb(colorForRating(rating, max)));
+  return {
+    layer1: hslToHex(h, Math.min(1, s * LAYER1_SATURATION), l * LAYER1_LIGHTNESS),
+    layer2: hslToHex(h, Math.min(1, s * LAYER2_SATURATION), l * LAYER2_LIGHTNESS),
+  };
+}

@@ -1,7 +1,9 @@
 import { svgDataUri } from '@/lib/base64';
 import { BrandColors } from '@/constants/theme';
 import { BRAND_MARK_BOUNDS, HEAD_PATH_SVG, MARK_POLYLINE_POINTS } from '@/lib/brand-mark';
-import { colorForRating } from '@/lib/rating-gradient';
+import { colorForRating, layerColorsForRating } from '@/lib/rating-gradient';
+import { pickStampDesign, type StampDesign } from '@/lib/stamp-designs';
+import { buildWearSvg } from '@/lib/stamp-wear';
 import {
   STAMP_FRAME_OUTER_SVG,
   STAMP_VIEWBOX_HEIGHT,
@@ -12,16 +14,43 @@ import {
 // Matches RatingGlassBadge's own fitBrandMarkPath call for the icon.
 const ICON_FILL_RATIO = 0.82;
 
+// One design layer, fitted and centred inside the stamp's window. Each
+// design keeps its own viewBox, so the fit is computed per layer from that
+// design's own dimensions rather than assuming a shared coordinate space —
+// the same move sticker-svg.ts's `layer` makes.
+function designLayer(design: StampDesign, paths: string[], fill: string): string {
+  const w = STAMP_WINDOW_RECT;
+  // Fitted to the WINDOW, not to a square inside it, so the design runs
+  // edge to edge on whichever axis constrains it — a wide design like
+  // mountain touches the left and right borders, a tall one like eiffel
+  // touches top and bottom.
+  //
+  // Still `min` rather than `max`: `max` would fill all four edges but crop
+  // whatever overflows, which on these designs means cutting the tip off
+  // the Eiffel tower and the ends off the anchor.
+  const scale = Math.min(w.width / design.width, w.height / design.height);
+  const dx = w.x + (w.width - design.width * scale) / 2;
+  const dy = w.y + (w.height - design.height * scale) / 2;
+  const body = paths.map((d) => `<path d="${d}"/>`).join('');
+  return `<g transform="translate(${dx} ${dy}) scale(${scale})" fill="${fill}">${body}</g>`;
+}
+
 // The rating stamp as a self-contained SVG document: the perforated cream
-// frame, the rating-coloured window, and the brand mark with its
-// brushed-metal gradient and white stroke — the same artwork
-// rating-glass-badge.tsx draws with Skia, from the same path data.
+// frame, the rating-coloured window, and the artwork inside it — either one
+// of the registered two-layer designs, or the brand mark with its
+// brushed-metal gradient and white stroke when none are registered.
 //
 // Pure string building, no platform APIs, so the same markup serves web and
 // native. The rating NUMBER is deliberately not in here: it stays a real
 // text node in the component, so it keeps the app's font, scales with
 // adjustsFontSizeToFit, and stays selectable — exactly as on native today.
-export function buildStampSvg(rating: number, size: number): string {
+//
+// `seed` decides which of the registered designs this stamp draws. Callers
+// with nothing stable to key on (a slider preview, a place's average) pass
+// none, and get the same design for a given rating — which is what those
+// displays want anyway, since there is no single post behind them to vary
+// by.
+export function buildStampSvg(rating: number, size: number, seed?: string): string {
   const scale = size / STAMP_VIEWBOX_WIDTH;
   const w = STAMP_WINDOW_RECT;
   // The native badge strokes in screen pixels on a canvas already scaled to
@@ -43,6 +72,26 @@ export function buildStampSvg(rating: number, size: number): string {
   // addPoly(points, true) on native — a closed shape, hence polygon.
   const marks = `<path d="${HEAD_PATH_SVG}"/><polygon points="${MARK_POLYLINE_POINTS}"/>`;
 
+  // The brand mark is the fallback, not the default: it is what the stamp
+  // drew before designs existed, so an empty registry is a no-op rather
+  // than a blank window. Once designs are registered every seeded stamp
+  // draws one of them instead.
+  // One seed drives both which design is drawn and how worn it is, so a
+  // given review's stamp is identical every time it appears.
+  const wearSeed = seed ?? rating.toFixed(1);
+  const design = pickStampDesign(wearSeed);
+  const windowContent = design
+    ? (() => {
+        const { layer1, layer2 } = layerColorsForRating(rating);
+        return (
+          designLayer(design, design.layer1, layer1) + designLayer(design, design.layer2, layer2)
+        );
+      })()
+    : `<g transform="${iconTransform}">
+<g fill="url(#m)" fill-opacity="0.7">${marks}</g>
+<g fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round">${marks}</g>
+</g>`;
+
   // Explicit width/height as well as the viewBox: an SVG loaded as an image
   // source has no intrinsic size from a viewBox alone, and decoders then
   // refuse to paint it — which is exactly how this first failed on web.
@@ -52,16 +101,14 @@ export function buildStampSvg(rating: number, size: number): string {
 </linearGradient></defs>
 <path d="${STAMP_FRAME_OUTER_SVG}" fill="${BrandColors.cream}"/>
 <rect x="${w.x}" y="${w.y}" width="${w.width}" height="${w.height}" fill="${colorForRating(rating)}"/>
-<g transform="${iconTransform}">
-<g fill="url(#m)" fill-opacity="0.7">${marks}</g>
-<g fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round">${marks}</g>
-</g>
+${windowContent}
+${buildWearSvg(wearSeed)}
 </svg>`;
 }
 
 // base64 specifically, not percent-encoding: Android's Glide only decodes
 // base64 `data:` URIs, so the raw-markup form that works in a browser would
 // silently fail to load on native.
-export function buildStampDataUri(rating: number, size: number): string {
-  return svgDataUri(buildStampSvg(rating, size));
+export function buildStampDataUri(rating: number, size: number, seed?: string): string {
+  return svgDataUri(buildStampSvg(rating, size, seed));
 }
