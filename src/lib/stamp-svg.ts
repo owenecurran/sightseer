@@ -2,7 +2,8 @@ import { svgDataUri } from '@/lib/base64';
 import { BrandColors } from '@/constants/theme';
 import { BRAND_MARK_BOUNDS, HEAD_PATH_SVG, MARK_POLYLINE_POINTS } from '@/lib/brand-mark';
 import { colorForRating, layerColorsForRating } from '@/lib/rating-gradient';
-import { pickStampDesign, type StampDesign } from '@/lib/stamp-designs';
+import { type StampDesign } from '@/lib/stamp-designs';
+import { pickStampDesign } from '@/lib/stamp-matching';
 import { buildWearSvg } from '@/lib/stamp-wear';
 import {
   STAMP_FRAME_OUTER_SVG,
@@ -45,12 +46,24 @@ function designLayer(design: StampDesign, paths: string[], fill: string): string
 // text node in the component, so it keeps the app's font, scales with
 // adjustsFontSizeToFit, and stays selectable — exactly as on native today.
 //
-// `seed` decides which of the registered designs this stamp draws. Callers
+// `context` decides which of the registered designs this stamp draws, and
+// how worn it is -- see stamp-matching.ts for the hierarchy (a 10.0 or 0.0
+// first, then the place, then tags and rating, then anything). Callers
 // with nothing stable to key on (a slider preview, a place's average) pass
 // none, and get the same design for a given rating — which is what those
 // displays want anyway, since there is no single post behind them to vary
 // by.
-export function buildStampSvg(rating: number, size: number, seed?: string): string {
+export type StampContext = {
+  // Anything stable and unique per post -- the visit id in practice.
+  seed?: string;
+  // Tag slugs on this review, and where it happened. Both optional: a
+  // slider preview or a place's average rating has neither, and falls
+  // through to the untargeted pick.
+  tags?: string[];
+  placeId?: string;
+};
+
+export function buildStampSvg(rating: number, size: number, context?: StampContext): string {
   const scale = size / STAMP_VIEWBOX_WIDTH;
   const w = STAMP_WINDOW_RECT;
   // The native badge strokes in screen pixels on a canvas already scaled to
@@ -77,9 +90,16 @@ export function buildStampSvg(rating: number, size: number, seed?: string): stri
   // than a blank window. Once designs are registered every seeded stamp
   // draws one of them instead.
   // One seed drives both which design is drawn and how worn it is, so a
-  // given review's stamp is identical every time it appears.
-  const wearSeed = seed ?? rating.toFixed(1);
-  const design = pickStampDesign(wearSeed);
+  // given review's stamp is identical every time it appears. Callers with
+  // no single post behind them fall back to the rating, which is what those
+  // displays want anyway: an aggregate should not pretend to be one review.
+  const wearSeed = context?.seed ?? rating.toFixed(1);
+  const design = pickStampDesign({
+    seed: wearSeed,
+    rating,
+    tags: context?.tags,
+    placeId: context?.placeId,
+  });
   const windowContent = design
     ? (() => {
         const { layer1, layer2 } = layerColorsForRating(rating);
@@ -109,6 +129,6 @@ ${buildWearSvg(wearSeed)}
 // base64 specifically, not percent-encoding: Android's Glide only decodes
 // base64 `data:` URIs, so the raw-markup form that works in a browser would
 // silently fail to load on native.
-export function buildStampDataUri(rating: number, size: number, seed?: string): string {
-  return svgDataUri(buildStampSvg(rating, size, seed));
+export function buildStampDataUri(rating: number, size: number, context?: StampContext): string {
+  return svgDataUri(buildStampSvg(rating, size, context));
 }

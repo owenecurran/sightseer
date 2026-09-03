@@ -121,6 +121,11 @@ type FeedRatingStampProps = {
   rating: number;
   // Anything stable and unique per post — the visit id in practice.
   seed: string;
+  // Passed straight through to the stamp, which uses them to decide WHICH
+  // design it draws (see stamp-matching.ts). Not used for placement or
+  // tilt, which stay seeded off `seed` alone.
+  tags?: string[];
+  placeId?: string;
   // Whether the stamp may bleed past its container's own anchored edge
   // (bottom edge for corner:'bottom-right', top edge for corner:'top-right')
   // — true when something it can overlap sits just past that edge (a photo
@@ -194,6 +199,8 @@ type FeedRatingStampProps = {
 export function FeedRatingStamp({
   rating,
   seed,
+  tags,
+  placeId,
   canSeep,
   maxBottomOffset,
   size = STAMP_SIZE,
@@ -277,7 +284,7 @@ export function FeedRatingStamp({
         },
       ]}
     >
-      <RatingGlassBadgeGated rating={rating} size={size} seed={seed} />
+      <RatingGlassBadgeGated rating={rating} size={size} seed={seed} tags={tags} placeId={placeId} />
     </View>
   );
 }

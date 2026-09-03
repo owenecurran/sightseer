@@ -20,6 +20,11 @@ type RatingStampSvgProps = {
   // rating itself, which is what they want anyway: an aggregate should not
   // pretend to be one particular review.
   seed?: string;
+  // Feed into which design the stamp draws -- a review tagged "open water"
+  // or posted somewhere with its own stamp gets that one instead of a
+  // random draw. See stamp-matching.ts.
+  tags?: string[];
+  placeId?: string;
 };
 
 const DEFAULT_SIZE = 52;
@@ -40,14 +45,22 @@ function clamp(n: number, min: number, max: number): number {
 // The number stays a real text node over the window, exactly as the Skia
 // version does it, so it keeps the app's font and its shrink-to-fit
 // behaviour rather than becoming part of the image.
-export function RatingStampSvg({ rating, size = DEFAULT_SIZE, seed }: RatingStampSvgProps) {
+export function RatingStampSvg({ rating, size = DEFAULT_SIZE, seed, tags, placeId }: RatingStampSvgProps) {
   const scale = size / STAMP_VIEWBOX_WIDTH;
   const height = STAMP_VIEWBOX_HEIGHT * scale;
   const fontSize = clamp(size * 0.3, 11, 26);
 
   // Rebuilt only when the drawing actually changes. The string is a few KB
   // and one exists per distinct rating/size pair on screen.
-  const uri = useMemo(() => buildStampDataUri(rating, size, seed), [rating, size, seed]);
+  // Keyed on a joined string rather than the array itself: `tags` is a new
+  // array identity on every render, which would rebuild the SVG (a few KB
+  // of base64) on each one.
+  const tagKey = tags?.join(',') ?? '';
+  const uri = useMemo(
+    () => buildStampDataUri(rating, size, { seed, tags, placeId }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rating, size, seed, tagKey, placeId]
+  );
 
   return (
     <View style={{ width: size, height }}>

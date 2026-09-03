@@ -1,4 +1,3 @@
-import { pickFor } from '@/lib/seeded-random';
 
 // The interchangeable artwork that fills a rating stamp's window.
 //
@@ -10,10 +9,16 @@ import { pickFor } from '@/lib/seeded-random';
 // instead of only against the middle of the gradient.
 //
 // Order matters — layer 2 paints over layer 1, not under it.
+// Every design in the folder, as a union. stamp-matching.ts keys its rules
+// on this, so naming a design that no longer exists is a compile error
+// rather than a rule that silently never fires.
+export type StampDesignId = 'anchor' | 'eiffel' | 'moon' | 'mountain' | 'star';
+
 export type StampDesign = {
-  // A stable identifier, used only to seed variation and to make a
-  // regression obvious if the list is ever reordered.
-  id: string;
+  // A stable identifier, used to seed variation, to attach matching rules
+  // in stamp-matching.ts, and to make a regression obvious if the list is
+  // ever reordered.
+  id: StampDesignId;
   // Each design keeps its OWN viewBox — they are drawn on separate canvases
   // and nothing here assumes a shared coordinate space. buildStampSvg
   // scales and centres each design into the stamp's window.
@@ -109,13 +114,3 @@ export const STAMP_DESIGNS: StampDesign[] = [
     ],
   },
 ];
-
-// Which design a given stamp draws. Seeded so a post keeps its design
-// across re-renders and relaunches rather than reshuffling on every scroll.
-//
-// Its own PRNG stream, drawing once — deliberately not sharing the sequence
-// FeedRatingStamp uses for tilt and placement. Sharing it would mean that
-// adding a design here silently shifted every stamp's rotation too.
-export function pickStampDesign(seed: string): StampDesign | undefined {
-  return pickFor(`design:${seed}`, STAMP_DESIGNS);
-}

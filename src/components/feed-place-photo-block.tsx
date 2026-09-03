@@ -252,6 +252,10 @@ export function FeedCardHeaderText({
         <FeedRatingStamp
           rating={rating}
           seed={stampSeed}
+          // Already on this component for the stickers and the place link;
+          // the stamp needs them to pick its design.
+          tags={tags?.map((tag) => tag.slug)}
+          placeId={placeId}
           canSeep={stampCanSeep}
           maxBottomOffset={maxStampBottomOffset}
           side={stampSide}
