@@ -1,11 +1,13 @@
 import * as Linking from 'expo-linking';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
+import { SettingsRow } from '@/components/ui/settings-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -15,54 +17,12 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
-import { listBlockedUsers, unblockUser, type BlockedUser } from '@/lib/blocks';
+import { listBlockedUsers } from '@/lib/blocks';
 import { setDiscoverableByContacts, setMyPhoneNumber } from '@/lib/contacts';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 import { unregisterPush } from '@/lib/push';
 import { hasPrivacyPolicy, hasSupportEmail, PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '@/lib/legal';
-
-type NotificationKey =
-  | 'notify_likes'
-  | 'notify_comments'
-  | 'notify_follows'
-  | 'notify_tags'
-  | 'notify_saves'
-  | 'notify_friend_activity'
-  | 'notify_nearby_reviews'
-  | 'notify_friend_digest';
-
-const NOTIFICATION_OPTIONS: { key: NotificationKey; label: string; defaultValue: boolean }[] = [
-  { key: 'notify_likes', label: 'Likes on my visits', defaultValue: true },
-  { key: 'notify_comments', label: 'Comments on my visits', defaultValue: true },
-  { key: 'notify_follows', label: 'New followers and follow requests', defaultValue: true },
-  { key: 'notify_tags', label: 'Someone tags me in a review', defaultValue: true },
-  { key: 'notify_saves', label: 'Someone saves my board or travel book', defaultValue: true },
-  { key: 'notify_friend_activity', label: 'People I follow post a new review', defaultValue: false },
-  { key: 'notify_nearby_reviews', label: 'Weekly digest: new reviews at places I’ve been', defaultValue: false },
-  { key: 'notify_friend_digest', label: 'Weekly digest: reviews I missed from people I follow', defaultValue: true },
-];
-
-function CheckboxRow({
-  label,
-  checked,
-  onPress,
-  disabled,
-}: {
-  label: string;
-  checked: boolean;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable onPress={onPress} disabled={disabled} style={styles.checkboxRow}>
-      <ThemedView type={checked ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-        {checked && <ThemedText type="smallBold">✓</ThemedText>}
-      </ThemedView>
-      <ThemedText type="small">{label}</ThemedText>
-    </Pressable>
-  );
-}
 
 export default function SettingsScreen() {
   const { session, profile, refreshProfile } = useAuth();
@@ -79,7 +39,6 @@ export default function SettingsScreen() {
 
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [savingNotification, setSavingNotification] = useState<NotificationKey | null>(null);
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isSavingPhone, setIsSavingPhone] = useState(false);
@@ -91,32 +50,21 @@ export default function SettingsScreen() {
   const [linkError, setLinkError] = useState<string | null>(null);
   const linkedProviders = new Set(session?.user.identities?.map((identity) => identity.provider) ?? []);
 
-  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
-  const [unblockingId, setUnblockingId] = useState<string | null>(null);
-  const [blockedError, setBlockedError] = useState<string | null>(null);
+  // Just how many, for the row's subtitle. The list, and unblocking, live
+  // on /blocked-accounts. Null until the first load resolves, so the row
+  // does not flash "You have not blocked anyone" at someone who has.
+  const [blockedCount, setBlockedCount] = useState<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       if (!session) return;
+      // Refetched on focus so the count is right after unblocking someone
+      // on the screen this row leads to.
       listBlockedUsers(session.user.id)
-        .then(setBlockedUsers)
-        .catch((err) => setBlockedError(err instanceof Error ? err.message : 'Could not load blocked users.'));
+        .then((users) => setBlockedCount(users.length))
+        .catch(() => setBlockedCount(null));
     }, [session])
   );
-
-  async function handleUnblock(blockedId: string) {
-    if (!session) return;
-    setBlockedError(null);
-    setUnblockingId(blockedId);
-    try {
-      await unblockUser(session.user.id, blockedId);
-      setBlockedUsers((prev) => prev.filter((u) => u.id !== blockedId));
-    } catch (err) {
-      setBlockedError(err instanceof Error ? err.message : 'Could not unblock that user.');
-    } finally {
-      setUnblockingId(null);
-    }
-  }
 
   async function handleLinkApple() {
     setLinkError(null);
@@ -188,19 +136,6 @@ export default function SettingsScreen() {
     if (!error) await refreshProfile();
   }
 
-  async function handleToggleNotification(key: NotificationKey) {
-    if (!session || !profile) return;
-    setSavingNotification(key);
-    // Just the toggled column. This used to resend every preference, spelled
-    // out by hand — which meant adding a new one silently required editing
-    // this list too, and failed to compile only because the type happened to
-    // demand every key.
-    const update = { [key]: !profile[key] } as Partial<Record<NotificationKey, boolean>>;
-    const { error } = await supabase.from('users').update(update).eq('id', session.user.id);
-    setSavingNotification(null);
-    if (!error) await refreshProfile();
-  }
-
   async function handleSavePhone() {
     if (!session || !phoneNumber.trim()) return;
     setIsSavingPhone(true);
@@ -243,25 +178,129 @@ export default function SettingsScreen() {
 
           <ThemedText type="displaySerif">Settings</ThemedText>
 
-          <View style={styles.section}>
+          {/* Everything that leads somewhere else, first and together.
+              These were scattered between the inline settings as secondary
+              Buttons, which buried them and made the page read as one long
+              form rather than as a menu that also has some settings on it. */}
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <SettingsRow
+              label="Notifications"
+              description="Choose what reaches your phone"
+              onPress={() => router.push('/notification-settings')}
+            />
+            <SettingsRow
+              label="Home locations"
+              description="Where you are based, so trips group correctly"
+              onPress={() => router.push('/home-locations')}
+            />
+            <SettingsRow
+              label="Find friends from contacts"
+              description="Match your contacts against people already here"
+              onPress={() => router.push('/contacts-sync')}
+            />
+          </ThemedView>
+
+          {/* Who can see you, and who cannot. Blocking lives here rather
+              than in its own section because it answers the same question
+              the private-account toggle does. */}
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="sectionLabel">Privacy</ThemedText>
+            <CheckboxRow
+              label="Private account"
+              description="Only approved followers can see my profile and visits"
+              checked={profile?.is_private ?? false}
+              onPress={handleTogglePrivacy}
+              disabled={isSavingPrivacy}
+            />
+
+            <View style={styles.divider} />
+
+            {/* The count only, with the list itself on its own screen --
+                it has no ceiling, and thirty blocked accounts inline would
+                push everything below this off the page. */}
+            <SettingsRow
+              label="Blocked accounts"
+              description={
+                blockedCount === null
+                  ? 'Manage who cannot see you'
+                  : blockedCount === 0
+                    ? 'You have not blocked anyone'
+                    : `${blockedCount} ${blockedCount === 1 ? 'account' : 'accounts'} blocked`
+              }
+              onPress={() => router.push('/blocked-accounts')}
+            />
+          </ThemedView>
+
+          {/* The phone number and the discoverability toggle are one
+              decision -- the number is only useful if the toggle is on -- so
+              they belong together rather than sitting either side of the
+              contact-sync action they were previously mixed with. */}
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <ThemedText type="sectionLabel">Finding you</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Add your phone number so friends who sync their contacts can find you. It is hashed
+              before it ever leaves your device, and never stored or shown as plain text.
+            </ThemedText>
+            <TextField
+              placeholder="Phone number"
+              value={phoneNumber}
+              onChangeText={setPhoneNumber}
+              keyboardType="phone-pad"
+              textContentType="telephoneNumber"
+            />
+            {phoneNumber.trim().length > 0 && (
+              <Button label="Save number" onPress={handleSavePhone} loading={isSavingPhone} />
+            )}
+            {phoneSaved && (
+              <ThemedText type="small" themeColor="sage">
+                Number saved.
+              </ThemedText>
+            )}
+            <CheckboxRow
+              label="Let friends find me by my contact info"
+              checked={profile?.discoverable_by_contacts ?? false}
+              onPress={handleToggleDiscoverable}
+              disabled={isSavingDiscoverable}
+            />
+          </ThemedView>
+
+          {/* Sign-in credentials in one card: the providers you can sign in
+              with, the password you sign in with, and the way out. These
+              were three separate sections, with the sign-out button
+              stranded at the top of the page under "Account" next to a
+              privacy toggle it has nothing to do with. */}
+          <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="sectionLabel">Account</ThemedText>
 
-            <Pressable onPress={handleTogglePrivacy} disabled={isSavingPrivacy} style={styles.checkboxRow}>
-              <ThemedView
-                type={profile?.is_private ? 'backgroundSelected' : 'backgroundElement'}
-                style={styles.checkbox}>
-                {profile?.is_private && <ThemedText type="smallBold">✓</ThemedText>}
-              </ThemedView>
-              <ThemedText type="small">
-                Private account — only approved followers can see my profile and visits
+            {Platform.OS === 'ios' && (
+              <Button
+                label={linkedProviders.has('apple') ? 'Apple account connected' : 'Connect Apple account'}
+                variant="secondary"
+                onPress={handleLinkApple}
+                loading={isLinkingApple}
+                disabled={linkedProviders.has('apple')}
+              />
+            )}
+            {Platform.OS !== 'web' && (
+              <Button
+                label={linkedProviders.has('google') ? 'Google account connected' : 'Connect Google account'}
+                variant="secondary"
+                onPress={handleLinkGoogle}
+                loading={isLinkingGoogle}
+                disabled={linkedProviders.has('google')}
+              />
+            )}
+            {linkError && (
+              <ThemedText type="small" themeColor="textSecondary">
+                {linkError}
               </ThemedText>
-            </Pressable>
+            )}
 
-            <Button label="Sign out" variant="secondary" onPress={handleSignOut} loading={isSigningOut} />
-          </View>
+            <View style={styles.divider} />
 
-          <View style={styles.section}>
-            <ThemedText type="sectionLabel">Change password</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Change password
+            </ThemedText>
             <TextField
               placeholder="New password"
               value={newPassword}
@@ -287,155 +326,43 @@ export default function SettingsScreen() {
               </ThemedText>
             )}
             <Button label="Update password" onPress={handleChangePassword} loading={isSavingPassword} />
-          </View>
 
-          <View style={styles.section}>
-            <ThemedText type="sectionLabel">Notifications</ThemedText>
-            {NOTIFICATION_OPTIONS.map((option) => (
-              <CheckboxRow
-                key={option.key}
-                label={option.label}
-                checked={profile?.[option.key] ?? option.defaultValue}
-                onPress={() => handleToggleNotification(option.key)}
-                disabled={savingNotification === option.key}
-              />
-            ))}
-          </View>
+            <View style={styles.divider} />
 
-          <View style={styles.section}>
-            <ThemedText type="sectionLabel">Home locations</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Set where you're based so reviews from further afield get grouped into trips.
-            </ThemedText>
-            <Button
-              label="Manage home locations"
-              variant="secondary"
-              onPress={() => router.push('/home-locations')}
-            />
-          </View>
+            <Button label="Sign out" variant="secondary" onPress={handleSignOut} loading={isSigningOut} />
+          </ThemedView>
 
-          <View style={styles.section}>
-            <ThemedText type="sectionLabel">Contacts</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Add your phone number so friends who sync their contacts can find you. It's hashed before
-              it ever leaves your device — never stored or shown as plain text.
-            </ThemedText>
-            <TextField
-              placeholder="Phone number"
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              keyboardType="phone-pad"
-              textContentType="telephoneNumber"
-            />
-            {phoneNumber.trim().length > 0 && (
-              <Button label="Save number" onPress={handleSavePhone} loading={isSavingPhone} />
-            )}
-            {phoneSaved && (
-              <ThemedText type="small" themeColor="sage">
-                Number saved.
-              </ThemedText>
-            )}
-            <CheckboxRow
-              label="Let friends find me by my contact info"
-              checked={profile?.discoverable_by_contacts ?? false}
-              onPress={handleToggleDiscoverable}
-              disabled={isSavingDiscoverable}
-            />
-            <Button
-              label="Find friends from contacts"
-              variant="secondary"
-              onPress={() => router.push('/contacts-sync')}
-            />
-          </View>
-
-          <View style={styles.section}>
-            <ThemedText type="sectionLabel">Blocked users</ThemedText>
-            {blockedError && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {blockedError}
-              </ThemedText>
-            )}
-            {blockedUsers.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">
-                You haven’t blocked anyone.
-              </ThemedText>
-            ) : (
-              blockedUsers.map((user) => (
-                <View key={user.id} style={styles.blockedRow}>
-                  <ThemedText type="small">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
-                  <Pressable onPress={() => handleUnblock(user.id)} disabled={unblockingId === user.id}>
-                    <ThemedText type="small" themeColor="sage">
-                      Unblock
-                    </ThemedText>
-                  </Pressable>
-                </View>
-              ))
-            )}
-          </View>
-
-          <View style={styles.section}>
-            <ThemedText type="sectionLabel">Connected accounts</ThemedText>
-            {Platform.OS === 'ios' && (
-              <Button
-                label={linkedProviders.has('apple') ? 'Apple account connected' : 'Connect Apple account'}
-                variant="secondary"
-                onPress={handleLinkApple}
-                loading={isLinkingApple}
-                disabled={linkedProviders.has('apple')}
-              />
-            )}
-            {Platform.OS !== 'web' && (
-              <Button
-                label={linkedProviders.has('google') ? 'Google account connected' : 'Connect Google account'}
-                variant="secondary"
-                onPress={handleLinkGoogle}
-                loading={isLinkingGoogle}
-                disabled={linkedProviders.has('google')}
-              />
-            )}
-            {linkError && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {linkError}
-              </ThemedText>
-            )}
-          </View>
-          <View style={styles.section}>
+          <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="sectionLabel">About</ThemedText>
-            <Pressable onPress={() => router.push('/terms')} hitSlop={8}>
-              <ThemedText type="small" themeColor="sage">
-                Terms of use
-              </ThemedText>
-            </Pressable>
-            {/* Both render only once a real destination is configured — see
+            <SettingsRow label="Terms of use" onPress={() => router.push('/terms')} />
+            {/* Both render only once a real destination is configured -- see
                 legal.ts. A link that 404s reads worse to a reviewer than no
                 link at all. */}
             {hasPrivacyPolicy && (
-              <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={8}>
-                <ThemedText type="small" themeColor="sage">
-                  Privacy policy
-                </ThemedText>
-              </Pressable>
+              <SettingsRow
+                label="Privacy policy"
+                onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+              />
             )}
             {hasSupportEmail && (
-              <Pressable onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} hitSlop={8}>
-                <ThemedText type="small" themeColor="sage">
-                  Contact support
-                </ThemedText>
-              </Pressable>
+              <SettingsRow
+                label="Contact support"
+                onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
+              />
             )}
-          </View>
+          </ThemedView>
 
-          <View style={styles.section}>
-            <ThemedText type="sectionLabel">Delete account</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Permanently deletes your account and everything in it. This cannot be undone.
-            </ThemedText>
-            <Pressable onPress={() => setIsDeleteOpen(true)} hitSlop={8}>
-              <ThemedText type="small" themeColor="sage">
-                Delete my account
-              </ThemedText>
-            </Pressable>
-          </View>
+          {/* Last, alone, and in the danger colour. It previously sat in a
+              section styled exactly like About, with its action text the
+              same sage as "Terms of use". */}
+          <ThemedView type="backgroundElement" style={styles.card}>
+            <SettingsRow
+              label="Delete my account"
+              description="Permanently deletes your account and everything in it. This cannot be undone."
+              tone="danger"
+              onPress={() => setIsDeleteOpen(true)}
+            />
+          </ThemedView>
         </Animated.ScrollView>
         <DeleteAccountModal
           visible={isDeleteOpen}
@@ -464,6 +391,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
   },
+  // Every group is a card now. The page used to be flat sectionLabels on
+  // the screen background, which gave a reader no way to see where one
+  // group ended and the next began -- the same treatment the rest of the
+  // app already uses for grouped content (moderation.tsx, the filter sheet).
+  card: {
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+    gap: Spacing.two,
+  },
+  // Separates two related-but-distinct things inside one card, where a
+  // second sectionLabel would imply they are unrelated.
+  divider: {
+    height: 1,
+    backgroundColor: 'rgba(234,231,207,0.12)',
+    marginVertical: Spacing.one,
+  },
   section: {
     gap: Spacing.two,
   },
@@ -478,10 +421,5 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.one,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  blockedRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
   },
 });

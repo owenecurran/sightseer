@@ -39,6 +39,12 @@ export const Colors = {
   backgroundSelected: '#1a3524',
   textSecondary: 'rgba(234,231,207,0.65)',
   sage: BrandColors.sage,
+  // Destructive actions only — deleting an account, and nothing else yet.
+  // Taken from the warm end of the rating gradient (#ca4021) rather than a
+  // new hue, so it reads as this app's red rather than a system alert red.
+  // Needed because every actionable text on the settings screen was sage,
+  // which made "Delete my account" look exactly like "Terms of use".
+  danger: '#d0523c',
 } as const;
 
 export type ThemeColor = keyof typeof Colors;

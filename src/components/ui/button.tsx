@@ -20,7 +20,12 @@ export function Button({ label, variant = 'primary', loading, disabled, style, .
       {({ pressed }) => (
         <ThemedView
           type={isPrimary ? 'text' : 'backgroundElement'}
-          style={[styles.button, pressed && styles.pressed, (disabled || loading) && styles.disabled]}>
+          style={[
+            styles.button,
+            !isPrimary && styles.secondary,
+            pressed && styles.pressed,
+            (disabled || loading) && styles.disabled,
+          ]}>
           {loading ? (
             <ActivityIndicator color={isPrimary ? theme.background : theme.text} />
           ) : (
@@ -41,6 +46,15 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // A secondary button fills with backgroundElement, which is also the
+  // colour of the cards it now sits inside on Settings — so on a card it
+  // was invisible and "Sign out" read as a heading rather than a control.
+  // Only the secondary variant needs this; the primary one is a solid cream
+  // fill that reads as a button anywhere.
+  secondary: {
+    borderWidth: 1,
+    borderColor: 'rgba(234,231,207,0.18)',
   },
   // roundedStat (HelveticaRoundedBold) reads noticeably larger than
   // smallBold's plain-sans 14px at the same nominal size — bumped up a

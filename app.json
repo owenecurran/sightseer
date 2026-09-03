@@ -50,7 +50,12 @@
           "locationWhenInUsePermission": "Sightseer uses your location to show places near you, center the map, and attach a place to reviews you write. Location is only used while you are using the app."
         }
       ],
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.1008231061316-tf2p84i3h2uiiv75m1v6f3nn3dg5b5u3"
+        }
+      ],
       "expo-apple-authentication",
       [
         "expo-contacts",
