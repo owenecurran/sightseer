@@ -22,7 +22,7 @@ SplashScreen.preventAutoHideAsync();
 
 // Paths that legitimately render with no session — excluded from the
 // signed-out redirect below so it can't loop against itself.
-const AUTH_PATHS = ['/sign-in', '/sign-up', '/forgot-password'];
+const AUTH_PATHS = ['/welcome', '/sign-in', '/sign-up', '/forgot-password'];
 
 function RootNavigator() {
   const { session, profile, isLoading } = useAuth();
@@ -77,7 +77,11 @@ function RootNavigator() {
   useEffect(() => {
     if (isLoading || isAuthenticated) return;
     if (AUTH_PATHS.includes(pathname)) return;
-    router.replace('/sign-in');
+    // The welcome screen, not the sign-in form: someone arriving with no
+    // session is usually meeting the app for the first time, and a password
+    // field is a poor introduction. Anyone who already has an account is
+    // one tap from it.
+    router.replace('/welcome');
   }, [isAuthenticated, isLoading, pathname]);
 
   // Exactly the same problem as the block above, for the same reason. A ban
@@ -144,6 +148,7 @@ function RootNavigator() {
         <View style={{ flex: 1 }}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Protected guard={!isAuthenticated}>
+              <Stack.Screen name="(auth)/welcome" />
               <Stack.Screen name="(auth)/sign-in" />
               <Stack.Screen name="(auth)/sign-up" />
               <Stack.Screen name="(auth)/forgot-password" />
