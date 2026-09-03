@@ -10,6 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { LoadableImage } from '@/components/ui/loadable-image';
+import { buildPlaceMapUrl } from '@/lib/place-map-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
@@ -36,6 +37,14 @@ const RATING_SPLIT = 5;
 // harmony breakdown), so these pages use it too rather than a "8.6 ★" that
 // appeared nowhere else. Row stamps are smaller than the header's, which is
 // summarising the whole place.
+// The hero image's fixed height, and the width the map is requested at.
+// The image is full-bleed within the content column, so the width is a
+// generous upper bound rather than a measurement — buildPlaceMapUrl clamps
+// it, and cover-fitting handles the rest. Measuring would mean a layout
+// pass before any URL existed, and a visible pop when it arrived.
+const HERO_HEIGHT = 180;
+const HERO_MAP_WIDTH = 440;
+
 const ROW_STAMP_SIZE = 44;
 const HEADER_STAMP_SIZE = 52;
 
@@ -188,6 +197,28 @@ export default function PlaceDetailScreen() {
   const heroPhotoId = visits[0]?.photoIds[0];
   const heroPhotoUrl = heroPhotoId ? photoUrls[heroPhotoId] : undefined;
 
+  // ...and when there is no review to borrow a photo from — a place nobody
+  // has written up yet, which is most of them — a satellite map of the
+  // place itself. Without this the page opens on a bare title, which reads
+  // as broken rather than as empty.
+  //
+  // Sized to the hero's own fixed height rather than PlaceMapImage's 16:9,
+  // and deliberately not that component: its whole affordance is tapping
+  // through to the place page, which is the page you are already on.
+  //
+  // Null for a place cached without coordinates (states and continents
+  // usually are), which falls back to no image exactly as before.
+  const heroMapUrl =
+    heroPhotoUrl || !place?.lat || !place?.lng
+      ? null
+      : buildPlaceMapUrl({
+          lat: place.lat,
+          lng: place.lng,
+          level: place.level,
+          width: HERO_MAP_WIDTH,
+          height: HERO_HEIGHT,
+        });
+
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
@@ -216,9 +247,12 @@ export default function PlaceDetailScreen() {
             <View style={[styles.contentWrap, styles.headerSection]}>
               <BackLink seed="[id]" />
 
-              {heroPhotoUrl && (
+              {(heroPhotoUrl || heroMapUrl) && (
                 <View style={styles.heroWrap}>
-                  <LoadableImage source={{ uri: heroPhotoUrl }} style={styles.hero} />
+                  <LoadableImage
+                    source={{ uri: (heroPhotoUrl ?? heroMapUrl) as string }}
+                    style={styles.hero}
+                  />
                 </View>
               )}
 
@@ -460,7 +494,7 @@ const styles = StyleSheet.create({
   },
   heroWrap: {
     width: '100%',
-    height: 180,
+    height: HERO_HEIGHT,
     borderRadius: Spacing.three,
     overflow: 'hidden',
   },

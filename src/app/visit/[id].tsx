@@ -9,6 +9,7 @@ import { CommentsThread } from '@/components/comments-section';
 import { FeedAuthorLine } from '@/components/feed-author-line';
 import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { PhotoGrid } from '@/components/photo-grid';
+import { PlaceMapImage } from '@/components/place-map-image';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
@@ -167,6 +168,20 @@ export default function VisitDetailScreen() {
               const photos = visit.photoIds
                 .map((id, i) => ({ url: photoUrls[id], ratio: visit.photoAspectRatios[i] }))
                 .filter((p): p is { url: string; ratio: number | null } => p.url != null);
+              // Matches visit-card.tsx: no photos means a map of where
+              // this happened, not an empty slot.
+              if (photos.length === 0) {
+                if (visit.placeLat == null || visit.placeLng == null) return null;
+                return (
+                  <PlaceMapImage
+                    placeId={visit.placeId}
+                    placeName={visit.placeName}
+                    lat={visit.placeLat}
+                    lng={visit.placeLng}
+                    level={visit.placeLevel}
+                  />
+                );
+              }
               return <PhotoGrid urls={photos.map((p) => p.url)} aspectRatios={photos.map((p) => p.ratio)} />;
             })()}
 
