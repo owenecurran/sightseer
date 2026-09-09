@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LayoutChangeEvent, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
@@ -9,13 +9,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { SignInForm, SignUpForm } from '@/components/auth/auth-forms';
+import { Image } from 'expo-image';
+
+import { ForgotPasswordForm, SignInForm, SignUpForm } from '@/components/auth/auth-forms';
 import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { WelcomeRoad } from '@/components/welcome-road';
 import { BrandColors, Colors, MaxContentWidth, Spacing } from '@/constants/theme';
+import { buildLogoDataUri, LOGO_ASPECT } from '@/lib/brand-logo';
 import { getLandingImageUrls } from '@/lib/landing-images';
 
 // How far the hero slides down when the panel opens, as a fraction of the
@@ -27,7 +30,7 @@ const OPEN_MS = 420;
 const CLOSE_MS = 320;
 const STEP_MS = 380;
 
-type Step = 'choose' | 'signin' | 'signup';
+type Step = 'choose' | 'signin' | 'signup' | 'forgot';
 
 // The first screen a fresh install shows.
 //
@@ -43,6 +46,9 @@ type Step = 'choose' | 'signin' | 'signup';
 export default function WelcomeScreen() {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+
+  // Built once: the string is a couple of KB and the colour never changes.
+  const logoUri = useMemo(() => buildLogoDataUri(), []);
 
   // What the stage grows to when the panel is full screen: everything left
   // after the safe areas and the panel's own padding. The form centres
@@ -248,21 +254,38 @@ export default function WelcomeScreen() {
                       form in place rather than navigating, since the whole
                       point here is that it is one screen. */}
                   <View style={[styles.authPage, { height: expandedStageHeight }]}>
+                    {/* The wordmark, tinted cream rather than shipped in
+                        its source colour — see brand-logo.ts. */}
+                    <Image source={{ uri: logoUri }} style={styles.logo} contentFit="contain" />
+
                     <ThemedText type="title" style={styles.centred}>
-                      {step === 'signin' ? 'Welcome back' : 'Create account'}
+                      {step === 'signin'
+                        ? 'Welcome back'
+                        : step === 'forgot'
+                          ? 'Reset password'
+                          : 'Create account'}
                     </ThemedText>
 
                     {step === 'signup' && <SignUpForm />}
-                    {step === 'signin' && <SignInForm />}
+                    {step === 'signin' && <SignInForm onForgotPassword={() => chooseStep('forgot')} />}
+                    {step === 'forgot' && <ForgotPasswordForm />}
 
+                    {/* Swaps the form in place rather than navigating,
+                        since the whole point here is that it is one
+                        screen. From the reset step it returns to signing
+                        in, which is where someone resetting was headed. */}
                     <Pressable
-                      onPress={() => chooseStep(step === 'signup' ? 'signin' : 'signup')}
+                      onPress={() =>
+                        chooseStep(step === 'signup' || step === 'forgot' ? 'signin' : 'signup')
+                      }
                       style={styles.link}
                       hitSlop={8}>
                       <ThemedText type="linkPrimary">
                         {step === 'signup'
                           ? 'Already have an account? Sign in'
-                          : 'Don’t have an account? Sign up'}
+                          : step === 'forgot'
+                            ? 'Back to sign in'
+                            : 'Don’t have an account? Sign up'}
                       </ThemedText>
                     </Pressable>
                   </View>
@@ -348,6 +371,18 @@ const styles = StyleSheet.create({
   authPage: {
     justifyContent: 'center',
     gap: Spacing.five,
+  },
+  // Sits above the title, inside the same centred column, so it moves with
+  // the rest of the page rather than being pinned to the panel.
+  logo: {
+    // Wide, not square — the wordmark is roughly 1.75:1, so a square box
+    // would letterbox it and shrink it to nothing.
+    width: 180,
+    height: 180 / LOGO_ASPECT,
+    alignSelf: 'center',
+    // The column's own gap is Spacing.five, which is too much between a
+    // mark and the title it belongs to.
+    marginBottom: -Spacing.three,
   },
   link: {
     alignSelf: 'center',

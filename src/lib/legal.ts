@@ -15,8 +15,18 @@
 //
 // Left empty rather than pointed at a guess, so the links below simply do not
 // render until they are real — a dead link is worse than an absent one.
+//
+// The domain is now sightseer.world. SUPPORT_EMAIL is filled because it can
+// be made live for free with Cloudflare Email Routing forwarding to an
+// existing inbox, with no page to write.
+//
+// PRIVACY_POLICY_URL stays empty ON PURPOSE. The page does not exist yet,
+// and the whole point of the guard above is that pointing at a URL that
+// 404s is worse than showing nothing — a reviewer following a dead privacy
+// link is a rejection. Set it to https://sightseer.world/privacy the moment
+// that page is actually served.
 export const PRIVACY_POLICY_URL = '';
-export const SUPPORT_EMAIL = '';
+export const SUPPORT_EMAIL = 'hello@sightseer.world';
 
 export const hasPrivacyPolicy = PRIVACY_POLICY_URL.length > 0;
 export const hasSupportEmail = SUPPORT_EMAIL.length > 0;

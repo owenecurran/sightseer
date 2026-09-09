@@ -7,6 +7,13 @@ import { supabase } from '@/lib/supabase';
 // unauthenticated functions in this project — this screen renders before
 // anyone has a session, so there is nothing to authenticate with.
 //
+// CONSENT. Every row in that table is shown publicly, to people with no
+// account, on the first screen of the app. Nothing in the schema enforces
+// it, so the rule is operational: an admin only adds a photo whose author
+// has agreed to it, and `source_visit_id` exists so that author stays
+// traceable afterwards. This is a commitment to users and belongs in the
+// privacy policy, not only in this comment — see src/lib/legal.ts.
+//
 // Returns an empty list rather than throwing. This is the first thing a new
 // install shows, often on a bad connection, and the screen is designed to
 // stand on its own without the road behind it. A blank first impression
