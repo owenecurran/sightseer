@@ -1,28 +1,33 @@
-import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { LayoutChangeEvent, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
+  interpolate,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SignInForm, SignUpForm } from '@/components/auth/auth-forms';
+import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { WelcomeRoad } from '@/components/welcome-road';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { BrandColors, Colors, MaxContentWidth, Spacing } from '@/constants/theme';
 import { getLandingImageUrls } from '@/lib/landing-images';
 
-// How far the hero slides down when the auth panel opens, as a fraction of
-// the screen. Enough to clear the panel and read as the page making room,
-// short of pushing the wordmark off the bottom.
-const HERO_SHIFT_RATIO = 0.18;
+// How far the hero slides down when the panel opens, as a fraction of the
+// screen. Enough to clear the panel and read as the page making room, short
+// of pushing the wordmark off the bottom.
+const HERO_SHIFT_RATIO = 0.2;
 
 const OPEN_MS = 420;
 const CLOSE_MS = 320;
+const STEP_MS = 380;
+
+type Step = 'choose' | 'signin' | 'signup';
 
 // The first screen a fresh install shows.
 //
@@ -30,14 +35,44 @@ const CLOSE_MS = 320;
 // layout sends anyone without a session here rather than straight to the
 // sign-in form, so the first thing a new person meets is the app rather
 // than a password field.
+//
+// Signing in and signing up happen HERE, in the panel, rather than on the
+// (auth) routes. Those routes still exist and still work; this screen just
+// never navigates to them, so the whole entry flow is one uninterrupted
+// movement of one sheet.
 export default function WelcomeScreen() {
   const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  // What the stage grows to when the panel is full screen: everything left
+  // after the safe areas and the panel's own padding. The form centres
+  // inside this, which is what makes the expanded panel sit identically to
+  // the standalone (auth)/sign-up screen rather than merely being as tall
+  // as its own content.
+  const expandedStageHeight = Math.max(
+    0,
+    height - insets.bottom - insets.top - Spacing.four * 2
+  );
   const [images, setImages] = useState<string[]>([]);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [step, setStep] = useState<Step>('choose');
 
-  // 0 closed, 1 open. One value drives the hero's shift, the panel's rise
-  // and both fades, so they cannot drift out of step.
+  // Measured rather than assumed: the two blocks are different heights and
+  // the form's own height depends on whether an error is showing, so a
+  // fixed value would either clip it or leave a gap.
+  const [chooseHeight, setChooseHeight] = useState(0);
+  const [formHeight, setFormHeight] = useState(0);
+  // The panel's natural height while it is still a sheet. Captured ONLY in
+  // the choose step: once a form is showing the panel is full-screen, so
+  // measuring then would feed the expanded height back in as the collapsed
+  // one and the animation would have nowhere to travel.
+  const [sheetHeight, setSheetHeight] = useState(0);
+
+  // 0 closed, 1 open. Drives the hero's shift, the panel's rise and the
+  // road's dimming together, so they cannot drift out of step.
   const reveal = useSharedValue(0);
+  // 0 showing the choices, 1 showing the chosen form.
+  const stepProgress = useSharedValue(0);
 
   useEffect(() => {
     let isActive = true;
@@ -57,78 +92,185 @@ export default function WelcomeScreen() {
   function closeAuth() {
     setIsAuthOpen(false);
     reveal.value = withTiming(0, { duration: CLOSE_MS, easing: Easing.in(Easing.cubic) });
+    setStep('choose');
+    stepProgress.value = withTiming(0, { duration: STEP_MS, easing: Easing.out(Easing.cubic) });
+  }
+
+  function chooseStep(next: Step) {
+    setStep(next);
+    stepProgress.value = withTiming(next === 'choose' ? 0 : 1, {
+      duration: STEP_MS,
+      easing: Easing.out(Easing.cubic),
+    });
   }
 
   const heroStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: reveal.value * height * HERO_SHIFT_RATIO }],
   }));
 
-  // The road dims rather than stopping — the motion continuing behind the
-  // panel is what keeps the screen feeling alive while someone reads it.
-  const roadStyle = useAnimatedStyle(() => ({
-    opacity: 1 - reveal.value * 0.55,
+  // A wash over the road rather than opacity ON the road.
+  //
+  // Animating the road's own opacity multiplied with each card's, which
+  // made overlapping photos ghost through each other the moment this ran.
+  // A scrim leaves every card fully opaque and just darkens what is behind
+  // the panel.
+  const scrimStyle = useAnimatedStyle(() => ({
+    opacity: 0.55 + reveal.value * 0.3,
   }));
 
+  // The panel is a sheet while it is offering the choice and a full screen
+  // once a form is showing, matching every other screen in the app rather
+  // than leaving a form crammed into a drawer. Height animates between the
+  // two, so it is one continuous expansion rather than a swap.
   const panelStyle = useAnimatedStyle(() => ({
     opacity: reveal.value,
     transform: [{ translateY: (1 - reveal.value) * height * 0.35 }],
+    ...(sheetHeight
+      ? { height: interpolate(stepProgress.value, [0, 1], [sheetHeight, height]) }
+      : {}),
+  }));
+
+  // Clears the status bar only once the panel owns the whole screen.
+  //
+  // A SafeAreaView top edge would have done this, but it applies its inset
+  // in BOTH states — so the sheet carried a status-bar-sized band of dead
+  // space it never needed, which pushed its content down and clipped the
+  // last button off the bottom of the screen.
+  const panelInnerStyle = useAnimatedStyle(() => ({
+    paddingTop: Spacing.four + interpolate(stepProgress.value, [0, 1], [0, insets.top]),
+  }));
+
+  // Only present once the panel is a full screen. On the sheet there is
+  // nothing to go back TO — the choices are already what you would return
+  // to — and a back control there would just compete with tapping away.
+  const backStyle = useAnimatedStyle(() => ({ opacity: stepProgress.value }));
+
+  // Rounded as a sheet, square once it owns the whole screen — a corner
+  // radius against the screen edge reads as an unfinished overlay.
+  const panelSurfaceStyle = useAnimatedStyle(() => {
+    const radius = interpolate(stepProgress.value, [0, 1], [Spacing.four, 0]);
+    return { borderTopLeftRadius: radius, borderTopRightRadius: radius };
+  });
+
+  // The panel grows and shrinks to whichever block is showing, and the
+  // column inside slides up by exactly the height of the choices — so the
+  // options box travels upward and the form it uncovers arrives in its
+  // place, as one movement.
+  const stageStyle = useAnimatedStyle(() => {
+    // No height at all until the choices have been measured.
+    //
+    // The measurement happens INSIDE this view, so driving its height from
+    // that measurement on the very first pass pins it at zero and it can
+    // never recover — the panel opened empty. Leaving the height auto until
+    // there is a real number lets the first layout happen naturally, and
+    // the animation takes over from the second.
+    if (!chooseHeight) return {};
+    return {
+      height: interpolate(stepProgress.value, [0, 1], [chooseHeight, expandedStageHeight]),
+    };
+  });
+
+  const columnStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -stepProgress.value * (chooseHeight || 0) }],
   }));
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <Animated.View style={[StyleSheet.absoluteFill, roadStyle]}>
+      <View style={styles.fill}>
         <WelcomeRoad images={images} />
-      </Animated.View>
+      </View>
 
-      {/* Sits between the road and the wordmark. Without it the title
-          competes with whatever photo happens to be passing behind it, and
-          the one thing this screen has to do is say what the app is. */}
-      <View style={styles.scrim} pointerEvents="none" />
+      {/* Between the road and the wordmark. Without it the title competes
+          with whatever photo happens to be passing behind it, and the one
+          thing this screen has to do is say what the app is. */}
+      <Animated.View style={[styles.fill, styles.scrim, scrimStyle]} pointerEvents="none" />
 
-      <SafeAreaView style={styles.safeArea}>
-        <Animated.View style={[styles.hero, heroStyle]}>
-          <ThemedText type="displaySerif" style={styles.wordmark}>
+      <SafeAreaView style={styles.safeArea} pointerEvents="box-none">
+        <Animated.View style={[styles.hero, heroStyle]} pointerEvents="box-none">
+          <ThemedText type="displaySerif" style={styles.centred}>
             Sightseer
           </ThemedText>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.tagline}>
+          <ThemedText type="default" themeColor="textSecondary" style={styles.centred}>
             A journal of everywhere you have been.
           </ThemedText>
 
           {/* Hidden once the panel is open rather than left underneath it:
               a Get started button still sitting behind an open sheet is
               reachable by a stray tap and means nothing at that point. */}
-          {!isAuthOpen && (
-            <Button label="Get started" onPress={openAuth} style={styles.cta} />
-          )}
+          {!isAuthOpen && <Button label="Get started" onPress={openAuth} style={styles.cta} />}
         </Animated.View>
       </SafeAreaView>
 
       {/* Tapping away closes it. Only mounted while open so it never eats
           taps meant for the Get started button. */}
       {isAuthOpen && (
-        <Animated.View
-          style={[StyleSheet.absoluteFill, styles.dismissLayer]}
-          onTouchEnd={closeAuth}
-        />
+        <Pressable style={styles.fill} onPress={closeAuth} accessibilityLabel="Dismiss" />
       )}
 
-      <Animated.View style={[styles.panelWrap, panelStyle]} pointerEvents={isAuthOpen ? 'auto' : 'none'}>
-        <ThemedView type="backgroundElement" style={styles.panel}>
-          <SafeAreaView edges={['bottom']}>
-            <View style={styles.panelInner}>
-              <ThemedText type="sectionLabel">Get started</ThemedText>
-              <Button
-                label="Create an account"
-                onPress={() => router.push('/(auth)/sign-up')}
-              />
-              <Button
-                label="I already have an account"
-                variant="secondary"
-                onPress={() => router.push('/(auth)/sign-in')}
-              />
-            </View>
+      <Animated.View
+        style={[styles.panelWrap, panelStyle]}
+        pointerEvents={isAuthOpen ? 'auto' : 'none'}>
+        <Animated.View style={[styles.panel, panelSurfaceStyle]}>
+          <Animated.View
+            style={[styles.panelBack, { top: insets.top + Spacing.three }, backStyle]}
+            pointerEvents={step === 'choose' ? 'none' : 'auto'}>
+            <BackLink seed="welcome-auth" onPress={() => chooseStep('choose')} />
+          </Animated.View>
+
+          <SafeAreaView edges={['bottom']} style={styles.panelSafe}>
+            <Animated.View
+              style={[styles.panelInner, panelInnerStyle]}
+              onLayout={(e: LayoutChangeEvent) => {
+                if (step === 'choose') setSheetHeight(e.nativeEvent.layout.height);
+              }}>
+              {/* Clips the column to whichever block is showing. The
+                  other is still mounted just above or below the window,
+                  which is what lets the movement be a slide rather than a
+                  swap. */}
+              <Animated.View style={[styles.stage, stageStyle]}>
+                <Animated.View style={columnStyle}>
+                  <View
+                    onLayout={(e: LayoutChangeEvent) => setChooseHeight(e.nativeEvent.layout.height)}>
+                    <View style={styles.choices}>
+                      <ThemedText type="sectionLabel">Get started</ThemedText>
+                      <Button label="Create an account" onPress={() => chooseStep('signup')} />
+                      <Button
+                        label="I already have an account"
+                        variant="secondary"
+                        onPress={() => chooseStep('signin')}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Laid out exactly as (auth)/sign-up.tsx: a centred
+                      title, the form, and a link underneath, in a column
+                      centred in the available height. The link swaps the
+                      form in place rather than navigating, since the whole
+                      point here is that it is one screen. */}
+                  <View style={[styles.authPage, { height: expandedStageHeight }]}>
+                    <ThemedText type="title" style={styles.centred}>
+                      {step === 'signin' ? 'Welcome back' : 'Create account'}
+                    </ThemedText>
+
+                    {step === 'signup' && <SignUpForm />}
+                    {step === 'signin' && <SignInForm />}
+
+                    <Pressable
+                      onPress={() => chooseStep(step === 'signup' ? 'signin' : 'signup')}
+                      style={styles.link}
+                      hitSlop={8}>
+                      <ThemedText type="linkPrimary">
+                        {step === 'signup'
+                          ? 'Already have an account? Sign in'
+                          : 'Don’t have an account? Sign up'}
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                </Animated.View>
+              </Animated.View>
+            </Animated.View>
           </SafeAreaView>
-        </ThemedView>
+        </Animated.View>
       </Animated.View>
     </ThemedView>
   );
@@ -138,15 +280,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  // Darkest at the vertical middle, where the wordmark sits, and clearing
-  // toward the edges so the road is still visible arriving and leaving.
-  scrim: {
+  fill: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(3,16,9,0.55)',
+  },
+  scrim: {
+    backgroundColor: BrandColors.background,
   },
   safeArea: {
     flex: 1,
@@ -160,18 +302,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
   },
-  wordmark: {
-    textAlign: 'center',
-  },
-  tagline: {
+  centred: {
     textAlign: 'center',
   },
   cta: {
     marginTop: Spacing.three,
     alignSelf: 'stretch',
-  },
-  dismissLayer: {
-    backgroundColor: 'transparent',
   },
   panelWrap: {
     position: 'absolute',
@@ -180,8 +316,23 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   panel: {
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
+    // Its own colour rather than ThemedView's, because this now animates
+    // its corner radius and has to be an Animated.View.
+    backgroundColor: Colors.backgroundElement,
+    flex: 1,
+    overflow: 'hidden',
+  },
+  panelSafe: {
+    flex: 1,
+  },
+  // Absolute, and above the centred column: the form has to stay centred in
+  // the whole panel, so the back control cannot be a row in that column
+  // without pushing it off centre. Left-aligned, which also keeps it clear
+  // of the floating settings button in the opposite corner.
+  panelBack: {
+    position: 'absolute',
+    left: Spacing.four,
+    zIndex: 2,
   },
   panelInner: {
     alignSelf: 'center',
@@ -191,5 +342,21 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.four,
     paddingBottom: Spacing.four,
     gap: Spacing.three,
+  },
+  // Matches (auth)/sign-up.tsx's own safeArea block, so the expanded panel
+  // and the standalone screen are the same layout.
+  authPage: {
+    justifyContent: 'center',
+    gap: Spacing.five,
+  },
+  link: {
+    alignSelf: 'center',
+  },
+  stage: {
+    overflow: 'hidden',
+  },
+  choices: {
+    gap: Spacing.three,
+    paddingBottom: Spacing.three,
   },
 });

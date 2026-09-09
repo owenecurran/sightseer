@@ -149,8 +149,13 @@ function RootNavigator() {
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Protected guard={!isAuthenticated}>
               <Stack.Screen name="(auth)/welcome" />
-              <Stack.Screen name="(auth)/sign-in" />
-              <Stack.Screen name="(auth)/sign-up" />
+              {/* Both rise from the bottom rather than sliding in from the
+                  right. The welcome screen's auth panel is already a sheet
+                  moving upward, so a sideways push read as a different kind
+                  of navigation interrupting it; coming up from below makes
+                  the form feel like the next thing that sheet reveals. */}
+              <Stack.Screen name="(auth)/sign-in" options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="(auth)/sign-up" options={{ animation: 'slide_from_bottom' }} />
               <Stack.Screen name="(auth)/forgot-password" />
             </Stack.Protected>
 
