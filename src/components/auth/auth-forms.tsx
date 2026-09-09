@@ -9,6 +9,7 @@ import { Turnstile, isTurnstileConfigured } from '@/components/auth/turnstile';
 import { SocialAuthButtons } from '@/components/ui/social-auth-buttons';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
+import { authErrorMessage, isEmailNotConfirmed } from '@/lib/auth-errors';
 import { supabase } from '@/lib/supabase';
 import { signInWithUsername } from '@/lib/username-signin';
 
@@ -21,6 +22,13 @@ import { signInWithUsername } from '@/lib/username-signin';
 // is exactly one implementation of each and the two entry points cannot
 // drift apart.
 
+// Captcha is NOT signup-only.
+//
+// Once captcha protection is enabled on the project, Supabase enforces it
+// on every auth grant — password sign-in, password recovery and resend
+// included, not just /signup. A form that omits the token is not merely
+// unprotected, it is BROKEN: the endpoint rejects it outright. That is how
+// enabling Turnstile locked every existing account out of signing in.
 const MIN_PASSWORD_LENGTH = 6;
 
 // Mount/unmount is animated with Reanimated's layout animations rather
@@ -33,14 +41,42 @@ const MIN_PASSWORD_LENGTH = 6;
 // entering/exiting need no measurement at all.
 const REVEAL_MS = 260;
 
+// Asking for another confirmation link.
+//
+// Shared by the sign-in form and the post-signup screen: both want the same
+// email, and both have to send a captcha token because Supabase gates
+// /resend exactly like every other auth endpoint.
+function resendConfirmationEmail(email: string, captchaToken: string | null) {
+  return supabase.auth.resend({
+    type: 'signup',
+    email,
+    options: captchaToken ? { captchaToken } : undefined,
+  });
+}
+
 export function SignInForm({ onForgotPassword }: { onForgotPassword?: () => void }) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
+  // Set only when a sign-in failed because the address is unconfirmed, and
+  // holds the address itself so the resend goes to what was actually typed.
+  const [unconfirmedEmail, setUnconfirmedEmail] = useState<string | null>(null);
+  const [isResending, setIsResending] = useState(false);
+  const [resent, setResent] = useState(false);
 
   async function handleSignIn() {
     setError(null);
+    setUnconfirmedEmail(null);
+    setResent(false);
+
+    if (isTurnstileConfigured && !captchaToken) {
+      setError('Please complete the security check.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       // Email sign-in is unchanged; a bare handle (no "@") routes through
@@ -49,18 +85,53 @@ export function SignInForm({ onForgotPassword }: { onForgotPassword?: () => void
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: identifier,
           password,
+          options: captchaToken ? { captchaToken } : undefined,
         });
         if (signInError) throw signInError;
       } else {
-        await signInWithUsername(identifier, password);
+        await signInWithUsername(identifier, password, captchaToken);
       }
       // On success, AuthProvider picks up the new session and the root
       // layout redirects.
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not sign in.');
+      setError(authErrorMessage(err, 'Could not sign in. Please try again.'));
+      // Only the email path can offer a resend. resolve-username-signin
+      // answers every failure with one generic message on purpose, so that
+      // a handle never reveals whether an account exists — which means it
+      // cannot tell us which address to send to either.
+      if (isEmailNotConfirmed(err) && identifier.includes('@')) {
+        setUnconfirmedEmail(identifier.trim());
+      }
+      // Single-use, and already spent against the failed attempt.
+      setCaptchaToken(null);
+      setCaptchaReset((n) => n + 1);
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleResendConfirmation() {
+    if (!unconfirmedEmail) return;
+    setError(null);
+
+    // The sign-in attempt spent the previous token and reset the widget, so
+    // this is a genuinely new one rather than the one that just failed.
+    if (isTurnstileConfigured && !captchaToken) {
+      setError('Please complete the security check, then try again.');
+      return;
+    }
+
+    setIsResending(true);
+    const { error: resendError } = await resendConfirmationEmail(unconfirmedEmail, captchaToken);
+    setIsResending(false);
+
+    if (resendError) {
+      setError(authErrorMessage(resendError, 'Could not send another email just now.'));
+    } else {
+      setResent(true);
+    }
+    setCaptchaToken(null);
+    setCaptchaReset((n) => n + 1);
   }
 
   return (
@@ -68,7 +139,13 @@ export function SignInForm({ onForgotPassword }: { onForgotPassword?: () => void
       <TextField
         placeholder="Email or username"
         value={identifier}
-        onChangeText={setIdentifier}
+        onChangeText={(next) => {
+          setIdentifier(next);
+          // Typing a different address should not leave an offer to resend
+          // to the previous one standing underneath it.
+          setUnconfirmedEmail(null);
+          setResent(false);
+        }}
         autoCapitalize="none"
         textContentType="username"
       />
@@ -84,7 +161,24 @@ export function SignInForm({ onForgotPassword }: { onForgotPassword?: () => void
           {error}
         </ThemedText>
       )}
+      <Turnstile onToken={setCaptchaToken} action="signin" resetSignal={captchaReset} />
       <Button label="Sign in" onPress={handleSignIn} loading={isSubmitting} />
+      {/* Only after a sign-in that failed for this specific reason —
+          otherwise it is an unexplained button on a form nobody has
+          submitted yet. */}
+      {unconfirmedEmail && !resent && (
+        <Button
+          label="Resend confirmation email"
+          variant="secondary"
+          onPress={handleResendConfirmation}
+          loading={isResending}
+        />
+      )}
+      {resent && (
+        <ThemedText type="small" themeColor="sage">
+          Sent again to {unconfirmedEmail}. It can take a minute to arrive.
+        </ThemedText>
+      )}
       {onForgotPassword && (
         <ThemedText type="link" style={styles.inlineLink} onPress={onForgotPassword}>
           Forgot password?
@@ -142,7 +236,7 @@ export function SignUpForm() {
     setIsSubmitting(false);
 
     if (signUpError) {
-      setError(signUpError.message);
+      setError(authErrorMessage(signUpError, 'Could not create the account. Please try again.'));
       // A token is single-use: once Supabase has verified it, a retry with
       // the same one fails. Clearing the token is not enough on its own —
       // the widget has to be told to issue another, or the form can never
@@ -187,7 +281,8 @@ export function SignUpForm() {
       {password.length > 0 && (
         <Animated.View
           entering={FadeInDown.duration(REVEAL_MS)}
-          exiting={FadeOutUp.duration(REVEAL_MS)}>
+          exiting={FadeOutUp.duration(REVEAL_MS)}
+        >
           <TextField
             placeholder="Confirm password"
             value={confirmPassword}
@@ -218,19 +313,32 @@ function ConfirmationPending({ email }: { email: string }) {
   const [isResending, setIsResending] = useState(false);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   async function handleResend() {
     setError(null);
     setResent(false);
+
+    if (isTurnstileConfigured && !captchaToken) {
+      setError('Please complete the security check.');
+      return;
+    }
+
     setIsResending(true);
-    const { error: resendError } = await supabase.auth.resend({ type: 'signup', email });
+    const { error: resendError } = await resendConfirmationEmail(email, captchaToken);
     setIsResending(false);
 
     if (resendError) {
-      setError(resendError.message);
+      setError(authErrorMessage(resendError, 'Could not send another email just now.'));
+      setCaptchaToken(null);
+      setCaptchaReset((n) => n + 1);
       return;
     }
     setResent(true);
+    // Spent. Asking for another needs a fresh one.
+    setCaptchaToken(null);
+    setCaptchaReset((n) => n + 1);
   }
 
   return (
@@ -248,6 +356,7 @@ function ConfirmationPending({ email }: { email: string }) {
           Sent again. It can take a minute to arrive.
         </ThemedText>
       )}
+      <Turnstile onToken={setCaptchaToken} action="resend" resetSignal={captchaReset} />
       <Button
         label="Resend confirmation email"
         variant="secondary"
@@ -265,17 +374,28 @@ export function ForgotPasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   async function handleSubmit() {
     setError(null);
+
+    if (isTurnstileConfigured && !captchaToken) {
+      setError('Please complete the security check.');
+      return;
+    }
+
     setIsSubmitting(true);
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: Linking.createURL('/reset-password'),
+      captchaToken: captchaToken ?? undefined,
     });
     setIsSubmitting(false);
 
     if (resetError) {
-      setError(resetError.message);
+      setError(authErrorMessage(resetError, 'Could not send the reset link. Please try again.'));
+      setCaptchaToken(null);
+      setCaptchaReset((n) => n + 1);
       return;
     }
     setSent(true);
@@ -311,7 +431,13 @@ export function ForgotPasswordForm() {
           {error}
         </ThemedText>
       )}
-      <Button label="Send reset link" onPress={handleSubmit} loading={isSubmitting} />
+      <Turnstile onToken={setCaptchaToken} action="reset" resetSignal={captchaReset} />
+      <Button
+        label="Send reset link"
+        onPress={handleSubmit}
+        loading={isSubmitting}
+        disabled={!email.trim()}
+      />
     </View>
   );
 }

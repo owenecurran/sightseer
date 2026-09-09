@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { BrandColors, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 
 // Cloudflare Turnstile, which Supabase verifies server-side.
 //
@@ -94,7 +94,7 @@ function widgetHtml(siteKey: string, action: string): string {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
     <style>
-      html, body { margin: 0; padding: 0; background: ${BrandColors.background}; }
+      html, body { margin: 0; padding: 0; background: transparent; }
       #widget { display: flex; justify-content: center; padding-top: 4px; }
     </style>
   </head>
@@ -198,7 +198,15 @@ const styles = StyleSheet.create({
   },
   web: {
     flex: 1,
-    backgroundColor: BrandColors.background,
+    // Transparent, not the brand background.
+    //
+    // A WebView paints its own ground, and a flat BrandColors.background
+    // here sat as a visibly darker rectangle on top of the screen's
+    // GradientColors wash — the captcha looked patched onto the form
+    // rather than part of it. This only works together with the
+    // transparent html/body in widgetHtml: the page's own background
+    // paints over the view's, so both have to give way.
+    backgroundColor: 'transparent',
     marginHorizontal: -Spacing.one,
   },
 });
