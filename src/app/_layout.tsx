@@ -1,7 +1,7 @@
 import { useFonts } from 'expo-font';
 import { DarkTheme, router, Stack, ThemeProvider, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useRef, useState, useEffect} from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type PagerView from 'react-native-pager-view';
@@ -22,7 +22,16 @@ SplashScreen.preventAutoHideAsync();
 
 // Paths that legitimately render with no session — excluded from the
 // signed-out redirect below so it can't loop against itself.
-const AUTH_PATHS = ['/welcome', '/sign-in', '/sign-up', '/forgot-password'];
+const AUTH_PATHS = [
+  '/welcome',
+  '/sign-in',
+  '/sign-up',
+  '/forgot-password',
+  // Reached with no session by definition — the account exists but is
+  // not confirmed yet, so without this the redirect below bounces the
+  // person straight back to /welcome and the code can never be entered.
+  '/verify-email',
+];
 
 function RootNavigator() {
   const { session, profile, isLoading } = useAuth();
@@ -36,7 +45,8 @@ function RootNavigator() {
   const hasCompletedOnboarding = profile?.handle != null;
   const hasSetDemographics = profile?.has_set_demographics === true;
   const hasSetPrivacy = profile?.has_set_privacy === true;
-  const hasPassedInviteGate = profile?.has_shared_invite === true || profile?.invite_exempt === true;
+  const hasPassedInviteGate =
+    profile?.has_shared_invite === true || profile?.invite_exempt === true;
   // Supersedes every other gate below, including terms and onboarding: an
   // account banned mid-signup should land on the ban screen rather than be
   // walked through the rest of the flow first.
@@ -144,7 +154,8 @@ function RootNavigator() {
   return (
     <NavBarVisibilityProvider>
       <TabPagerProvider
-        value={{ pagerRef, activeIndex, setActiveIndexInternal: setActiveIndex, setActivePage }}>
+        value={{ pagerRef, activeIndex, setActiveIndexInternal: setActiveIndex, setActivePage }}
+      >
         <View style={{ flex: 1 }}>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Protected guard={!isAuthenticated}>
@@ -157,6 +168,10 @@ function RootNavigator() {
               <Stack.Screen name="(auth)/sign-in" options={{ animation: 'slide_from_bottom' }} />
               <Stack.Screen name="(auth)/sign-up" options={{ animation: 'slide_from_bottom' }} />
               <Stack.Screen name="(auth)/forgot-password" />
+              <Stack.Screen
+                name="(auth)/verify-email"
+                options={{ animation: 'slide_from_bottom' }}
+              />
             </Stack.Protected>
 
             {/* Registered for ANY signed-in user, not only those who have yet
@@ -179,11 +194,20 @@ function RootNavigator() {
             </Stack.Protected>
 
             <Stack.Protected
-              guard={isAuthenticated && !isBanned && hasAcceptedTerms && !hasCompletedOnboarding}>
+              guard={isAuthenticated && !isBanned && hasAcceptedTerms && !hasCompletedOnboarding}
+            >
               <Stack.Screen name="onboarding" />
             </Stack.Protected>
 
-            <Stack.Protected guard={isAuthenticated && !isBanned && hasAcceptedTerms && hasCompletedOnboarding && !hasSetDemographics}>
+            <Stack.Protected
+              guard={
+                isAuthenticated &&
+                !isBanned &&
+                hasAcceptedTerms &&
+                hasCompletedOnboarding &&
+                !hasSetDemographics
+              }
+            >
               <Stack.Screen name="demographics" />
             </Stack.Protected>
 
@@ -195,7 +219,8 @@ function RootNavigator() {
                 hasCompletedOnboarding &&
                 hasSetDemographics &&
                 !hasSetPrivacy
-              }>
+              }
+            >
               <Stack.Screen name="privacy-choice" />
             </Stack.Protected>
 
@@ -208,7 +233,8 @@ function RootNavigator() {
                 hasSetDemographics &&
                 hasSetPrivacy &&
                 !hasPassedInviteGate
-              }>
+              }
+            >
               <Stack.Screen name="invite-gate" />
             </Stack.Protected>
 
@@ -221,7 +247,8 @@ function RootNavigator() {
                 hasSetDemographics &&
                 hasSetPrivacy &&
                 hasPassedInviteGate
-              }>
+              }
+            >
               <Stack.Screen name="(tabs)" />
             </Stack.Protected>
           </Stack>
@@ -231,7 +258,7 @@ function RootNavigator() {
               visibility became route-scoped (isOnMainTab) rather than just
               auth-scoped. */}
           {showNavBar && <FloatingNavBar />}
-      <PushPrimingModal userId={hasFinishedSignup ? (session?.user.id ?? null) : null} />
+          <PushPrimingModal userId={hasFinishedSignup ? (session?.user.id ?? null) : null} />
         </View>
       </TabPagerProvider>
     </NavBarVisibilityProvider>
