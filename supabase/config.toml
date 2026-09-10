@@ -444,6 +444,14 @@ verify_jwt = false
 import_map = "./functions/create-draft-photo-upload-url/deno.json"
 entrypoint = "./functions/create-draft-photo-upload-url/index.ts"
 
+# Unauthenticated by design: the welcome screen renders before anyone has a
+# session. It takes no input and only signs rows an admin curated into
+# landing_images, so an anonymous caller cannot point it at anything else.
+[functions.get-landing-image-urls]
+enabled = true
+verify_jwt = false
+import_map = "./functions/get-landing-image-urls/deno.json"
+
 [functions.get-photo-urls]
 enabled = true
 verify_jwt = false

@@ -13,6 +13,7 @@ import { CommentsThread } from "@/components/comments-section";
 import { FeedAuthorLine } from "@/components/feed-author-line";
 import { FeedCardHeaderText } from "@/components/feed-place-photo-block";
 import { PhotoGrid } from "@/components/photo-grid";
+import { PlaceMapImage } from "@/components/place-map-image";
 import { ThemedView } from "@/components/themed-view";
 import { Avatar } from "@/components/ui/avatar";
 import { VisitActionsRow } from "@/components/visit-actions-row";
@@ -275,6 +276,23 @@ export function VisitCard({
             .filter(
               (p): p is { id: string; url: string; ratio: number | null } => p.url != null,
             );
+          // A review with no photos gets a map of where it happened
+          // rather than a gap. Only when the place actually has
+          // coordinates — broader places (states, continents) are often
+          // cached without them, and those fall through to the empty card
+          // the feed showed before.
+          if (photos.length === 0) {
+            if (visit.placeLat == null || visit.placeLng == null) return null;
+            return (
+              <PlaceMapImage
+                placeId={visit.placeId}
+                placeName={visit.placeName}
+                lat={visit.placeLat}
+                lng={visit.placeLng}
+                level={visit.placeLevel}
+              />
+            );
+          }
           return (
             <PhotoGrid
               urls={photos.map((p) => p.url)}

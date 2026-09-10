@@ -44,6 +44,27 @@ if (Notifications) {
   });
 }
 
+// The one place a push token is asked for.
+//
+// Read from the app config rather than requiring a separate env var to be
+// kept in sync with app.json's extra.eas.projectId — one source, and one
+// less thing to forget when setting the project up somewhere new.
+//
+// Shared by register and unregister precisely so those two cannot ask
+// different questions. They used to: register passed the projectId and
+// unregister did not. In practice both resolve the same token, because the
+// projectId is in the manifest either way — but if they ever diverged, the
+// failure would be silent and would land exactly where it hurts most.
+// unregisterPush would delete nothing, and the next person to sign in on
+// that device would keep receiving the previous account's notifications,
+// which is the one thing that function exists to prevent.
+function getPushToken() {
+  const projectId =
+    (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas
+      ?.projectId ?? process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
+  return Notifications!.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+}
+
 // Registers this device for push and stores the token against the signed-in
 // user. Safe to call on every launch: push_tokens is keyed on the token, so
 // re-registering the same device updates in place.
@@ -80,15 +101,7 @@ export async function registerForPush(userId: string): Promise<string | null> {
       });
     }
 
-    // Read from the app config rather than requiring a separate env var to
-    // be kept in sync with app.json's extra.eas.projectId — one source, and
-    // one less thing to forget when setting the project up somewhere new.
-    const projectId =
-      (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas
-        ?.projectId ?? process.env.EXPO_PUBLIC_EAS_PROJECT_ID;
-    const { data: token } = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
+    const { data: token } = await getPushToken();
     if (!token) return null;
 
     await supabase.from('push_tokens').upsert(
@@ -137,7 +150,7 @@ export async function unregisterPush(): Promise<void> {
   // previous account's notifications after a sign-out.
   if (!Notifications || (!Device.isDevice && Platform.OS === 'ios')) return;
   try {
-    const { data: token } = await Notifications.getExpoPushTokenAsync();
+    const { data: token } = await getPushToken();
     if (token) await supabase.from('push_tokens').delete().eq('token', token);
   } catch {
     // A device that cannot produce a token has nothing registered to remove.

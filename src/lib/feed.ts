@@ -26,6 +26,11 @@ export type FeedVisit = {
   // round-trip just for coordinates. Null for a place cached without them.
   placeLat: number | null;
   placeLng: number | null;
+  // How broad the place is ('poi', 'locality', 'country', ...). Carried so
+  // a map rendered for this visit can pick a zoom that suits it — a city at
+  // a POI's zoom is three unrecognisable streets, and a POI at a country's
+  // is an empty continent.
+  placeLevel: string | null;
   // "Colorado, United States" (or just one of the two, or null if the
   // hierarchy is missing/incomplete) — see resolveStateCountry.
   stateCountry: string | null;
@@ -54,7 +59,7 @@ export type FeedVisit = {
 // can't come from an aggregate, so it's resolved separately in one batched
 // query per list — see getMyLikedVisitIds.
 export const FEED_VISIT_SELECT =
-  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), visit_tags(tag_slug, tags(label)), comments(count)';
+  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng, level), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), visit_tags(tag_slug, tags(label)), comments(count)';
 
 export type RawFeedVisit = {
   id: string;
@@ -65,7 +70,7 @@ export type RawFeedVisit = {
   user_id: string;
   place_id: string;
   users: { handle: string | null; name: string | null } | null;
-  places: { name: string; lat: number | null; lng: number | null } | null;
+  places: { name: string; lat: number | null; lng: number | null; level: string | null } | null;
   photos: { id: string; position: number; width: number | null; height: number | null }[];
   likes: { count: number }[];
   visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
@@ -102,6 +107,7 @@ export function mapRawFeedVisit(
     placeName: visit.places?.name ?? 'Unknown place',
     placeLat: visit.places?.lat ?? null,
     placeLng: visit.places?.lng ?? null,
+    placeLevel: visit.places?.level ?? null,
     stateCountry: stateCountryMap?.get(visit.place_id) ?? null,
     photoIds: [...visit.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
     photoAspectRatios: [...visit.photos]

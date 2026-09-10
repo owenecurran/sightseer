@@ -1,4 +1,43 @@
+import { Platform } from 'react-native';
+
 import { supabase } from '@/lib/supabase';
+
+// The two client IDs Google Sign-In needs, which do different jobs and are
+// both required on iOS.
+//
+// webClientId is the AUDIENCE of the ID token — Supabase verifies the token
+// was minted for this project, so it must be the Web client even in a
+// native app.
+//
+// iosClientId is WHICH NATIVE CLIENT THIS APP IS. Android does not need it
+// passed because the library reads it out of google-services.json, which is
+// bundled there; iOS has no equivalent file here, so without this the SDK
+// has nothing to identify itself with and throws
+// "RNGoogleSignin: failed to determine clientID" before any UI appears.
+//
+// Passing iosClientId on Android is harmless (it is simply unused), but the
+// value is only defined for the platform that needs it so a missing iOS
+// client ID cannot silently look configured.
+function googleSignInConfig() {
+  return {
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    ...(Platform.OS === 'ios'
+      ? { iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }
+      : {}),
+  };
+}
+
+// Fails with something a human can act on. The SDK's own error names the
+// symptom, not the cause, and this is the one misconfiguration that reaches
+// a real user as a dead button.
+function assertGoogleConfigured() {
+  if (!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
+    throw new Error('Google sign-in is not configured: EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is unset.');
+  }
+  if (Platform.OS === 'ios' && !process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID) {
+    throw new Error('Google sign-in is not configured: EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID is unset.');
+  }
+}
 
 // Links a Google/Apple identity onto the CURRENTLY signed-in Supabase user
 // (Settings' "Connect account" action) via linkIdentity's native ID-token
@@ -29,10 +68,8 @@ export async function linkAppleAccount(): Promise<void> {
 
 export async function linkGoogleAccount(): Promise<void> {
   const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
-  // The "Web" client ID from Google Cloud Console (not the iOS/Android one)
-  // — Supabase's own ID-token verification requires it, same as the iOS/
-  // Android SDKs themselves do for the `idToken` field to be populated.
-  GoogleSignin.configure({ webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID });
+  assertGoogleConfigured();
+  GoogleSignin.configure(googleSignInConfig());
   await GoogleSignin.hasPlayServices();
   const response = await GoogleSignin.signIn();
   if (response.type !== 'success' || !response.data.idToken) {
@@ -79,7 +116,8 @@ export async function signInWithApple(): Promise<void> {
 
 export async function signInWithGoogle(): Promise<void> {
   const { GoogleSignin } = await import('@react-native-google-signin/google-signin');
-  GoogleSignin.configure({ webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID });
+  assertGoogleConfigured();
+  GoogleSignin.configure(googleSignInConfig());
   await GoogleSignin.hasPlayServices();
   const response = await GoogleSignin.signIn();
   if (response.type !== 'success' || !response.data.idToken) {

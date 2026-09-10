@@ -71,6 +71,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
     fontSize: 16,
+    // The fill is backgroundElement, which is also the colour of the cards
+    // these now sit inside on Settings — so on a card the field was
+    // invisible, reading as loose placeholder text rather than something
+    // you can type in. The outline is what makes it a field on any
+    // background; on the screen background it is nearly imperceptible.
+    borderWidth: 1,
+    borderColor: 'rgba(234,231,207,0.18)',
   },
   wrap: {
     justifyContent: 'center',

@@ -531,7 +531,7 @@ export default function TravelBookDetailScreen() {
                       <ThemedView type="backgroundSelected" style={styles.eligibleRow}>
                         <ThemedText type="small">{visit.placeName}</ThemedText>
                         {visit.rating != null ? (
-                          <RatingGlassBadgeGated rating={visit.rating} size={24} />
+                          <RatingGlassBadgeGated rating={visit.rating} size={24} seed={visit.id} />
                         ) : (
                           <ThemedText type="small" themeColor="textSecondary">
                             Visited

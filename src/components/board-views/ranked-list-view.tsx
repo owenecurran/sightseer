@@ -97,7 +97,7 @@ export function RankedListView({
                   <OwnRatingLine rating={ownRating} />
                 )}
               </View>
-              {isVisit && item.rating != null && <RatingGlassBadgeGated rating={item.rating} size={32} />}
+              {isVisit && item.rating != null && <RatingGlassBadgeGated rating={item.rating} size={32} seed={item.id} />}
               {isOwner && (
                 <Pressable onPress={() => setConfirmingItemId(item.id)} hitSlop={8}>
                   <ThemedText type="small" themeColor="textSecondary">

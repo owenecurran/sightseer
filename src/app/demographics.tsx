@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,14 +8,15 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { markAgeGateApplied, recordAgeGateFailure, shouldBlockNewAccount } from '@/lib/age-gate';
 import { useAuth } from '@/lib/auth-context';
+import { flagSelfUnderage, MIN_AGE_YEARS } from '@/lib/bans';
 import type { Database } from '@/lib/database.types';
 import { addHomeLocation } from '@/lib/home-locations';
 import { supabase } from '@/lib/supabase';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
-const MIN_AGE_YEARS = 13;
 const BIRTHDATE_YEARS_BACK = 100;
 
 // A neutral starting point for the birthdate wheel — defaulting to "today"
@@ -53,6 +54,30 @@ export default function DemographicsScreen() {
   const [birthdate, setBirthdate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Someone who already failed the age gate on this device and then made a
+  // second account gets stopped here rather than at the point of answering.
+  // Weak on its own — a reinstall clears it — but it costs one read and
+  // closes the obvious retry.
+  //
+  // Mount-once via a ref, with refreshProfile deliberately absent from the
+  // dependencies: it is redeclared on every AuthProvider render and calls
+  // setProfile, so depending on it would make this effect re-run its own
+  // consequence forever.
+  const hasCheckedDevice = useRef(false);
+  useEffect(() => {
+    if (hasCheckedDevice.current || !session) return;
+    hasCheckedDevice.current = true;
+    shouldBlockNewAccount(session.user.id).then(async (shouldBlock) => {
+      if (!shouldBlock) return;
+      // Marked first, so this account is never blocked twice — that is what
+      // makes a later admin unban permanent rather than something this
+      // effect quietly reverses on the next visit.
+      await markAgeGateApplied(session.user.id);
+      flagSelfUnderage().then(refreshProfile).catch(() => {});
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   async function submit(fields: { home_place_id: string | null; birthdate: string | null }) {
     if (!session) return;
@@ -94,16 +119,51 @@ export default function DemographicsScreen() {
     // Root layout re-evaluates guards once profile.has_set_demographics is true.
   }
 
-  function handleContinue() {
-    if (birthdate && ageInYears(birthdate) < MIN_AGE_YEARS) {
-      setError(`You must be at least ${MIN_AGE_YEARS} to use Sightseer.`);
-      return;
+  // Shared by both buttons — the birthdate rules are identical whether or
+  // not a home location was given, and having them in one place is what
+  // stops the two paths drifting apart the way they did when skipping
+  // submitted a null birthdate.
+  //
+  // Returns false when the caller should stop.
+  async function passesAgeCheck(): Promise<boolean> {
+    if (!birthdate) {
+      setError('Please enter your date of birth to continue.');
+      return false;
     }
+    if (ageInYears(birthdate) >= MIN_AGE_YEARS) return true;
+
+    // A single answer, acted on once. Rather than just refusing and letting
+    // them type a different year, the declared age closes the account and is
+    // remembered on this device — the retry is the entire failure mode of an
+    // age gate that only says no.
+    //
+    // Order matters: the device flag is written first so it survives even if
+    // the network call fails. Neither is reversible from in here; an admin
+    // lifts an underage ban, which is the mistyped-year escape hatch.
+    setIsSubmitting(true);
+    if (session) await recordAgeGateFailure(session.user.id);
+    try {
+      await flagSelfUnderage();
+      // Routes to the ban screen once the guard in _layout.tsx sees it.
+      await refreshProfile();
+    } catch {
+      // Deliberately stated only AFTER a date is entered. Announcing the
+      // threshold up front mostly teaches a child which year to type.
+      setError(`You must be at least ${MIN_AGE_YEARS} to use Sightseer.`);
+    }
+    setIsSubmitting(false);
+    return false;
+  }
+
+  async function handleContinue() {
+    if (!(await passesAgeCheck())) return;
     submit({ home_place_id: homePlace?.id ?? null, birthdate });
   }
 
-  function handleSkip() {
-    submit({ home_place_id: null, birthdate: null });
+  // Skips the home location only — the birthdate is not skippable.
+  async function handleSkipHomeLocation() {
+    if (!(await passesAgeCheck())) return;
+    submit({ home_place_id: null, birthdate });
   }
 
   return (
@@ -113,8 +173,8 @@ export default function DemographicsScreen() {
           Tell us about yourself
         </ThemedText>
         <ThemedText type="default" style={styles.title} themeColor="textSecondary">
-          Optional — helps us build better recommendations down the line. You can add this later in
-          Settings.
+          Your date of birth is required. Where you are based is optional and helps us build better
+          recommendations — you can add it later in Settings.
         </ThemedText>
 
         <View style={styles.section}>
@@ -172,9 +232,9 @@ export default function DemographicsScreen() {
         )}
 
         <Button label="Continue" onPress={handleContinue} loading={isSubmitting} />
-        <Pressable onPress={handleSkip} disabled={isSubmitting}>
+        <Pressable onPress={handleSkipHomeLocation} disabled={isSubmitting}>
           <ThemedText type="link" style={styles.title}>
-            Skip for now
+            Skip home location
           </ThemedText>
         </Pressable>
 

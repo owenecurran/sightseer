@@ -645,7 +645,7 @@ export default function PromptEditorScreen() {
                           style={[styles.chip, styles.visitChip]}>
                           <ThemedText type="small">{v.placeName}</ThemedText>
                           {v.rating != null && (
-                            <RatingGlassBadgeGated rating={v.rating} size={VISIT_CHIP_STAMP_SIZE} />
+                            <RatingGlassBadgeGated rating={v.rating} size={VISIT_CHIP_STAMP_SIZE} seed={v.id} />
                           )}
                         </ThemedView>
                       </Pressable>

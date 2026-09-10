@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -52,6 +53,18 @@ export type MenuGroup = SingleGroup | MultiGroup;
 export function FilterSortMenu({ groups }: { groups: MenuGroup[] }) {
   const theme = useTheme();
   const [isOpen, setIsOpen] = useState(false);
+  // The sheet sits flush against the bottom of the screen, so on a phone
+  // with a home indicator its last row lands underneath it — reported as
+  // the menu being cut off at the bottom on iOS. The old
+  // `paddingBottom: Spacing.five` (32) was almost exactly the 34pt
+  // indicator inset, so effectively all of it was being spent on the
+  // indicator and none on actual spacing.
+  //
+  // `useSafeAreaInsets()` rather than `SafeAreaView` for the reason
+  // location-search-modal.native.tsx documents: RN's `Modal` presents in
+  // its own native view hierarchy on iOS, which SafeAreaView's automatic
+  // detection does not reliably reach into.
+  const insets = useSafeAreaInsets();
 
   const summary = groups
     .map((group) => {
@@ -114,7 +127,10 @@ export function FilterSortMenu({ groups }: { groups: MenuGroup[] }) {
 
               <ScrollView
                 style={styles.scroll}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[
+                  styles.scrollContent,
+                  { paddingBottom: insets.bottom + Spacing.five },
+                ]}
                 showsVerticalScrollIndicator={false}>
                 {groups.map((group) => (
                   <View key={group.key} style={styles.group}>
@@ -188,14 +204,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
+  // The height cap lives HERE, not on the sheet. As a percentage it has to
+  // resolve against a parent with a definite height, and `overlay` has one
+  // (flex: 1 of the modal root) while `sheetWrap` itself does not — a
+  // percentage maxHeight on the sheet was being measured against a parent
+  // whose own height depended on that same child.
   sheetWrap: {
     width: '100%',
     alignItems: 'center',
+    maxHeight: '80%',
   },
   sheet: {
     width: '100%',
     maxWidth: 480,
-    maxHeight: '75%',
+    // React Native defaults flexShrink to 0, unlike the web. Without this
+    // the sheet ignores the cap above and grows to fit its content, which
+    // is how a long option list (the place page reaches five sorts, three
+    // filters and up to eight tags) runs off the bottom of the screen.
+    flexShrink: 1,
     borderTopLeftRadius: Spacing.four,
     borderTopRightRadius: Spacing.four,
     paddingTop: Spacing.three,
@@ -209,10 +235,13 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 0,
+    // Same reason as the sheet: it has to be allowed to shrink for the cap
+    // to reach the scrolling content rather than stopping at the sheet.
+    flexShrink: 1,
   },
   scrollContent: {
     paddingHorizontal: Spacing.four,
-    paddingBottom: Spacing.five,
+    // paddingBottom is applied inline — it depends on the safe-area inset.
     gap: Spacing.three,
   },
   group: {

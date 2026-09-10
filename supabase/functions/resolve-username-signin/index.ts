@@ -21,7 +21,7 @@ function fail() {
 // the password has actually been verified.
 export default {
   fetch: withSupabase({ auth: "none" }, async (req, ctx) => {
-    const { handle, password } = await req.json();
+    const { handle, password, captchaToken } = await req.json();
     if (typeof handle !== "string" || typeof password !== "string" || !handle || !password) {
       return fail();
     }
@@ -48,6 +48,11 @@ export default {
     const { data: signInData, error: signInError } = await anon.auth.signInWithPassword({
       email: authUser.user.email,
       password,
+      // Forwarded from the client. This call is a real sign-in grant, so
+      // it is subject to the project's captcha protection exactly as the
+      // client's own call would be — omitting it fails every username
+      // sign-in with a captcha error.
+      options: typeof captchaToken === "string" && captchaToken ? { captchaToken } : undefined,
     });
     if (signInError || !signInData.session) {
       return fail();

@@ -13,6 +13,12 @@ export type VisitDetail = {
   authorName: string;
   placeName: string;
   placeId: string;
+  // Same reason FeedVisit carries these: a review with no photos shows a
+  // map of where it happened instead, and that needs coordinates and a
+  // level to pick a zoom.
+  placeLat: number | null;
+  placeLng: number | null;
+  placeLevel: string | null;
   stateCountry: string | null;
   photoIds: string[];
   photoAspectRatios: (number | null)[];
@@ -33,7 +39,7 @@ type RawVisitDetail = {
   user_id: string;
   place_id: string;
   users: { handle: string | null; name: string | null } | null;
-  places: { name: string } | null;
+  places: { name: string; lat: number | null; lng: number | null; level: string | null } | null;
   photos: { id: string; position: number; width: number | null; height: number | null }[];
   likes: { count: number }[];
   visit_tagged_users: { user_id: string; users: { handle: string | null; name: string | null } | null }[];
@@ -50,7 +56,7 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
   const { data, error } = await supabase
     .from('visits')
     .select(
-      'id, rating, note, visited_on, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), visit_tags(tag_slug, tags(label)), comments(count)'
+      'id, rating, note, visited_on, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng, level), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), visit_tags(tag_slug, tags(label)), comments(count)'
     )
     .eq('id', visitId)
     .maybeSingle();
@@ -82,6 +88,9 @@ export async function getVisitDetail(visitId: string, myUserId: string): Promise
     authorName: v.users?.name ?? v.users?.handle ?? 'Someone',
     placeName: v.places?.name ?? 'Unknown place',
     placeId: v.place_id,
+    placeLat: v.places?.lat ?? null,
+    placeLng: v.places?.lng ?? null,
+    placeLevel: v.places?.level ?? null,
     stateCountry: stateCountryMap.get(v.place_id) ?? null,
     photoIds: [...v.photos].sort((a, b) => a.position - b.position).map((p) => p.id),
     photoAspectRatios: [...v.photos]

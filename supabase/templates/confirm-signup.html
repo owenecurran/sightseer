@@ -1,0 +1,198 @@
+<!--
+  Supabase Auth → Email Templates → "Confirm signup".
+
+  NOT applied by being in this repo. The [auth.email.template] blocks in
+  supabase/config.toml only take effect for a local `supabase start`, and
+  this app always points at the hosted project (see AGENTS.md) — so this
+  file is the source of truth for the markup, and the dashboard is where it
+  has to be pasted.
+
+  A CODE, NOT A LINK. Including the .Token variable is what makes Supabase
+  treat this as an OTP confirmation. A tapped link has to survive whatever
+  browser the mail app hands it to, on a device that may not be the one
+  that started the signup, and it lands the person in the web app rather
+  than back in the app they were using. A code is carried back by hand from
+  any inbox on any device.
+
+  ONE COLOUR SCHEME, FORCED. This renders the app's palette — dark green
+  ground, cream type — in every client, rather than letting a phone's dark
+  mode invent its own. Three things do that work together, because no one
+  of them is enough:
+
+    * Solid hex everywhere, never rgba(). Several clients drop rgba
+      outright and fall back to the inherited colour, which on a dark
+      ground means dark text on dark. The muted tones here are the same
+      cream pre-blended against the background.
+    * bgcolor attributes alongside the inline background-color. Older
+      clients honour the attribute and ignore the style.
+    * !important plus the [data-ogsc] block below, which is the hook
+      Outlook.com and Windows Mail leave behind after rewriting colours
+      for their own dark mode.
+
+  Gmail's mobile dark mode may still shift things slightly; it rewrites
+  colours with no override hook at all. The palette is close enough to its
+  target that the result stays legible either way.
+
+  THE LOGO CARRIES ITS OWN BACKGROUND. Gmail rewrites CSS colours for its
+  dark mode but never touches images, so a cream wordmark on a transparent
+  ground washed out the moment Gmail flipped the page behind it to near
+  white — confirmed on Gmail for iOS. Baking the dark green chip into the
+  PNG makes it immune: the mark reads the same whether the ground around it
+  ends up dark or light. It is a PNG rather than the source SVG because
+  Gmail and several other clients do not render SVG in email at all.
+
+  Available variables (named without their {{ }} delimiters on purpose:
+  Supabase substitutes them anywhere in the file, comments included):
+  .ConfirmationURL, .Token, .TokenHash, .SiteURL, .Email, .RedirectTo.
+
+  Written as table layout with inline styles because that is what mail
+  clients reliably render — flexbox, grid and <style> blocks are all
+  unreliable across Outlook and Gmail.
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    supported-color-schemes: dark;
+  }
+  [data-ogsc] .ss-ground {
+    background-color: #031009 !important;
+  }
+  [data-ogsc] .ss-cream {
+    color: #eae7cf !important;
+  }
+  [data-ogsc] .ss-muted {
+    color: #999c8a !important;
+  }
+  [data-ogsc] .ss-faint {
+    color: #6b7162 !important;
+  }
+  [data-ogsc] .ss-chip {
+    background-color: #0f2318 !important;
+    color: #eae7cf !important;
+  }
+</style>
+
+<table
+  role="presentation"
+  class="ss-ground"
+  width="100%"
+  cellpadding="0"
+  cellspacing="0"
+  bgcolor="#031009"
+  style="margin: 0; padding: 0; background-color: #031009 !important"
+>
+  <tr>
+    <td class="ss-ground" align="center" bgcolor="#031009" style="padding: 40px 16px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width: 480px">
+        <tr>
+          <td align="center" style="padding-bottom: 28px">
+            <img
+              src="https://alien-app.expo.app/sightseer-logo-email.png"
+              width="240"
+              height="137"
+              alt="Sightseer"
+              style="display: block; border: 0; outline: none; text-decoration: none"
+            />
+          </td>
+        </tr>
+
+        <tr>
+          <td
+            class="ss-cream"
+            align="center"
+            style="
+              font-family: Georgia, 'Times New Roman', serif;
+              font-size: 32px;
+              line-height: 38px;
+              color: #eae7cf !important;
+              padding-bottom: 16px;
+            "
+          >
+            Confirm your email
+          </td>
+        </tr>
+
+        <tr>
+          <td
+            class="ss-muted"
+            align="center"
+            style="
+              font-family: Helvetica, Arial, sans-serif;
+              font-size: 15px;
+              line-height: 23px;
+              color: #999c8a !important;
+              padding-bottom: 28px;
+            "
+          >
+            Enter this code in the app to finish setting up {{ .Email }}.
+          </td>
+        </tr>
+
+        <tr>
+          <td align="center" style="padding-bottom: 28px">
+            <!-- The code as a table cell rather than styled text: letter-spacing
+                 is unreliable across clients, and Outlook in particular drops it
+                 silently, so the emphasis has to come from size and a real
+                 background rather than tracking alone. -->
+            <table role="presentation" cellpadding="0" cellspacing="0">
+              <tr>
+                <td
+                  class="ss-chip"
+                  align="center"
+                  bgcolor="#0f2318"
+                  style="
+                    background-color: #0f2318 !important;
+                    border-radius: 16px;
+                    padding: 20px 36px;
+                    font-family: Consolas, Menlo, Courier, monospace;
+                    font-size: 34px;
+                    line-height: 40px;
+                    font-weight: bold;
+                    color: #eae7cf !important;
+                    letter-spacing: 8px;
+                  "
+                >
+                  {{ .Token }}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <td
+            class="ss-muted"
+            align="center"
+            style="
+              font-family: Helvetica, Arial, sans-serif;
+              font-size: 13px;
+              line-height: 20px;
+              color: #999c8a !important;
+              padding-bottom: 32px;
+            "
+          >
+            The code expires in an hour. Asking for a new one in the app makes this one stop
+            working.
+          </td>
+        </tr>
+
+        <tr>
+          <td
+            class="ss-faint"
+            align="center"
+            style="
+              font-family: Helvetica, Arial, sans-serif;
+              font-size: 12px;
+              line-height: 18px;
+              color: #6b7162 !important;
+              border-top: 1px solid #1f2a21;
+              padding-top: 24px;
+            "
+          >
+            If you did not create a Sightseer account, you can ignore this email.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
