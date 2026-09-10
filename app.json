@@ -69,6 +69,13 @@
           "cameraPermission": "Sightseer uses your camera so you can take a photo directly for a review.",
           "photosPermission": "Sightseer needs access to your photos so you can add them to a review and set your profile picture."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#a0bd91"
+        }
       ]
     ],
     "experiments": {
