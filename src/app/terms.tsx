@@ -1,98 +1,33 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { TermsContent, TermsVersionStamp } from '@/components/terms-content';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Button } from '@/components/ui/button';
 import { BackLink } from '@/components/ui/back-link';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
-import { useAuth } from '@/lib/auth-context';
-import { supabase } from '@/lib/supabase';
-import { TERMS_SECTIONS, TERMS_VERSION } from '@/lib/terms';
 
-// The terms gate. Sits ahead of onboarding in the root layout's guard chain,
-// so nobody is asked for a handle or a birthdate before they have agreed to
-// anything.
+// The terms as a thing you can go and read — Settings' "Terms of use" row.
+// Nothing to agree to here; the gate that collects acceptance is the
+// separate `accept-terms` route.
 //
-// No decline button: declining is closing the app, and a button that signs
-// you out would be a worse version of the same thing. Anyone who wants out
-// can sign out from the account they already have.
+// Registered for any signed-in user, so the Settings link always has a route
+// to push. That is the whole reason this is not the same route as the gate:
+// a single route could not both stay registered for Settings and disappear
+// on acceptance, and it was the disappearing that moved people on.
 export default function TermsScreen() {
-  const { session, profile, refreshProfile } = useAuth();
-  // Already agreed to the version in force? Then this is a re-read from
-  // Settings, not the gate — no button to press, and a way back out. The
-  // gate deliberately has neither.
-  const isReview =
-    profile?.terms_accepted_at != null && profile?.terms_version === TERMS_VERSION;
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleAccept() {
-    if (!session) return;
-    setIsAccepting(true);
-    setError(null);
-    // The version is recorded alongside the timestamp: "agreed once" cannot
-    // answer whether they agreed to what is currently in force.
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        terms_accepted_at: new Date().toISOString(),
-        terms_version: TERMS_VERSION,
-      })
-      .eq('id', session.user.id);
-
-    if (updateError) {
-      setError(updateError.message);
-      setIsAccepting(false);
-      return;
-    }
-    // Refreshing the profile is what flips the guard and moves them on; no
-    // manual navigation, same as the other gates in the chain.
-    await refreshProfile();
-    setIsAccepting(false);
-  }
-
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
-          {isReview && <BackLink seed="terms" />}
+          <BackLink seed="terms" />
           <ThemedText type="displaySerif">Terms of use</ThemedText>
-          {!isReview && (
-            <ThemedText type="small" themeColor="textSecondary">
-              Please read and accept these to continue.
-            </ThemedText>
-          )}
 
-          {TERMS_SECTIONS.map((section) => (
-            <View key={section.heading} style={styles.section}>
-              <ThemedText type="sectionLabel">{section.heading}</ThemedText>
-              <ThemedText type="body" themeColor="textSecondary">
-                {section.body}
-              </ThemedText>
-            </View>
-          ))}
+          <TermsContent />
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
-
-          {!isReview && (
-            <Button
-              label={isAccepting ? 'Saving…' : 'I agree'}
-              onPress={handleAccept}
-              disabled={isAccepting}
-            />
-          )}
-
-          <ThemedText type="small" themeColor="textSecondary" style={styles.version}>
-            Version {TERMS_VERSION}
-          </ThemedText>
+          <TermsVersionStamp />
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
@@ -115,11 +50,5 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     gap: Spacing.three,
     paddingBottom: Spacing.six,
-  },
-  section: {
-    gap: Spacing.one,
-  },
-  version: {
-    textAlign: 'center',
   },
 });

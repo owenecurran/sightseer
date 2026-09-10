@@ -547,6 +547,106 @@ export type Database = {
           },
         ]
       }
+      invite_clicks: {
+        Row: {
+          clicked_at: string
+          code: string
+          id: string
+          platform: string | null
+        }
+        Insert: {
+          clicked_at?: string
+          code: string
+          id?: string
+          platform?: string | null
+        }
+        Update: {
+          clicked_at?: string
+          code?: string
+          id?: string
+          platform?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invite_clicks_code_fkey"
+            columns: ["code"]
+            isOneToOne: false
+            referencedRelation: "invites"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
+      invites: {
+        Row: {
+          code: string
+          created_at: string
+          revoked_at: string | null
+          user_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          revoked_at?: string | null
+          user_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          revoked_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invites_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      landing_images: {
+        Row: {
+          added_by: string | null
+          created_at: string
+          id: string
+          position: number
+          r2_key: string
+          source_visit_id: string | null
+        }
+        Insert: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          position?: number
+          r2_key: string
+          source_visit_id?: string | null
+        }
+        Update: {
+          added_by?: string | null
+          created_at?: string
+          id?: string
+          position?: number
+          r2_key?: string
+          source_visit_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "landing_images_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "landing_images_source_visit_id_fkey"
+            columns: ["source_visit_id"]
+            isOneToOne: false
+            referencedRelation: "visits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       likes: {
         Row: {
           created_at: string
@@ -1510,7 +1610,10 @@ export type Database = {
           hashed_phone: string | null
           home_place_id: string | null
           id: string
+          invite_attributed_at: string | null
           invite_exempt: boolean
+          invited_by: string | null
+          invited_via_code: string | null
           is_admin: boolean
           is_private: boolean
           last_friend_digest_at: string
@@ -1549,7 +1652,10 @@ export type Database = {
           hashed_phone?: string | null
           home_place_id?: string | null
           id: string
+          invite_attributed_at?: string | null
           invite_exempt?: boolean
+          invited_by?: string | null
+          invited_via_code?: string | null
           is_admin?: boolean
           is_private?: boolean
           last_friend_digest_at?: string
@@ -1588,7 +1694,10 @@ export type Database = {
           hashed_phone?: string | null
           home_place_id?: string | null
           id?: string
+          invite_attributed_at?: string | null
           invite_exempt?: boolean
+          invited_by?: string | null
+          invited_via_code?: string | null
           is_admin?: boolean
           is_private?: boolean
           last_friend_digest_at?: string
@@ -1618,6 +1727,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "places"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "users_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "users_invited_via_code_fkey"
+            columns: ["invited_via_code"]
+            isOneToOne: false
+            referencedRelation: "invites"
+            referencedColumns: ["code"]
           },
         ]
       }
@@ -1977,8 +2100,10 @@ export type Database = {
         | { Args: { schema_name: string; table_name: string }; Returns: string }
         | { Args: { table_name: string }; Returns: string }
       enablelongtransactions: { Args: never; Returns: string }
+      ensure_invite_code: { Args: never; Returns: string }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
       flag_self_underage: { Args: never; Returns: undefined }
+      generate_invite_code: { Args: never; Returns: string }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
         Args: { geom1: unknown; geom2: unknown }
@@ -2283,7 +2408,19 @@ export type Database = {
       postgis_wagyu_version: { Args: never; Returns: string }
       publish_draft: { Args: { draft_id: string }; Returns: string }
       rating_recency_weight: { Args: { rated_on: string }; Returns: number }
+      record_invite_click: {
+        Args: { p_code: string; p_platform?: string }
+        Returns: undefined
+      }
+      redeem_invite: { Args: { p_code: string }; Returns: boolean }
       refresh_harmony_for_user: { Args: { uid: string }; Returns: number }
+      resolve_invite: {
+        Args: { p_code: string }
+        Returns: {
+          handle: string
+          name: string
+        }[]
+      }
       resolve_state_countries: {
         Args: { place_ids: string[] }
         Returns: {
@@ -2975,12 +3112,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3004,11 +3141,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3029,11 +3166,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3054,11 +3191,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3071,11 +3208,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

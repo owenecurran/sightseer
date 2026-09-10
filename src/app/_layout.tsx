@@ -9,12 +9,14 @@ import type PagerView from 'react-native-pager-view';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { FloatingNavBar } from '@/components/floating-nav-bar';
+import { WebLanding } from '@/components/web-landing';
 import { KeyboardProviderWrapper } from '@/components/keyboard-provider-wrapper';
 import { PushPrimingModal } from '@/components/push-priming-modal';
 import { TAB_ROUTES } from '@/constants/tab-routes';
 import { NavBarVisibilityProvider } from '@/hooks/use-hide-on-scroll';
 import { TabPagerProvider } from '@/hooks/use-tab-pager';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { initDeferredLinks } from '@/lib/deferred-links';
 import { addPushTapListener, getPushPermissionState, registerForPush } from '@/lib/push';
 import { TERMS_VERSION } from '@/lib/terms';
 
@@ -32,6 +34,25 @@ const AUTH_PATHS = [
   // person straight back to /welcome and the code can never be entered.
   '/verify-email',
 ];
+
+// Invite links are signed-out by definition and are NOT a fixed path, so
+// they cannot live in the exact-match list above.
+//
+// Without this the redirect fired on every invite open and replaced
+// /i/<code> with /welcome — the visitor still landed on the right page, so
+// it looked fine, but it was the anonymous version of it: the band naming
+// whoever invited them never rendered, because the route that knows the code
+// had already been navigated away from. An invite that does not say who it
+// is from is just a link.
+const INVITE_PATH_PREFIX = '/i/';
+
+// The paths that say something meaningful with no session behind them, and
+// therefore the only ones worth putting into the prerendered HTML. Kept
+// deliberately short: every entry is a page that must be correct before the
+// app knows who is looking.
+function isLandingPath(pathname: string): boolean {
+  return pathname === '/welcome' || pathname.startsWith(INVITE_PATH_PREFIX);
+}
 
 function RootNavigator() {
   const { session, profile, isLoading } = useAuth();
@@ -87,6 +108,7 @@ function RootNavigator() {
   useEffect(() => {
     if (isLoading || isAuthenticated) return;
     if (AUTH_PATHS.includes(pathname)) return;
+    if (pathname.startsWith(INVITE_PATH_PREFIX)) return;
     // The welcome screen, not the sign-in form: someone arriving with no
     // session is usually meeting the app for the first time, and a password
     // field is a poor introduction. Anyone who already has an account is
@@ -149,7 +171,34 @@ function RootNavigator() {
   // this is the one component guaranteed to be mounted.
   useEffect(() => addPushTapListener((route) => router.push(route as never)), []);
 
-  if (isLoading) return null;
+  // Attribution for installs that came through a store, where nothing else
+  // survives the round trip. Inert until react-native-branch is both
+  // installed and present in the native build — see docs/deferred-links.md.
+  // Deliberately not gated on having a session: the whole point is that this
+  // fires on a first launch, before there is an account.
+  useEffect(() => initDeferredLinks(), []);
+
+  // Web static rendering runs this component in Node, where AuthProvider's
+  // session effect never fires — so isLoading is true for the entire
+  // prerender and this early return is why every page in this app shipped as
+  // an empty #root. That is invisible in the app (the client hydrates and
+  // renders normally a moment later) but not invisible to a crawler or to a
+  // messaging app generating a link preview, which see the HTML and nothing
+  // else. Invite links are pasted into exactly those places.
+  //
+  // Only the signed-out marketing paths get content here. Everything else
+  // keeps returning null, because everything else genuinely needs to know
+  // who is asking before it can render a single correct pixel.
+  //
+  // Hydration-safe by construction rather than by luck: isLoading is true on
+  // the server AND on the client's very first render, so both produce this
+  // same landing and React has nothing to reconcile. Rendering the component
+  // directly rather than routing to it keeps that guarantee — the router's
+  // own state is not settled this early.
+  if (isLoading) {
+    if (Platform.OS === 'web' && isLandingPath(pathname)) return <WebLanding />;
+    return null;
+  }
 
   return (
     <NavBarVisibilityProvider>
@@ -174,16 +223,22 @@ function RootNavigator() {
               />
             </Stack.Protected>
 
-            {/* Registered for ANY signed-in user, not only those who have yet
-                to accept. Scoped to the gate's own guard, the route stopped
-                existing the moment it was accepted — so Settings' "Terms of
-                use" link pushed a route the navigator did not have and
-                silently did nothing.
-                The gate still works: every screen past this point is guarded
-                on hasAcceptedTerms, so someone who has not accepted has
-                nowhere else to be. */}
-            <Stack.Protected guard={isAuthenticated && !isBanned}>
-              <Stack.Screen name="terms" />
+            {/* Two routes, deliberately. `terms` is the read-only re-read and
+                is registered for ANY signed-in user, because Settings' "Terms
+                of use" link has to have a route to push at all times — scoped
+                to the gate's guard instead, it stopped existing the moment
+                terms were accepted and the link silently did nothing.
+                `accept-terms` is the gate, and it keeps the narrow guard so
+                that accepting makes it cease to exist and the navigator falls
+                through to whatever is next on its own. That disappearance IS
+                the "move them on" step; accept-terms does no navigation.
+                Collapsing these two into one route breaks one or the other —
+                it previously broke the gate, which flipped to its read-only
+                variant in place and stranded people on a screen whose only
+                control was a back link to (tabs), a route that does not exist
+                until the whole chain below is satisfied. */}
+            <Stack.Protected guard={isAuthenticated && !isBanned && !hasAcceptedTerms}>
+              <Stack.Screen name="accept-terms" />
             </Stack.Protected>
 
             {/* The only route a banned account has. Every guard below also
@@ -250,6 +305,22 @@ function RootNavigator() {
               }
             >
               <Stack.Screen name="(tabs)" />
+            </Stack.Protected>
+
+            {/* Registered LAST, and the position is load-bearing. When a
+                screen's guard goes false the navigator falls through to the
+                first registered route that is still available, so anything
+                available to every signed-in user acts as a catch-all for
+                every gate above it. Sitting where the gate used to sit, this
+                route swallowed the fall-through: accepting made accept-terms
+                vanish and landed people right back on the terms text, now
+                read-only, with a back link to (tabs) that does not exist
+                until the whole chain above is satisfied. Dead end, same as
+                before the split. Down here every real destination outranks
+                it, and it is only ever reached the way it is meant to be —
+                pushed from Settings, with history behind it. */}
+            <Stack.Protected guard={isAuthenticated && !isBanned}>
+              <Stack.Screen name="terms" />
             </Stack.Protected>
           </Stack>
           {/* Rendered as a sibling above the Stack (not inside (tabs)) so it

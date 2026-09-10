@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { consumePendingInvite } from '@/lib/invites';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
@@ -75,6 +76,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       sessionRef.current = nextSession;
       setSession(nextSession);
+
+      // Attribution, at the first moment there is an account to attach it
+      // to. Before fetchProfile rather than after, so the profile the guards
+      // then read already carries invited_by instead of needing a second
+      // round trip to notice it.
+      //
+      // Only on a fresh sign-in: redeem_invite is write-once server-side, so
+      // running it on every token refresh would be harmless but pointless.
+      // It is awaited inside the isLoading window the comment above opens,
+      // which is what keeps it off the critical path of a routine refresh.
+      if (isFreshSignIn) await consumePendingInvite();
+
       setProfile(nextSession ? await fetchProfile(nextSession.user.id) : null);
 
       if (isFreshSignIn) setIsLoading(false);
