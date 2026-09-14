@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
-import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
+import { PaperPanel } from '@/components/ui/paper-panel';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { ensureInviteCode, inviteUrl } from '@/lib/invites';
 import { shareText } from '@/lib/share';
@@ -87,7 +88,7 @@ export default function InviteGateScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title" style={styles.centered}>
+        <ThemedText type="displaySerif" style={styles.centered}>
           Invite a friend
         </ThemedText>
         <ThemedText type="default" style={styles.centered} themeColor="textSecondary">
@@ -98,14 +99,14 @@ export default function InviteGateScreen() {
         {/* Shown rather than merely sent. The link is the thing being asked
             for, and a share sheet that swallows it whole gives no way to
             check what actually went out. */}
-        <View style={styles.linkBox}>
+        <PaperPanel seed="invite-link" accentIndex={0} style={styles.linkPanel}>
           <ThemedText type="small" themeColor="textSecondary">
             Your invite link
           </ThemedText>
           <ThemedText type="body" selectable>
             {url ?? 'Creating your link…'}
           </ThemedText>
-        </View>
+        </PaperPanel>
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
@@ -137,10 +138,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     gap: Spacing.five,
   },
-  linkBox: {
-    backgroundColor: Colors.backgroundElement,
-    borderRadius: 16,
-    padding: Spacing.four,
+  linkPanel: {
+    // The panel owns its own padding and fill; this only tightens the gap,
+    // because the label and the link are one unit rather than two rows.
     gap: Spacing.one,
   },
   centered: {

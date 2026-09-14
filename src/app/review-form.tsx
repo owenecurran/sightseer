@@ -21,6 +21,7 @@ import { getTripSuggestion, type TripSuggestion } from '@/lib/trips';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
 import { TagSticker } from '@/components/ui/tag-sticker';
@@ -146,14 +147,22 @@ export default function ReviewFormScreen() {
 
   const peopleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Derived, not stored. Both of these used to be kept in sync by an effect
+  // that reset them; reading through a guard here is the same result with
+  // one less render and no effect-body setState.
+  const visiblePeopleSuggestions = peopleQuery.trim() ? peopleSuggestions : [];
+  const visibleStateCountry = selectedPlace ? previewStateCountry : null;
+
   useEffect(() => {
     if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     if (!session) return;
 
-    if (!peopleQuery.trim()) {
-      setPeopleSuggestions([]);
-      return;
-    }
+    // Nothing to search for. The stored list is deliberately NOT cleared
+    // here: what renders is derived below, so a stale list simply stops
+    // being shown. Clearing it synchronously in an effect body is what
+    // react-hooks/set-state-in-effect flags, and deriving is the fix the
+    // rule is pointing at.
+    if (!peopleQuery.trim()) return;
 
     peopleDebounceRef.current = setTimeout(async () => {
       try {
@@ -171,10 +180,9 @@ export default function ReviewFormScreen() {
   }, [peopleQuery, session]);
 
   useEffect(() => {
-    if (!selectedPlace) {
-      setPreviewStateCountry(null);
-      return;
-    }
+    // As above: with no place there is nothing to resolve, and the value
+    // that renders is derived rather than reset from in here.
+    if (!selectedPlace) return;
     let cancelled = false;
     resolveStateCountries([selectedPlace.id])
       .then((map) => {
@@ -298,7 +306,6 @@ export default function ReviewFormScreen() {
         setError(err instanceof Error ? err.message : 'Could not load that draft.');
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, session]);
 
   // LocationSearchModal already runs fetchPlaceDetails/cachePlaceHierarchy
@@ -659,7 +666,7 @@ export default function ReviewFormScreen() {
           </ThemedText>
         )}
 
-        <View style={styles.box}>
+        <PaperPanel seed="form-0" accentIndex={0}>
           <ThemedText type="sectionLabel">Place</ThemedText>
 
           {selectedPlace ? (
@@ -695,11 +702,11 @@ export default function ReviewFormScreen() {
               <Button label="Search for a spot" variant="secondary" onPress={() => setIsTagPickerOpen(true)} />
             </View>
           )}
-        </View>
+        </PaperPanel>
 
         {selectedPlace &&
           (!savedVisitId ? (
-            <View style={styles.box}>
+            <PaperPanel seed="form-1" accentIndex={1}>
               <View style={styles.section}>
                 <View style={styles.row}>
                   <ThemedText type="sectionLabel">Rating</ThemedText>
@@ -887,7 +894,7 @@ export default function ReviewFormScreen() {
                   value={peopleQuery}
                   onChangeText={setPeopleQuery}
                 />
-                {peopleSuggestions.map((user) => (
+                {visiblePeopleSuggestions.map((user) => (
                   <Pressable key={user.id} onPress={() => handleSelectPerson(user)}>
                     <ThemedView type="backgroundSelected" style={styles.peopleSuggestionRow}>
                       <Avatar uri={peopleAvatarUrls[user.id]} name={user.name ?? user.handle} size={36} />
@@ -913,7 +920,7 @@ export default function ReviewFormScreen() {
                   <FeedCardHeaderText
                     placeName={selectedPlace.name}
                     placeId={selectedPlace.id}
-                    stateCountry={previewStateCountry}
+                    stateCountry={visibleStateCountry}
                     taggedPlaces={taggedPlaces}
                     visitedLine={[rating == null ? 'Visited' : null, note || null].filter(Boolean).join(' · ')}
                     rating={rating}
@@ -936,9 +943,9 @@ export default function ReviewFormScreen() {
                 onPress={handleSaveVisit}
                 loading={isSavingVisit}
               />
-            </View>
+            </PaperPanel>
           ) : (
-            <View style={styles.box}>
+            <PaperPanel seed="form-2" accentIndex={2}>
               <ThemedText type="small">Visit saved.</ThemedText>
 
               {uploadedPhotoUris.length > 0 && (
@@ -978,7 +985,7 @@ export default function ReviewFormScreen() {
                   started from instead, same as this screen's own header
                   back button already does. */}
               <Button label="Done" onPress={() => goBack()} />
-            </View>
+            </PaperPanel>
           ))}
 
         </KeyboardAwareScroll>
@@ -1060,13 +1067,6 @@ const styles = StyleSheet.create({
   // rounded container language used for "create prompt", so this screen
   // (review-form) reads as part of the same visual system instead of the
   // plain flat `backgroundElement` fills it used before.
-  box: {
-    borderWidth: 1,
-    borderColor: 'rgba(234,231,207,0.35)',
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    gap: Spacing.three,
-  },
   // A contained mockup, not a literal edge-to-edge reproduction of the real
   // feed card — the real card's photos deliberately bleed past its own
   // rounded corners to the screen edges (see (tabs)/index.tsx's

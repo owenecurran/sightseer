@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ChoiceCard } from '@/components/ui/choice-card';
 import { StickerLink } from '@/components/ui/sticker-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -45,43 +46,37 @@ export default function CreateChooserScreen() {
             pair — how the review gets built (from a location, or from
             photos' own metadata) is now a question asked inside that flow
             rather than two sibling choices here. See review-source.tsx. */}
-        <Pressable onPress={() => router.push('/review-source')}>
-          <ThemedView type="backgroundElement" style={styles.optionCard}>
-            <ThemedText type="headline">New review</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Log a visit to a place you've been — from a location, or straight from your photos.
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        <ChoiceCard
+          seed="review"
+          accentIndex={0}
+          title="New review"
+          description="Log a visit to a place you've been — from a location, or straight from your photos."
+          onPress={() => router.push('/review-source')}
+        />
 
-        <Pressable onPress={() => router.push('/trip/new')}>
-          <ThemedView type="backgroundElement" style={styles.optionCard}>
-            <ThemedText type="headline">New trip</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Group the reviews from a set of dates into one trip. Most trips are detected for you —
-              this is for the ones that aren't.
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        <ChoiceCard
+          seed="trip"
+          accentIndex={1}
+          title="New trip"
+          description="Group the reviews from a set of dates into one trip. Most are detected for you — this is for the ones that aren't."
+          onPress={() => router.push('/trip/new')}
+        />
 
-        <Pressable onPress={() => router.push('/travel-book/new')}>
-          <ThemedView type="backgroundElement" style={styles.optionCard}>
-            <ThemedText type="headline">New travel book</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Start a chronological log of a trip, made up of your own reviews and reviews you're
-              tagged in.
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        <ChoiceCard
+          seed="travel-book"
+          accentIndex={2}
+          title="New travel book"
+          description="A chronological log of a trip, made of your own reviews and ones you're tagged in."
+          onPress={() => router.push('/travel-book/new')}
+        />
 
-        <Pressable onPress={() => router.push('/board/new')}>
-          <ThemedView type="backgroundElement" style={styles.optionCard}>
-            <ThemedText type="headline">New board</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Start a collection to save your own or anyone else's reviews to.
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        <ChoiceCard
+          seed="board"
+          accentIndex={3}
+          title="New board"
+          description="A collection to save your own or anyone else's reviews to."
+          onPress={() => router.push('/board/new')}
+        />
       </SafeAreaView>
     </ThemedView>
   );
@@ -99,11 +94,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
-  },
-  optionCard: {
-    gap: Spacing.one,
-    paddingVertical: Spacing.four,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
   },
 });

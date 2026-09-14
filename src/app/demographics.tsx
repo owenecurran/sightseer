@@ -169,7 +169,7 @@ export default function DemographicsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title" style={styles.title}>
+        <ThemedText type="displaySerif" style={styles.title}>
           Tell us about yourself
         </ThemedText>
         <ThemedText type="default" style={styles.title} themeColor="textSecondary">

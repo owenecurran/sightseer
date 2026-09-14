@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
+import { ChoiceCard } from '@/components/ui/choice-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -23,47 +24,45 @@ export default function ReviewSourceScreen() {
 
         <ThemedText type="displaySerif">New review</ThemedText>
 
-        <Pressable onPress={() => router.push('/review-form')}>
-          <ThemedView type="backgroundElement" style={styles.optionCard}>
-            <ThemedText type="headline">Based on location</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Search for the place first, then add photos and a rating.
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        <ChoiceCard
+          seed="from-location"
+          accentIndex={0}
+          title="Based on location"
+          description="Search for the place first, then add photos and a rating."
+          onPress={() => router.push('/review-form')}
+        />
 
-        <Pressable onPress={() => setIsPhotoBranchOpen((open) => !open)}>
-          <ThemedView
-            type={isPhotoBranchOpen ? 'backgroundSelected' : 'backgroundElement'}
-            style={styles.optionCard}>
-            <ThemedText type="headline">Based on photo(s)</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              We'll read each photo's location and date from its metadata and fill the review in for
-              you.
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
+        {/* 'select', not 'navigate': this one opens the branch below rather
+            than going anywhere, so it takes the tick treatment. */}
+        <ChoiceCard
+          seed="from-photos"
+          accentIndex={1}
+          mode="select"
+          selected={isPhotoBranchOpen}
+          title="Based on photo(s)"
+          description="We'll read each photo's location and date from its metadata and fill the review in for you."
+          onPress={() => setIsPhotoBranchOpen((open) => !open)}
+        />
 
         {isPhotoBranchOpen && (
           <View style={styles.branch}>
-            <Pressable onPress={() => router.push({ pathname: '/bulk-upload', params: { mode: 'per-photo' } })}>
-              <ThemedView type="backgroundElement" style={styles.subOptionCard}>
-                <ThemedText type="smallBold">One review per photo</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Each photo becomes its own review, with its own place and date. Pick a single photo
-                  to just make one.
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
+            <ChoiceCard
+              seed="per-photo"
+              accentIndex={2}
+              compact
+              title="One review per photo"
+              description="Each photo becomes its own review, with its own place and date. Pick a single photo to just make one."
+              onPress={() => router.push({ pathname: '/bulk-upload', params: { mode: 'per-photo' } })}
+            />
 
-            <Pressable onPress={() => router.push({ pathname: '/bulk-upload', params: { mode: 'single' } })}>
-              <ThemedView type="backgroundElement" style={styles.subOptionCard}>
-                <ThemedText type="smallBold">One review for all photos</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Every photo goes on one review, using the first photo that has a location.
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
+            <ChoiceCard
+              seed="single-review"
+              accentIndex={3}
+              compact
+              title="One review for all photos"
+              description="Every photo goes on one review, using the first photo that has a location."
+              onPress={() => router.push({ pathname: '/bulk-upload', params: { mode: 'single' } })}
+            />
           </View>
         )}
       </SafeAreaView>
@@ -84,23 +83,11 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
   },
-  optionCard: {
-    gap: Spacing.one,
-    paddingVertical: Spacing.four,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
-  },
   // Indented under the branch they belong to, so the two-level structure
   // reads as a tree rather than as four equal choices.
   branch: {
     gap: Spacing.two,
     paddingLeft: Spacing.four,
     marginTop: -Spacing.one,
-  },
-  subOptionCard: {
-    gap: Spacing.one,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
   },
 });

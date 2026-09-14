@@ -27,6 +27,20 @@ export const BrandColors = {
 // out to look the same as not fixing anything — see ThemedView's own
 // comment for the real gradient-not-rendering bug that made *any* color
 // choice here look unchanging on mobile.
+// The accent set every hand-applied-looking object draws from — arrow
+// stickers, tag stickers, and the create chooser's cards. Kept here rather
+// than in any one of them because "belongs to the same set of objects" is
+// the entire point of sharing it, and it had already been copy-pasted into
+// two files before this.
+export const StickerAccents = [
+  '#a0bd91',
+  '#e0a458',
+  '#c96a5b',
+  '#6b8fb5',
+  '#b58bbd',
+  '#7fae9e',
+] as const;
+
 export const GradientColors = {
   screenStart: '#07120a',
   screenEnd: '#031009',

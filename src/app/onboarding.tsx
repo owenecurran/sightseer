@@ -54,7 +54,7 @@ export default function OnboardingScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title" style={styles.title}>
+        <ThemedText type="displaySerif" style={styles.title}>
           Set up your profile
         </ThemedText>
         <ThemedText type="default" style={styles.title} themeColor="textSecondary">

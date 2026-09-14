@@ -5,6 +5,7 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
+import { ChoiceCard } from '@/components/ui/choice-card';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -92,15 +93,17 @@ export default function NewBoardScreen() {
           <TextField placeholder="Board name" value={name} onChangeText={setName} />
 
           <ThemedText type="sectionLabel">Ranking</ThemedText>
-          {LIST_STYLES.map((style) => (
-            <Pressable key={style.key} onPress={() => setListStyle(style.key)}>
-              <ThemedView type={listStyle === style.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.option}>
-                <ThemedText type="headline">{style.label}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {style.description}
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
+          {LIST_STYLES.map((style, index) => (
+            <ChoiceCard
+              key={style.key}
+              seed={`board-style-${style.key}`}
+              accentIndex={index}
+              mode="select"
+              selected={listStyle === style.key}
+              title={style.label}
+              description={style.description}
+              onPress={() => setListStyle(style.key)}
+            />
           ))}
 
           <Pressable onPress={() => setIsPrivate((prev) => !prev)} style={styles.checkboxRow}>
@@ -144,12 +147,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-  },
-  option: {
-    gap: Spacing.half,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
   },
   checkboxRow: {
     flexDirection: 'row',
