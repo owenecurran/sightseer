@@ -180,9 +180,19 @@ export default function TaggedInScreen() {
           onScroll={scrollHandler}
           scrollEventThrottle={16}
         >
-          {visits.map((visit) => (
-            <VisitCard
+          {visits.map((visit, index) => (
+            // Same stacking fix as the feed — see the long note in
+            // (tabs)/index.tsx. The rating stamp hangs below its card, and on
+            // a short post that overhang lands over the next card; cards are
+            // siblings here, so this is the only level that can order them.
+            // collapsable={false} keeps Android's view flattening from
+            // removing the wrapper and the zIndex with it.
+            <View
               key={visit.id}
+              style={{ zIndex: visits.length - index }}
+              collapsable={false}
+            >
+            <VisitCard
               visit={visit}
               photoUrls={photoUrls}
               avatarUrl={avatarUrls[visit.user_id]}
@@ -194,6 +204,7 @@ export default function TaggedInScreen() {
               onUntagSelf={() => handleUntagSelf(visit.id)}
               maxStampRise={MAX_STAMP_RISE}
             />
+            </View>
           ))}
         </Animated.ScrollView>
       </SafeAreaView>

@@ -448,50 +448,78 @@ export default function HomeScreen() {
                   }}
                 />
               )}
-              {displayItems.map((item: FeedItem) =>
-                item.type === "divider" ? (
-                  <ThemedText
-                    key="divider"
-                    type="sectionLabel"
-                    style={styles.dividerText}
-                  >
-                    Already seen
-                  </ThemedText>
-                ) : item.type === "recap" ? (
-                  <RecapCard
-                    key={`recap-${item.recap.id}`}
-                    recap={item.recap}
-                    avatarUrl={avatarUrls[item.recap.authorId]}
-                    coverUrl={recapCoverUrls[item.recap.id]}
-                  />
-                ) : item.type === "trip" ? (
-                  <TripGroupCard
-                    key={`trip-${item.feedTrip.trip.key}`}
-                    feedTrip={item.feedTrip}
-                    photoUrls={photoUrls}
-                    photoThumbUrls={photoThumbUrls}
-                    avatarUrls={avatarUrls}
-                    viewerId={session?.user.id}
-                    copiedVisitId={copiedVisitId}
-                    onToggleLike={handleToggleLike}
-                    onShare={handleShareVisit}
-                    onVisitDeleted={handleVisitDeleted}
-                    onConverted={handleTripConverted}
-                  />
-                ) : (
-                  <VisitCard
-                    key={`visit-${item.visit.id}`}
-                    visit={item.visit}
-                    photoUrls={photoUrls}
-                    avatarUrl={avatarUrls[item.visit.user_id]}
-                    isOwner={session?.user.id === item.visit.user_id}
-                    isCopied={copiedVisitId === item.visit.id}
-                    onToggleLike={() => handleToggleLike(item.visit)}
-                    onShare={() => handleShareVisit(item.visit)}
-                    onDeleted={() => handleVisitDeleted(item.visit.id)}
-                  />
-                ),
-              )}
+              {displayItems.map((item: FeedItem, index: number) => (
+                // Descending zIndex, one wrapper per card. The rating stamp
+                // hangs below its card by design (canSeep lets bottomOffset
+                // go to -size*0.45), and on a short post that overhang clears
+                // the card's own bottom entirely and lands over the NEXT
+                // card. Neither the stamp's own zIndex nor cardTop's could
+                // ever fix that: both are scoped inside one card, and zIndex
+                // only resolves stacking among elements sharing an immediate
+                // parent. Cards are siblings HERE, so here is the only place
+                // the order between them can be decided.
+                //
+                // Descending rather than a flat value because siblings paint
+                // in document order by default — every card must outrank the
+                // one after it, not merely tie with it.
+                //
+                // collapsable={false} is load-bearing, not defensive: on
+                // Android a View whose only job is a style like this is
+                // exactly what the view-flattening pass removes, and it was
+                // flattening that broke the stamp's seep before (see
+                // visit-card.tsx's cardWrap). A removed wrapper takes the
+                // zIndex with it and the bug returns, silently and only on
+                // Android.
+                <View
+                  key={
+                    item.type === "divider"
+                      ? "divider"
+                      : item.type === "recap"
+                        ? `recap-${item.recap.id}`
+                        : item.type === "trip"
+                          ? `trip-${item.feedTrip.trip.key}`
+                          : `visit-${item.visit.id}`
+                  }
+                  style={{ zIndex: displayItems.length - index }}
+                  collapsable={false}
+                >
+                  {item.type === "divider" ? (
+                    <ThemedText type="sectionLabel" style={styles.dividerText}>
+                      Already seen
+                    </ThemedText>
+                  ) : item.type === "recap" ? (
+                    <RecapCard
+                      recap={item.recap}
+                      avatarUrl={avatarUrls[item.recap.authorId]}
+                      coverUrl={recapCoverUrls[item.recap.id]}
+                    />
+                  ) : item.type === "trip" ? (
+                    <TripGroupCard
+                      feedTrip={item.feedTrip}
+                      photoUrls={photoUrls}
+                      photoThumbUrls={photoThumbUrls}
+                      avatarUrls={avatarUrls}
+                      viewerId={session?.user.id}
+                      copiedVisitId={copiedVisitId}
+                      onToggleLike={handleToggleLike}
+                      onShare={handleShareVisit}
+                      onVisitDeleted={handleVisitDeleted}
+                      onConverted={handleTripConverted}
+                    />
+                  ) : (
+                    <VisitCard
+                      visit={item.visit}
+                      photoUrls={photoUrls}
+                      avatarUrl={avatarUrls[item.visit.user_id]}
+                      isOwner={session?.user.id === item.visit.user_id}
+                      isCopied={copiedVisitId === item.visit.id}
+                      onToggleLike={() => handleToggleLike(item.visit)}
+                      onShare={() => handleShareVisit(item.visit)}
+                      onDeleted={() => handleVisitDeleted(item.visit.id)}
+                    />
+                  )}
+                </View>
+              ))}
             </Animated.ScrollView>
           </>
         )}
