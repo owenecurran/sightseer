@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { SettingsRow } from '@/components/ui/settings-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -182,7 +183,7 @@ export default function SettingsScreen() {
               These were scattered between the inline settings as secondary
               Buttons, which buried them and made the page read as one long
               form rather than as a menu that also has some settings on it. */}
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <PaperPanel seed="settings-profile" accentIndex={0}>
             <SettingsRow
               label="Notifications"
               description="Choose what reaches your phone"
@@ -198,12 +199,12 @@ export default function SettingsScreen() {
               description="Match your contacts against people already here"
               onPress={() => router.push('/contacts-sync')}
             />
-          </ThemedView>
+          </PaperPanel>
 
           {/* Who can see you, and who cannot. Blocking lives here rather
               than in its own section because it answers the same question
               the private-account toggle does. */}
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <PaperPanel seed="settings-privacy" accentIndex={1}>
             <ThemedText type="sectionLabel">Privacy</ThemedText>
             <CheckboxRow
               label="Private account"
@@ -229,13 +230,13 @@ export default function SettingsScreen() {
               }
               onPress={() => router.push('/blocked-accounts')}
             />
-          </ThemedView>
+          </PaperPanel>
 
           {/* The phone number and the discoverability toggle are one
               decision -- the number is only useful if the toggle is on -- so
               they belong together rather than sitting either side of the
               contact-sync action they were previously mixed with. */}
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <PaperPanel seed="settings-finding" accentIndex={2}>
             <ThemedText type="sectionLabel">Finding you</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               Add your phone number so friends who sync their contacts can find you. It is hashed
@@ -262,14 +263,14 @@ export default function SettingsScreen() {
               onPress={handleToggleDiscoverable}
               disabled={isSavingDiscoverable}
             />
-          </ThemedView>
+          </PaperPanel>
 
           {/* Sign-in credentials in one card: the providers you can sign in
               with, the password you sign in with, and the way out. These
               were three separate sections, with the sign-out button
               stranded at the top of the page under "Account" next to a
               privacy toggle it has nothing to do with. */}
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <PaperPanel seed="settings-account" accentIndex={3}>
             <ThemedText type="sectionLabel">Account</ThemedText>
 
             {Platform.OS === 'ios' && (
@@ -330,9 +331,9 @@ export default function SettingsScreen() {
             <View style={styles.divider} />
 
             <Button label="Sign out" variant="secondary" onPress={handleSignOut} loading={isSigningOut} />
-          </ThemedView>
+          </PaperPanel>
 
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <PaperPanel seed="settings-about" accentIndex={4}>
             <ThemedText type="sectionLabel">About</ThemedText>
             <SettingsRow label="Terms of use" onPress={() => router.push('/terms')} />
             {/* Both render only once a real destination is configured -- see
@@ -350,19 +351,19 @@ export default function SettingsScreen() {
                 onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}
               />
             )}
-          </ThemedView>
+          </PaperPanel>
 
           {/* Last, alone, and in the danger colour. It previously sat in a
               section styled exactly like About, with its action text the
               same sage as "Terms of use". */}
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <PaperPanel seed="settings-session" accentIndex={5}>
             <SettingsRow
               label="Delete my account"
               description="Permanently deletes your account and everything in it. This cannot be undone."
               tone="danger"
               onPress={() => setIsDeleteOpen(true)}
             />
-          </ThemedView>
+          </PaperPanel>
         </Animated.ScrollView>
         <DeleteAccountModal
           visible={isDeleteOpen}

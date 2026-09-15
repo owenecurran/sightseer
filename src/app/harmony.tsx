@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
@@ -159,7 +160,7 @@ export default function HarmonyScreen() {
             {userName}
           </StretchText>
 
-          <ThemedView type="backgroundElement" style={styles.scoreCard}>
+          <PaperPanel seed="harmony-score" accentIndex={0} style={styles.scoreCard}>
             <View style={styles.scoreRow}>
               <ThemedText type="displaySerif" style={{ color }}>
                 {score}
@@ -176,7 +177,7 @@ export default function HarmonyScreen() {
             <View style={styles.track}>
               <View style={[styles.fill, { width: `${score}%`, backgroundColor: color }]} />
             </View>
-          </ThemedView>
+          </PaperPanel>
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">

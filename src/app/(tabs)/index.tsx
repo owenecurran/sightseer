@@ -11,6 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { DiscoverView } from "@/components/discover-view";
 import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
+import { PaperPanel } from "@/components/ui/paper-panel";
 import { ThemedView } from "@/components/themed-view";
 import { HomeLocationPrompt } from "@/components/home-location-prompt";
 import { TripSuggestionPrompt } from "@/components/trip-suggestion-prompt";
@@ -546,7 +547,7 @@ function RecapCard({
         })
       }
     >
-      <ThemedView type="backgroundElement" style={styles.card}>
+      <PaperPanel seed={`recap-${recap.travelBookId}`} accentIndex={2} allowOverflow style={styles.card}>
         {recap.rating != null && (
           <FeedRatingStamp
             rating={recap.rating}
@@ -565,13 +566,13 @@ function RecapCard({
         {coverUrl && (
           <LoadableImage source={{ uri: coverUrl }} style={styles.recapCover} />
         )}
-        <ThemedText type="headline">{recap.title}</ThemedText>
+        <ThemedText type="headlineWrapped">{recap.title}</ThemedText>
         {recap.body && (
           <ThemedText type="small" numberOfLines={3}>
             {recap.body}
           </ThemedText>
         )}
-      </ThemedView>
+      </PaperPanel>
     </Pressable>
   );
 }

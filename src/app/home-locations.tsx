@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BackLink } from '@/components/ui/back-link';
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
@@ -102,9 +103,9 @@ export default function HomeLocationsScreen() {
           ) : (
             <View style={styles.list}>
               {locations.map((location) => (
-                <ThemedView key={location.id} type="backgroundElement" style={styles.row}>
+                <PaperPanel key={location.id} seed={`home-${location.id}`} style={styles.row}>
                   <View style={styles.rowText}>
-                    <ThemedText type="headline">{location.name}</ThemedText>
+                    <ThemedText type="headlineWrapped">{location.name}</ThemedText>
                     {location.parentName && (
                       <ThemedText type="small" themeColor="textSecondary">
                         {location.parentName}
@@ -116,7 +117,7 @@ export default function HomeLocationsScreen() {
                       {busyId === location.id ? 'Removing…' : 'Remove'}
                     </ThemedText>
                   </Pressable>
-                </ThemedView>
+                </PaperPanel>
               ))}
             </View>
           )}

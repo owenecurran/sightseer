@@ -8,6 +8,7 @@ import { BackLink } from '@/components/ui/back-link';
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { ThemedText } from '@/components/themed-text';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -105,11 +106,20 @@ export default function NewTravelBookScreen() {
 
           <ThemedText type="displaySerif">New travel book</ThemedText>
 
-          <TextField placeholder="Trip title" value={title} onChangeText={setTitle} />
-          <TextField placeholder="Description (optional)" value={description} onChangeText={setDescription} multiline />
+          {/* Three panels for three questions — what the book is, where and
+              who can see it, and who else can write in it. The form was one
+              undifferentiated column of fields before, which is fine to fill
+              in and gives no sense of how much is left. */}
+          <PaperPanel seed="book-about" accentIndex={0}>
+            <ThemedText type="sectionLabel">The book</ThemedText>
+            <TextField placeholder="Trip title" value={title} onChangeText={setTitle} />
+            <TextField placeholder="Description (optional)" value={description} onChangeText={setDescription} multiline />
+          </PaperPanel>
 
+          <PaperPanel seed="book-where" accentIndex={1}>
+            <ThemedText type="sectionLabel">Where & who sees it</ThemedText>
           <Pressable onPress={() => setIsLocationPickerOpen(true)} style={styles.locationRow}>
-            <ThemedView type="backgroundElement" style={styles.locationChip}>
+            <ThemedView type="backgroundField" style={styles.locationChip}>
               <ThemedText type="small" themeColor={location ? 'text' : 'textSecondary'}>
                 {location ? location.name : 'Trip location (optional)'}
               </ThemedText>
@@ -129,10 +139,13 @@ export default function NewTravelBookScreen() {
             label="Private — only you and collaborators can see this book"
             onPress={() => setIsPrivate((prev) => !prev)}
           />
+          </PaperPanel>
 
+          <PaperPanel seed="book-collaborators" accentIndex={2}>
+            <ThemedText type="sectionLabel">Collaborators</ThemedText>
           <View style={styles.section}>
             <ThemedText type="small" themeColor="textSecondary">
-              Trip collaborators (optional) — anyone added can also add their own reviews
+              Optional — anyone added can also add their own reviews
             </ThemedText>
             {collaborators.length > 0 && (
               <View style={styles.tagRow}>
@@ -154,6 +167,7 @@ export default function NewTravelBookScreen() {
               </Pressable>
             ))}
           </View>
+          </PaperPanel>
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -202,7 +216,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Spacing.two,
   },
   section: {
     gap: Spacing.two,

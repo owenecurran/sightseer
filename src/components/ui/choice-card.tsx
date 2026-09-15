@@ -256,16 +256,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    // `headline` is fontSize 34 with no lineHeight, and the platform default
-    // works out at ~34dp — BELOW the ink it has to hold, so wrapped lines
-    // collide ("New travel book" did exactly that).
-    //
-    // 48, not 36. Measured from MOON_GET-HEAVY.otf at this size: plain caps
-    // need 35.5dp, but parentheses need 47.2 — and "Based on photo(s)" has
-    // them. At 36 their tops were sliced flat, confirmed on device.
-    // Accented caps want 55.2, which is loose enough to look broken on a
-    // two-line title, so this stops at covering punctuation.
-    lineHeight: 48,
+    // Metrics live on the `headlineWrapped` type now — see themed-text.tsx.
     flexShrink: 1,
   },
   titleCompact: {

@@ -11,6 +11,7 @@ import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { PhotoGrid } from '@/components/photo-grid';
 import { PlaceMapImage } from '@/components/place-map-image';
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { PageLoader } from '@/components/ui/page-loader';
@@ -126,7 +127,7 @@ export default function VisitDetailScreen() {
         )}
 
         {visit && (
-          <ThemedView type="backgroundElement" style={styles.card}>
+          <PaperPanel seed="visit-detail" accentIndex={1} style={styles.card}>
             <View style={styles.headerRow}>
               <View style={styles.headerAuthor}>
                 <Pressable onPress={() => router.push({ pathname: '/user/[id]', params: { id: visit.user_id } })}>
@@ -206,7 +207,7 @@ export default function VisitDetailScreen() {
                 onCountChange={setCommentCount}
               />
             )}
-          </ThemedView>
+          </PaperPanel>
         )}
         </Animated.ScrollView>
       </SafeAreaView>

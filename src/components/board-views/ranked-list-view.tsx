@@ -6,11 +6,12 @@ import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-nativ
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { ThemedText } from '@/components/themed-text';
+import { InkBlot } from '@/components/ui/ink-blot';
 import { ThemedView } from '@/components/themed-view';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
-import { Spacing } from '@/constants/theme';
+import { Spacing, StickerAccents } from '@/constants/theme';
 import type { BoardItem } from '@/lib/boards';
 
 type RankedListViewProps = {
@@ -74,9 +75,11 @@ export function RankedListView({
               </ThemedText>
               {onToggleCheck && (
                 <Pressable onPress={() => onToggleCheck(item)} hitSlop={8}>
-                  <ThemedView type={isChecked ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                    {isChecked && <ThemedText type="smallBold">✓</ThemedText>}
-                  </ThemedView>
+                  <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+                    {isChecked && (
+                      <InkBlot size={13} seed={`ranked-check-${item.id}`} color={StickerAccents[0]} />
+                    )}
+                  </View>
                 </Pressable>
               )}
               {thumbnailUrl ? (
@@ -165,11 +168,16 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: Spacing.one,
-    borderWidth: 1.5,
+    // Round and stamped, like every other "chosen" mark in the app.
+    borderRadius: 12,
+    borderWidth: 2,
     borderColor: 'rgba(234,231,207,0.35)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  checkboxChecked: {
+    borderColor: StickerAccents[0],
   },
   thumbnail: {
     width: 56,

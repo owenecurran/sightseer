@@ -91,7 +91,7 @@ export default function AdminArticlesScreen() {
                       <View style={styles.thumbnailPlaceholder} />
                     )}
                     <View style={styles.rowLeading}>
-                      <ThemedText type="headline">{article.title}</ThemedText>
+                      <ThemedText type="headlineWrapped">{article.title}</ThemedText>
                       <ThemedText type="small" themeColor="textSecondary">
                         {article.published ? 'Published' : 'Draft'}
                       </ThemedText>

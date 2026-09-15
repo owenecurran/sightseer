@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BackLink } from '@/components/ui/back-link';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { LoadableImage } from '@/components/ui/loadable-image';
@@ -16,7 +17,7 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { StretchText } from '@/components/ui/stretch-text';
 import { TagSticker } from '@/components/ui/tag-sticker';
 import { FilterSortMenu, type MenuOption } from '@/components/ui/filter-sort-menu';
-import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
@@ -435,7 +436,7 @@ export default function PlaceDetailScreen() {
               <Pressable
                 onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}
                 style={styles.contentWrap}>
-                <ThemedView type="backgroundElement" style={styles.visitCard}>
+                <PaperPanel seed="place-visit" style={styles.visitCard}>
                   <PhotoGrid urls={visitPhotoUrls} aspectRatios={item.photoAspectRatios} />
                   <View style={styles.visitInfo}>
                     <View style={styles.visitText}>
@@ -463,7 +464,7 @@ export default function PlaceDetailScreen() {
                       <RatingGlassBadgeGated rating={item.rating} size={ROW_STAMP_SIZE} seed={item.id} />
                     )}
                   </View>
-                </ThemedView>
+                </PaperPanel>
               </Pressable>
             );
           }}

@@ -13,6 +13,8 @@ import { LocationSearchModal } from '@/components/location-search-modal';
 import { PhotoGrid } from '@/components/photo-grid';
 import { SaveCollectionButton } from '@/components/save-collection-button';
 import { ThemedText } from '@/components/themed-text';
+import { InkBlot } from '@/components/ui/ink-blot';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -22,7 +24,7 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { StretchText } from '@/components/ui/stretch-text';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, StickerAccents, TopTabInset } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -427,12 +429,14 @@ export default function TravelBookDetailScreen() {
                     ? router.push({ pathname: '/visit/[id]', params: { id: item.id } })
                     : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
                 }>
-                <ThemedView type="backgroundElement" style={styles.itemRow}>
+                <PaperPanel seed={`book-item-${item.itemId}`} style={styles.itemRow}>
                   {canCheck && (
                     <Pressable onPress={() => handleToggleCheck(item)} hitSlop={8}>
-                      <ThemedView type={isChecked ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                        {isChecked && <ThemedText type="smallBold">✓</ThemedText>}
-                      </ThemedView>
+                      <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+                        {isChecked && (
+                          <InkBlot size={13} seed={`book-check-${item.itemId}`} color={StickerAccents[0]} />
+                        )}
+                      </View>
                     </Pressable>
                   )}
                   <View style={styles.itemInfo}>
@@ -507,7 +511,7 @@ export default function TravelBookDetailScreen() {
                       <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
                     </Pressable>
                   )}
-                </ThemedView>
+                </PaperPanel>
               </Pressable>
               );
             })}
@@ -548,12 +552,12 @@ export default function TravelBookDetailScreen() {
           <View style={styles.section}>
             <ThemedText type="sectionLabel">Trip recap</ThemedText>
             {recap ? (
-              <ThemedView type="backgroundElement" style={styles.recapCard}>
-                <ThemedText type="headline">{recap.title}</ThemedText>
+              <PaperPanel seed="book-recap" accentIndex={2} style={styles.recapCard}>
+                <ThemedText type="headlineWrapped">{recap.title}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {recap.is_published ? 'Published to your feed' : 'Draft — not published yet'}
                 </ThemedText>
-              </ThemedView>
+              </PaperPanel>
             ) : (
               <ThemedText type="small" themeColor="textSecondary">
                 No recap written yet.
@@ -662,11 +666,16 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: Spacing.one,
-    borderWidth: 1.5,
+    // Round, matching every other "chosen" mark in the app.
+    borderRadius: 12,
+    borderWidth: 2,
     borderColor: 'rgba(234,231,207,0.35)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  checkboxChecked: {
+    borderColor: StickerAccents[0],
   },
   eligibleRow: {
     flexDirection: 'row',

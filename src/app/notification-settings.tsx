@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BackLink } from '@/components/ui/back-link';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -107,8 +108,8 @@ export default function NotificationSettingsScreen() {
 
           <ThemedText type="displaySerif">Notifications</ThemedText>
 
-          {NOTIFICATION_GROUPS.map((group) => (
-            <ThemedView key={group.title} type="backgroundElement" style={styles.card}>
+          {NOTIFICATION_GROUPS.map((group, groupIndex) => (
+            <PaperPanel key={group.title} seed={`notif-${group.title}`} accentIndex={groupIndex}>
               <ThemedText type="sectionLabel">{group.title}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
                 {group.caption}
@@ -124,7 +125,7 @@ export default function NotificationSettingsScreen() {
                   />
                 ))}
               </View>
-            </ThemedView>
+            </PaperPanel>
           ))}
         </Animated.ScrollView>
       </SafeAreaView>

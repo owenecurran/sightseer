@@ -8,6 +8,7 @@ import { ProfileMap } from '@/components/profile-map';
 import { ProfilePromptsSection } from '@/components/profile-prompts-section';
 import { UserCollectionsSection } from '@/components/user-collections-section';
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -164,7 +165,7 @@ export default function ProfileScreen() {
     collections: session ? <UserCollectionsSection key="collections" userId={session.user.id} /> : null,
     map:
       session && profile?.show_map ? (
-        <ThemedView key="map" type="backgroundElement" style={styles.neutralCard}>
+        <PaperPanel key="map" seed="profile-map" style={styles.neutralCard}>
           <ProfileMap
             userId={session.user.id}
             defaultLayers={profile.map_default_layers}
@@ -172,7 +173,7 @@ export default function ProfileScreen() {
             isOwnProfile
             onCameraLocked={refreshProfile}
           />
-        </ThemedView>
+        </PaperPanel>
       ) : null,
   };
   const sectionOrder = parseSectionOrder(profile?.profile_section_order);
@@ -228,7 +229,7 @@ export default function ProfileScreen() {
               <View style={styles.section}>
                 <ThemedText type="sectionLabel">Follow requests</ThemedText>
                 {requests.map((request) => (
-                  <ThemedView key={request.follower_id} type="backgroundElement" style={styles.requestRow}>
+                  <PaperPanel key={request.follower_id} seed={`request-${request.follower_id}`} style={styles.requestRow}>
                     <ThemedText type="default">{request.users?.name ?? request.users?.handle ?? 'Someone'}</ThemedText>
                     <View style={styles.requestActions}>
                       <Pressable onPress={() => handleAccept(request.follower_id)}>
@@ -240,7 +241,7 @@ export default function ProfileScreen() {
                         <ThemedText type="small">Reject</ThemedText>
                       </Pressable>
                     </View>
-                  </ThemedView>
+                  </PaperPanel>
                 ))}
               </View>
             )}

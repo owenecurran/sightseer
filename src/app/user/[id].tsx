@@ -10,6 +10,7 @@ import { HarmonyMeter } from '@/components/harmony-meter';
 import { ProfilePromptsSection } from '@/components/profile-prompts-section';
 import { UserCollectionsSection } from '@/components/user-collections-section';
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -302,14 +303,14 @@ export default function UserProfileScreen() {
             {canSeeContent && user && <UserCollectionsSection userId={user.id} />}
 
             {canSeeContent && user?.show_map && (
-              <ThemedView type="backgroundElement" style={styles.neutralCard}>
+              <PaperPanel seed="user-map" style={styles.neutralCard}>
                 <ProfileMap
                   userId={user.id}
                   defaultLayers={user.map_default_layers}
                   defaultCamera={parseDefaultCamera(user)}
                   isOwnProfile={session?.user.id === user.id}
                 />
-              </ThemedView>
+              </PaperPanel>
             )}
           </View>
         </Animated.ScrollView>

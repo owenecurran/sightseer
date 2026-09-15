@@ -77,7 +77,7 @@ export function DiscoverView() {
                   <View style={styles.thumbnailPlaceholder} />
                 )}
                 <View style={styles.rowLeading}>
-                  <ThemedText type="headline">{article.title}</ThemedText>
+                  <ThemedText type="headlineWrapped">{article.title}</ThemedText>
                   {article.subtitle && (
                     <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
                       {article.subtitle}
@@ -102,7 +102,7 @@ export function DiscoverView() {
                   <View style={styles.thumbnailPlaceholder} />
                 )}
                 <View style={styles.rowLeading}>
-                  <ThemedText type="headline">{board.name}</ThemedText>
+                  <ThemedText type="headlineWrapped">{board.name}</ThemedText>
                 </View>
               </ThemedView>
             </Pressable>

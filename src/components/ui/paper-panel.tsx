@@ -12,6 +12,11 @@ type PaperPanelProps = {
   // off entirely for panels that are containers rather than choices.
   accentIndex?: number;
   style?: ViewStyle;
+  // For a card whose content is MEANT to hang past its edge — a feed rating
+  // stamp seeping over the corner, say. The decoration below always clips to
+  // the rounded rect regardless; this only stops the panel clipping its
+  // children.
+  allowOverflow?: boolean;
 };
 
 // A section of a form, as a piece of paper rather than a hairline rectangle.
@@ -26,13 +31,24 @@ type PaperPanelProps = {
 // use, minus the ticket. The accent stripe along the top edge is the only
 // borrowed motif, and it is along the TOP rather than the side so a column of
 // these does not start looking like a column of tickets.
-export function PaperPanel({ children, seed, accentIndex, style }: PaperPanelProps) {
+export function PaperPanel({
+  children,
+  seed,
+  accentIndex,
+  style,
+  allowOverflow = false,
+}: PaperPanelProps) {
   const { specks, gloss } = useMemo(() => buildSurfaceWear(`panel:${seed}`), [seed]);
   const accent =
     accentIndex == null ? null : StickerAccents[accentIndex % StickerAccents.length];
 
   return (
-    <View style={[styles.panel, style]}>
+    <View style={[styles.panel, allowOverflow && styles.noClip, style]}>
+      {/* Every decorative layer lives in here, and THIS is what clips to the
+          rounded rect — not the panel itself. Separating them is what lets a
+          card hold something that deliberately hangs past its edge without
+          the gloss spilling square corners over the rounding. */}
+      <View style={styles.decoration} pointerEvents="none">
       {accent && <View style={[styles.stripe, { backgroundColor: accent }]} />}
 
       <LinearGradient
@@ -60,6 +76,7 @@ export function PaperPanel({ children, seed, accentIndex, style }: PaperPanelPro
           ]}
         />
       ))}
+      </View>
 
       <View style={styles.body}>{children}</View>
     </View>
@@ -69,6 +86,20 @@ export function PaperPanel({ children, seed, accentIndex, style }: PaperPanelPro
 const styles = StyleSheet.create({
   panel: {
     backgroundColor: Colors.backgroundElement,
+    borderRadius: Spacing.three,
+    overflow: 'hidden',
+  },
+  noClip: {
+    overflow: 'visible',
+  },
+  // Absolutely filling the panel and clipping itself, so the gloss and the
+  // wear follow the rounded corners even when the panel does not clip.
+  decoration: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     borderRadius: Spacing.three,
     overflow: 'hidden',
   },

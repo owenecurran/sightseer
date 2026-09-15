@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { ThemedText } from '@/components/themed-text';
@@ -79,11 +80,11 @@ export default function NewTripScreen() {
             any that don't belong once the trip exists.
           </ThemedText>
 
-          <View style={styles.section}>
-            <ThemedText type="smallBold">Where to?</ThemedText>
+          <PaperPanel seed="trip-where" accentIndex={1}>
+            <ThemedText type="sectionLabel">Where to?</ThemedText>
 
             <Pressable onPress={() => setIsPickerOpen(true)}>
-              <ThemedView type="backgroundElement" style={styles.chip}>
+              <ThemedView type="backgroundField" style={styles.chip}>
                 <ThemedText type="default" themeColor={place ? 'text' : 'textSecondary'}>
                   {place ? place.name : 'Pick a destination'}
                 </ThemedText>
@@ -100,7 +101,7 @@ export default function NewTripScreen() {
                 {range.endDate}
               </ThemedText>
             )}
-          </View>
+          </PaperPanel>
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -139,10 +140,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
   },
-  section: { gap: Spacing.two },
   chip: {
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Spacing.two,
   },
 });

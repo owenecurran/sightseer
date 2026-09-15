@@ -1,9 +1,9 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { InkBlot } from '@/components/ui/ink-blot';
 import { Button } from '@/components/ui/button';
-import { Spacing } from '@/constants/theme';
+import { Spacing, StickerAccents } from '@/constants/theme';
 
 type SaveCollectionButtonProps = {
   isSaved: boolean;
@@ -35,9 +35,11 @@ export function SaveCollectionButton({
     <View style={styles.container}>
       <Button label="Saved ✓" variant="secondary" onPress={onUnsave} loading={isLoading} />
       <Pressable onPress={onToggleNotify} style={styles.notifyRow}>
-        <ThemedView type={notifyOnNewItems ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-          {notifyOnNewItems && <ThemedText type="smallBold">✓</ThemedText>}
-        </ThemedView>
+        <View style={[styles.checkbox, notifyOnNewItems && styles.checkboxChecked]}>
+          {notifyOnNewItems && (
+            <InkBlot size={11} seed="notify-new-items" color={StickerAccents[0]} />
+          )}
+        </View>
         <ThemedText type="small" themeColor="textSecondary">
           Notify me of new items
         </ThemedText>
@@ -58,8 +60,14 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 20,
     height: 20,
-    borderRadius: Spacing.one,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(234,231,207,0.35)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  checkboxChecked: {
+    borderColor: StickerAccents[0],
   },
 });
