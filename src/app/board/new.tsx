@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { ChoiceCard } from '@/components/ui/choice-card';
 import { ThemedText } from '@/components/themed-text';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -106,12 +107,12 @@ export default function NewBoardScreen() {
             />
           ))}
 
-          <Pressable onPress={() => setIsPrivate((prev) => !prev)} style={styles.checkboxRow}>
-            <ThemedView type={isPrivate ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-              {isPrivate && <ThemedText type="smallBold">✓</ThemedText>}
-            </ThemedView>
-            <ThemedText type="small">Private — only you can see this board</ThemedText>
-          </Pressable>
+          <CheckboxRow
+            accentIndex={3}
+            checked={isPrivate}
+            label="Private — only you can see this board"
+            onPress={() => setIsPrivate((prev) => !prev)}
+          />
 
           <Button
             label={pendingCoverUri ? 'Cover photo selected ✓' : 'Add a cover photo (optional)'}
@@ -147,17 +148,5 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: Spacing.one,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

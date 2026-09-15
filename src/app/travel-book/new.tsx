@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BackLink } from '@/components/ui/back-link';
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { ThemedText } from '@/components/themed-text';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -122,12 +123,12 @@ export default function NewTravelBookScreen() {
             )}
           </Pressable>
 
-          <Pressable onPress={() => setIsPrivate((prev) => !prev)} style={styles.checkboxRow}>
-            <ThemedView type={isPrivate ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-              {isPrivate && <ThemedText type="smallBold">✓</ThemedText>}
-            </ThemedView>
-            <ThemedText type="small">Private — only you and collaborators can see this book</ThemedText>
-          </Pressable>
+          <CheckboxRow
+            accentIndex={3}
+            checked={isPrivate}
+            label="Private — only you and collaborators can see this book"
+            onPress={() => setIsPrivate((prev) => !prev)}
+          />
 
           <View style={styles.section}>
             <ThemedText type="small" themeColor="textSecondary">
@@ -202,18 +203,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: Spacing.one,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   section: {
     gap: Spacing.two,

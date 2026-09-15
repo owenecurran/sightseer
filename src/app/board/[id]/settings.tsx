@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -119,22 +120,22 @@ export default function BoardSettingsScreen() {
                     ))}
                   </View>
 
-                  <Pressable onPress={handleTogglePrivate} style={styles.toggleRow}>
-                    <ThemedView type={board?.is_private ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                      {board?.is_private && <ThemedText type="smallBold">✓</ThemedText>}
-                    </ThemedView>
-                    <ThemedText type="small">Private — only visible to people who can already see my content</ThemedText>
-                  </Pressable>
+                  <CheckboxRow
+                    accentIndex={3}
+                    checked={board?.is_private ?? false}
+                    label="Private — only visible to people who can already see my content"
+                    onPress={handleTogglePrivate}
+                  />
                 </>
               )}
 
               {isAdmin && (
-                <Pressable onPress={handleToggleFeatured} style={styles.toggleRow}>
-                  <ThemedView type={board?.is_featured ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                    {board?.is_featured && <ThemedText type="smallBold">✓</ThemedText>}
-                  </ThemedView>
-                  <ThemedText type="small">Featured — shown on everyone's Discover tab</ThemedText>
-                </Pressable>
+                <CheckboxRow
+                  accentIndex={1}
+                  checked={board?.is_featured ?? false}
+                  label="Featured — shown on everyone's Discover tab"
+                  onPress={handleToggleFeatured}
+                />
               )}
             </>
           )}
@@ -174,17 +175,5 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.three,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: Spacing.half,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

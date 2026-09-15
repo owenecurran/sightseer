@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
@@ -136,12 +137,12 @@ export default function TravelBookSettingsScreen() {
             </ThemedText>
           ) : (
             <>
-              <Pressable onPress={handleTogglePrivate} style={styles.toggleRow}>
-                <ThemedView type={book?.is_private ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                  {book?.is_private && <ThemedText type="smallBold">✓</ThemedText>}
-                </ThemedView>
-                <ThemedText type="small">Private — only visible to people who can already see my content</ThemedText>
-              </Pressable>
+              <CheckboxRow
+                accentIndex={3}
+                checked={book?.is_private ?? false}
+                label="Private — only visible to people who can already see my content"
+                onPress={handleTogglePrivate}
+              />
 
               <View style={styles.section}>
                 <ThemedText type="sectionLabel">Trip collaborators</ThemedText>
@@ -197,18 +198,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: Spacing.half,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   section: {
     gap: Spacing.two,

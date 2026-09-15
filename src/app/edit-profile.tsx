@@ -9,6 +9,7 @@ import { BackLink } from '@/components/ui/back-link';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { PromptCard } from '@/components/prompt-card';
 import { ThemedText } from '@/components/themed-text';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -203,12 +204,12 @@ export default function EditProfileScreen() {
             {bio.length}/{BIO_MAX_LENGTH}
           </ThemedText>
 
-          <Pressable onPress={() => setShowMap((prev) => !prev)} style={styles.mapToggleRow}>
-            <ThemedView type={showMap ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-              {showMap && <ThemedText type="smallBold">✓</ThemedText>}
-            </ThemedView>
-            <ThemedText type="small">Show a map of places I’ve visited on my profile</ThemedText>
-          </Pressable>
+          <CheckboxRow
+            accentIndex={5}
+            checked={showMap}
+            label="Show a map of places I’ve visited on my profile"
+            onPress={() => setShowMap((prev) => !prev)}
+          />
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -287,18 +288,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
-  },
-  mapToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: Spacing.one,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   promptsList: {
     gap: Spacing.two,
