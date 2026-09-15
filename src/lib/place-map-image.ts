@@ -43,23 +43,23 @@ const RETINA = '@2x';
 // whole continent, and one zoom cannot serve all of them: a country at a
 // POI's zoom is a field, a POI at a country's is an empty map.
 //
-// Values are deliberately a step wider than "fills the frame" — a little
-// surrounding context is what makes somewhere recognisable, especially for
-// coastal cities where the coastline is the landmark.
+// These sit roughly a step and a half wider than "fills the frame". Framing
+// a place so it fills the image answers "what shape is it" and not "where is
+// it" — Madagascar at 3.5 was an island in an empty ocean, which could have
+// been anywhere. Pulled out, the mainland it sits off is in shot and the
+// picture finally places it. The pin below is what keeps the subject
+// findable once there is this much else on screen.
 const ZOOM_BY_LEVEL: Record<string, number> = {
-  // Wide for a POI. At 14.5 the frame is a couple of streets, which
-  // identifies nothing; at 13 the surroundings that make a place
-  // recognisable are in shot.
-  poi: 13,
-  locality: 10.5,
-  admin_area_1: 5.5,
-  country: 3.5,
-  continent: 2,
+  poi: 11.5,
+  locality: 9,
+  admin_area_1: 4.5,
+  country: 2.5,
+  continent: 1.5,
 };
 
 // Anything unrecognised sits between a city and a region, which is the
 // least wrong place to be wrong.
-const DEFAULT_ZOOM = 8;
+const DEFAULT_ZOOM = 6.5;
 
 export function zoomForPlaceLevel(level: string | null): number {
   if (!level) return DEFAULT_ZOOM;
@@ -93,11 +93,21 @@ export function buildPlaceMapUrl(opts: PlaceMapUrlOptions): string | null {
 
   const zoom = zoomForPlaceLevel(opts.level);
 
-  // No marker pin. The place name is already the headline directly above
-  // this image, and a pin over a POI-zoom map mostly covers the thing it is
-  // pointing at.
+  // A pin, which this deliberately did without before.
+  //
+  // The old reasoning was that a pin covers the thing it points at — true at
+  // the POI zoom this used to sit at, where the subject filled the frame.
+  // At these wider zooms the opposite holds: without a mark there is nothing
+  // saying WHICH part of the visible land the review is about, and the image
+  // stops being about the place at all.
+  //
+  // Cream rather than a colour, matching the unrated pin in
+  // trip-map-square.tsx — the rating already has a stamp of its own on the
+  // card, and a second coloured token would be reading the same number twice.
+  const pin = `pin-s+EAE7CF(${opts.lng.toFixed(5)},${opts.lat.toFixed(5)})`;
+
   return (
-    `https://api.mapbox.com/styles/v1/${STATIC_STYLE}/static/` +
+    `https://api.mapbox.com/styles/v1/${STATIC_STYLE}/static/${pin}/` +
     `${opts.lng.toFixed(5)},${opts.lat.toFixed(5)},${zoom}/${w}x${h}${RETINA}` +
     `?access_token=${token}&attribution=false&logo=false`
   );

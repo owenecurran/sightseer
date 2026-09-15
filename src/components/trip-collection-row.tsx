@@ -8,6 +8,7 @@ import { StretchText } from '@/components/ui/stretch-text';
 import { Spacing } from '@/constants/theme';
 import { colorForRating } from '@/lib/rating-gradient';
 import type { Trip } from '@/lib/trips';
+import { formatVisitedDate } from '@/lib/visited-date';
 
 const THUMB_SIZE = 56;
 const STATIC_STYLE = 'mapbox/dark-v10';
@@ -22,13 +23,6 @@ type TripCollectionRowProps = {
   averageRating: number | null;
 };
 
-function formatDate(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
-  return new Date(year, month - 1, day, 12).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 // A detected trip, listed alongside boards and travel books. Its thumbnail
 // is a Mapbox static image rather than a live map — this is a list, and one
@@ -43,8 +37,8 @@ export function TripCollectionRow({ trip, averageRating }: TripCollectionRowProp
 
   const dateRange =
     trip.startDate === trip.endDate
-      ? formatDate(trip.startDate)
-      : `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`;
+      ? formatVisitedDate(trip.startDate)
+      : `${formatVisitedDate(trip.startDate)} – ${formatVisitedDate(trip.endDate)}`;
 
   return (
     <Pressable

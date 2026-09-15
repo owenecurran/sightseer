@@ -20,6 +20,7 @@ import type { FeedVisit, TripDay } from '@/lib/feed';
 import { colorForRating } from '@/lib/rating-gradient';
 import { ArrowSticker } from '@/components/ui/arrow-sticker';
 import { pickStickerVariants } from '@/lib/sticker-shapes';
+import { formatVisitedDate } from '@/lib/visited-date';
 
 type TripDayReviewsProps = {
   day: TripDay;
@@ -50,16 +51,6 @@ const SHUFFLE_MS = 220;
 // stepping through never moves the control you're tapping.
 const ARROW_SIZE = 56;
 
-function formatDate(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
-  // Local noon — a bare 'YYYY-MM-DD' parsed directly is UTC midnight, which
-  // renders as the previous day west of Greenwich.
-  return new Date(year, month - 1, day, 12).toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 // One day of a trip as a stack of cards you step through with buttons.
 //
@@ -225,7 +216,7 @@ export function TripDayReviews({
           Day {dayNumber}
         </ThemedText>
         <ThemedText type="sectionLabel" themeColor="textSecondary" style={styles.dayDate}>
-          {formatDate(day.date)}
+          {formatVisitedDate(day.date)}
         </ThemedText>
         <View style={styles.dayRule} />
         {reviewCount > 1 && (
