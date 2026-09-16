@@ -51,6 +51,19 @@ export type FeedVisit = {
   commentCount: number;
   visitNumber: number;
   isViewerTagged: boolean;
+  // The postcard, as chosen when the review was written. Any field may be
+  // null on a review written before the card was stored on the row; the
+  // renderer falls back to deriving it from the id, which is what every one
+  // of these used to be.
+  card: VisitCard;
+};
+
+export type VisitCard = {
+  stock: number | null;
+  grain: number | null;
+  stamp: string | null;
+  orientation: 'horizontal' | 'vertical' | null;
+  side: 'picture' | 'message' | null;
 };
 
 // likes/comments come back as COUNT aggregates, not row sets. Pulling every
@@ -59,7 +72,7 @@ export type FeedVisit = {
 // can't come from an aggregate, so it's resolved separately in one batched
 // query per list — see getMyLikedVisitIds.
 export const FEED_VISIT_SELECT =
-  'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng, level), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), visit_tags(tag_slug, tags(label)), comments(count)';
+  'id, rating, note, visited_on, created_at, user_id, place_id, card_stock, card_grain, card_stamp, card_orientation, card_side, users!user_id(handle, name), places!place_id(name, lat, lng, level), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), visit_tags(tag_slug, tags(label)), comments(count)';
 
 export type RawFeedVisit = {
   id: string;
@@ -69,6 +82,14 @@ export type RawFeedVisit = {
   created_at: string;
   user_id: string;
   place_id: string;
+  // The postcard this review was printed on, fixed when it was written. All
+  // null for anything written before those columns existed — see the
+  // migration, and postcard-stock's seeded fallbacks.
+  card_stock: number | null;
+  card_grain: number | null;
+  card_stamp: string | null;
+  card_orientation: string | null;
+  card_side: string | null;
   users: { handle: string | null; name: string | null } | null;
   places: { name: string; lat: number | null; lng: number | null; level: string | null } | null;
   photos: { id: string; position: number; width: number | null; height: number | null }[];
@@ -102,6 +123,16 @@ export function mapRawFeedVisit(
     visited_on: visit.visited_on,
     created_at: visit.created_at,
     user_id: visit.user_id,
+    card: {
+      stock: visit.card_stock,
+      grain: visit.card_grain,
+      stamp: visit.card_stamp,
+      orientation:
+        visit.card_orientation === 'horizontal' || visit.card_orientation === 'vertical'
+          ? visit.card_orientation
+          : null,
+      side: visit.card_side === 'message' || visit.card_side === 'picture' ? visit.card_side : null,
+    },
     authorName: visit.users?.name ?? visit.users?.handle ?? 'Someone',
     placeId: visit.place_id,
     placeName: visit.places?.name ?? 'Unknown place',

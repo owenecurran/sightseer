@@ -342,6 +342,12 @@ export default function RootLayout() {
     MoonGetHeavy: require('@/assets/fonts/MOON_GET-HEAVY.otf'),
     HelveticaRoundedBold: require('@/assets/fonts/HELVETICA-ROUNDED-BOLD-5871D05EAD8DE.otf'),
     ObviouslyWideMedium: require('@/assets/fonts/ObviouslyWideMedium.otf'),
+    // Copied from "PAG Auto W01 Regular.otf" to a name with no spaces. The
+    // spaced original bundles and resolves fine, but useFonts never settles on
+    // it — the whole app sits on a blank screen, because this gate returns
+    // null until it does. The .otf of the pair rather than the .ttf beside it:
+    // same face, and the OpenType build carries the full kerning table.
+    PagAuto: require('@/assets/fonts/PagAutoRegular.otf'),
   });
 
   // Native splash stays up (SplashScreen.preventAutoHideAsync() above) until

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -100,22 +100,45 @@ export function PostcardFlip({ isFlipped, front, back, estimatedHeight = 260 }: 
     opacity: progress.value < 0.5 ? 0 : 1,
   }));
 
+  const frontFace = (
+    <Animated.View
+      key="front"
+      style={[styles.face, frontStyle]}
+      onLayout={(e) => setFrontHeight(e.nativeEvent.layout.height)}>
+      <View pointerEvents={isFlipped ? 'none' : 'auto'}>{front}</View>
+    </Animated.View>
+  );
+
+  const backFace = (
+    <Animated.View
+      key="back"
+      style={[styles.face, backStyle]}
+      onLayout={(e) => setBackHeight(e.nativeEvent.layout.height)}>
+      <View pointerEvents={isFlipped ? 'auto' : 'none'}>{back}</View>
+    </Animated.View>
+  );
+
   return (
     <Animated.View style={containerStyle}>
-      <Animated.View
-        style={[styles.face, frontStyle]}
-        onLayout={(e) => setFrontHeight(e.nativeEvent.layout.height)}
-        // The hidden face must not swallow taps meant for the visible one.
-        pointerEvents={isFlipped ? 'none' : 'auto'}>
-        {front}
-      </Animated.View>
-
-      <Animated.View
-        style={[styles.face, backStyle]}
-        onLayout={(e) => setBackHeight(e.nativeEvent.layout.height)}
-        pointerEvents={isFlipped ? 'auto' : 'none'}>
-        {back}
-      </Animated.View>
+      {/* Whichever face is showing is rendered LAST, so it is the one on
+          top — and touch follows paint order here. The back used to be
+          second unconditionally, which meant that while it was invisible it
+          still sat over the front and swallowed every press across the area
+          it covered. That hid for a long time because the back is the
+          shorter face on a photo card, so the front's only control — the
+          turn-over line at its foot — happened to fall below the back's
+          bottom edge and worked. Putting a control on the card's border,
+          higher up, is what finally surfaced it.
+          
+          pointerEvents alone does not fix it and was tried three ways on
+          device: as a prop on the Animated.View, in its style, and on a
+          plain View wrapping each face. None stopped the interception,
+          because React Native resolves a touch to the topmost view at the
+          point and then walks UP its ancestors — it never falls through to
+          a sibling painted underneath. The only reliable fix is for the
+          visible face to BE the topmost view. Keys keep both instances
+          across the reorder, so nothing remounts when the card turns. */}
+      {isFlipped ? [frontFace, backFace] : [backFace, frontFace]}
     </Animated.View>
   );
 }

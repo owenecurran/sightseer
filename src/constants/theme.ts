@@ -94,6 +94,9 @@ export const BrandFonts = {
   condensedHeavy: 'MoonGetHeavy',
   roundedStat: 'HelveticaRoundedBold',
   wideMedium: 'ObviouslyWideMedium',
+  // Art-deco display, for the postcard lettering that is meant to read as a
+  // 1930s luggage label.
+  deco: 'PagAuto',
 } as const;
 
 export const Fonts = Platform.select({

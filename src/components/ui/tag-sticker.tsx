@@ -237,12 +237,15 @@ export function TagSticker({ slug, label, placementSeed, onPress }: TagStickerPr
 
 const styles = StyleSheet.create({
   sticker: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.two,
-    borderRadius: Spacing.two,
+    // Tight. These were set at the padding a tappable chip wants, and on a
+    // card they read as buttons rather than as something stuck on — three of
+    // them took most of the written side. A sticker is small.
+    paddingVertical: 1,
+    paddingHorizontal: Spacing.one + 1,
+    borderRadius: Spacing.one,
     // The die-cut rim — the one feature that reads "sticker" rather than
     // "chip" at this size.
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: BrandColors.cream,
     // Clips the gloss and the wear marks to the rounded rim; nothing here
     // needs to overflow.
@@ -251,6 +254,10 @@ const styles = StyleSheet.create({
   label: {
     color: BrandColors.background,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    // Down from sectionLabel's own 12, which is a heading size and was
+    // carrying the sticker's width with it.
+    fontSize: 9,
+    lineHeight: 13,
+    letterSpacing: 0.4,
   },
 });

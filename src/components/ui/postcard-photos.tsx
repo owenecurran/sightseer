@@ -14,6 +14,10 @@ type PostcardPhotosProps = {
   // can show.
   thumbUrls?: string[];
   orientation: PostcardOrientation;
+  // Overrides the frame the photos are fitted into. A picture tipped onto a
+  // written card is a print on one half of the sheet, not the sheet's own
+  // face, so it keeps its own proportions instead of the postcard's.
+  frameRatio?: number;
   onDoubleTap?: () => void;
 };
 
@@ -26,13 +30,22 @@ type PostcardPhotosProps = {
 // it, so every horizontal card in the feed is the same shape and every
 // vertical one is the same shape.
 //
-// Filling rather than fitting: a letterboxed photo inside a postcard frame
-// looks like a mistake, and the frame was already chosen (see
-// orientationForPhotos) to be the one the photo loses least in.
+// A single photo is fitted, not cropped: its shape is the subject, the card
+// shows around it the way a print sits on a postcard, and that margin is
+// where the stamp and the tag stickers are allowed to go (see fitPicture and
+// visit-card's ornament rules). Cropping one would leave no margin anywhere
+// and quietly take a third off the top of every portrait shot.
+//
+// A grid is cropped. Fitting each tile was tried and it is a different thing
+// entirely: four photos of four different shapes, each floating in its own
+// slot, leave holes of card between them at every size and the card reads as
+// broken rather than as a mosaic. In a grid the slot is the composition and
+// the photo fills it.
 export function PostcardPhotos({
   urls,
   thumbUrls,
   orientation,
+  frameRatio,
   onDoubleTap,
 }: PostcardPhotosProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -44,9 +57,11 @@ export function PostcardPhotos({
   // Falls back per index, so a photo without a derivative still renders.
   const displayUrls = urls.length > 1 && thumbUrls ? urls.map((url, i) => thumbUrls[i] ?? url) : urls;
 
+  const fit = urls.length === 1 ? 'contain' : 'cover';
+
   const tile = (index: number) => (
     <Pressable style={styles.tile} onPress={() => handleTilePress(index)}>
-      <LoadableImage source={{ uri: displayUrls[index] }} style={styles.fill} contentFit="cover" />
+      <LoadableImage source={{ uri: displayUrls[index] }} style={styles.fill} contentFit={fit} />
     </Pressable>
   );
 
@@ -88,7 +103,7 @@ export function PostcardPhotos({
   }
 
   return (
-    <View style={[styles.frame, { aspectRatio: POSTCARD_FRAME_RATIO[orientation] }]}>
+    <View style={[styles.frame, { aspectRatio: frameRatio ?? POSTCARD_FRAME_RATIO[orientation] }]}>
       {content}
       <PhotoLightbox
         visible={selectedIndex != null}
@@ -103,7 +118,9 @@ export function PostcardPhotos({
 const styles = StyleSheet.create({
   frame: {
     width: '100%',
-    overflow: 'hidden',
+    // No clipping and no background: what the fitted photos do not cover is
+    // the card itself showing through, not a gap to be filled.
+    overflow: 'visible',
   },
   row: {
     flex: 1,

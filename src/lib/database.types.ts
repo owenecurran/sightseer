@@ -1824,6 +1824,11 @@ export type Database = {
       }
       visits: {
         Row: {
+          card_grain: number | null
+          card_orientation: string | null
+          card_side: string | null
+          card_stamp: string | null
+          card_stock: number | null
           created_at: string
           id: string
           note: string | null
@@ -1833,6 +1838,11 @@ export type Database = {
           visited_on: string
         }
         Insert: {
+          card_grain?: number | null
+          card_orientation?: string | null
+          card_side?: string | null
+          card_stamp?: string | null
+          card_stock?: number | null
           created_at?: string
           id?: string
           note?: string | null
@@ -1842,6 +1852,11 @@ export type Database = {
           visited_on: string
         }
         Update: {
+          card_grain?: number | null
+          card_orientation?: string | null
+          card_side?: string | null
+          card_stamp?: string | null
+          card_stock?: number | null
           created_at?: string
           id?: string
           note?: string | null
