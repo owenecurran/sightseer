@@ -1,4 +1,4 @@
-import { Image, StyleSheet, type ImageSourcePropType } from 'react-native';
+import { Image, StyleSheet, View, type ImageSourcePropType } from 'react-native';
 
 type PostcardGrainProps = {
   // Chosen by the caller, because which plate a review carries is stored on
@@ -25,16 +25,19 @@ type PostcardGrainProps = {
 // paper.
 export function PostcardGrain({ source }: PostcardGrainProps) {
   return (
-    <Image
-      source={source}
-      resizeMode="cover"
-      style={styles.grain}
-    />
+    // Wrapped in a View purely to carry pointerEvents. This lies over the
+    // whole picture, and an Image rejects the prop outright and ignores it in
+    // its style — so left to itself it swallowed every tap meant for the
+    // photograph beneath it, and tapping a photo to open it stopped working
+    // entirely. On a plain View the prop takes.
+    <View style={styles.grain} pointerEvents="none">
+      <Image source={source} resizeMode="cover" style={styles.fill} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  grain: {
+  fill: {
     position: 'absolute',
     left: 0,
     right: 0,
@@ -42,6 +45,13 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: undefined,
     height: undefined,
+  },
+  grain: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     mixBlendMode: 'screen',
     // The plates are shot dense, and at anything like full strength the
     // scratches read as damage to the screen rather than to the card. This is

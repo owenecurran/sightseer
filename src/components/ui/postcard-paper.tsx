@@ -70,26 +70,34 @@ export function PostcardPaper({
       {/* Stretched, not cover: the card has to BE the card's shape. Its own
           proportions are close to the frame's already, so the deckle is not
           visibly pulled. */}
-      <Image source={sheet.card} resizeMode="stretch" style={styles.sheet} />
-      {/* A wash of the theme's own cream over the sheet, in the sheet's exact
-          shape. These are scans of card that spent decades in a drawer, and at
-          full strength the foxing and the water marks read as a dirty card
-          rather than an old one — but a plain rectangle of cream laid over the
-          top would square off the deckle the scan was used for. Tinting a
-          second copy of the same image keeps the torn edge and every speck of
-          its alpha, and only lifts the colour. */}
-      <Image
-        source={sheet.card}
-        resizeMode="stretch"
-        tintColor={BrandColors.cream}
-        style={[styles.sheet, styles.wash]}
-      />
+      {/* Wrapped in a View purely to carry pointerEvents. An Image rejects the
+          prop outright and does not honour it in its style either, so left to
+          itself it is a hit-testable view covering the WHOLE card — the frame
+          below is drawn over the picture, and it quietly swallowed every tap
+          meant for the photograph underneath until the lightbox stopped
+          opening at all. On a plain View the prop works. */}
+      <View style={styles.sheet} pointerEvents="none">
+        <Image source={sheet.card} resizeMode="stretch" style={styles.fill} />
+        {/* A wash of the theme's own cream over the sheet, in the sheet's exact
+            shape. These are scans of card that spent decades in a drawer, and
+            at full strength the foxing and the water marks read as a dirty card
+            rather than an old one — but a plain rectangle of cream laid over
+            the top would square off the deckle the scan was used for. Tinting a
+            second copy of the same image keeps the torn edge and every speck of
+            its alpha, and only lifts the colour. */}
+        <Image
+          source={sheet.card}
+          resizeMode="stretch"
+          tintColor={BrandColors.cream}
+          style={[styles.fill, styles.wash]}
+        />
+      </View>
 
       <View style={[styles.body, { padding: inset }]}>{children}</View>
 
       {framed && (
-        <>
-          <Image source={sheet.frame} resizeMode="stretch" style={styles.sheet} />
+        <View style={styles.sheet} pointerEvents="none">
+          <Image source={sheet.frame} resizeMode="stretch" style={styles.fill} />
           {/* The frame is painted over the content, so it has to be washed
               separately — without this it stays at full grime and reads as a
               dirty border around a clean card. */}
@@ -97,9 +105,9 @@ export function PostcardPaper({
             source={sheet.frame}
             resizeMode="stretch"
             tintColor={BrandColors.cream}
-            style={[styles.sheet, styles.wash]}
+            style={[styles.fill, styles.wash]}
           />
-        </>
+        </View>
       )}
 
       {footer}
@@ -147,7 +155,27 @@ const styles = StyleSheet.create({
   // Both the sheet behind and the frame in front fill the card exactly, which
   // is what keeps the frame's grain registered with the sheet's — they are
   // the same scan.
+  //
+  // Touch-transparent, and every one of the four shares this. They are paper,
+  // not controls, but an Image is a hit-testable view like any other and these
+  // cover the WHOLE card — the frame and its wash are drawn OVER the picture,
+  // so without this they quietly swallowed every tap meant for the photograph
+  // underneath and the lightbox stopped opening at all. The flip strips kept
+  // working the whole time, because they are rendered after these and sit on
+  // top of them, which is exactly why the symptom looked like "only the flip
+  // works" rather than like a dead card.
+  //
+  // In the STYLE, not as a prop: Image rejects a pointerEvents prop outright.
   sheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: undefined,
+    height: undefined,
+  },
+  fill: {
     position: 'absolute',
     left: 0,
     right: 0,
