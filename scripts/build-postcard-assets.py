@@ -37,6 +37,7 @@ CARD_WIDTH = 900
 # The grain is a soft overlay with no fine detail worth preserving, and it is
 # stretched over the picture rather than tiled.
 GRAIN_WIDTH = 700
+GRAIN_ALPHA_LEVELS = 32
 
 # Card stock is very nearly one colour, so a palette costs almost nothing in
 # fidelity and saves an enormous amount: a full-colour RGBA card is 720KB and
@@ -214,12 +215,33 @@ def write_card(name, tone):
 
 
 def write_grain(name):
-    grain = Image.open(os.path.join(SRC, 'textures', f'{name}.jpg')).convert('RGB')
+    # White, with the scan's luminance baked into the ALPHA channel.
+    #
+    # These plates used to ship as near-black RGB JPEGs laid on with a screen
+    # blend, which is the natural way to read a scan like this: black screens
+    # to nothing, so only the light marks land. react-native-web drops
+    # mixBlendMode entirely (it does not appear anywhere in 0.21.2, and the
+    # computed value comes back `normal`), so on the web the black plate went
+    # on as a flat 22% veil over every photograph instead.
+    #
+    # Baking it into alpha makes the blend unnecessary rather than working
+    # around it, and it is not an approximation — screen(b, s) is
+    # b + s*(1 - b), and compositing WHITE at alpha s normally gives
+    # b*(1 - s) + s, which is the same expression. Identical output on native,
+    # correct output on the web, and one less platform-specific style.
+    grain = Image.open(os.path.join(SRC, 'textures', f'{name}.jpg')).convert('L')
     w, h = grain.size
     grain = grain.resize((GRAIN_WIDTH, round(h * GRAIN_WIDTH / w)), Image.LANCZOS)
-    # JPEG, not PNG: this plate has no alpha and no flat areas, so PNG buys
-    # nothing and costs several times the bytes.
-    grain.save(os.path.join(OUT, f'grain-{name}.jpg'), quality=82, optimize=True)
+    # Alpha posterised to GRAIN_ALPHA_LEVELS steps. Noise is what makes a PNG
+    # expensive, and at the 0.22 opacity this is laid on at, one step is 0.7%
+    # of lightness — far below anything visible, and it takes the three plates
+    # from 33K of JPEG to 19K of PNG rather than to the 149K a full-depth
+    # alpha channel costs.
+    step = 256 // GRAIN_ALPHA_LEVELS
+    alpha = grain.point(lambda v: min(255, (v // step) * step + step // 2))
+    plate = Image.new('LA', (GRAIN_WIDTH, alpha.size[1]))
+    plate.putdata([(255, v) for v in alpha.get_flattened_data()])
+    plate.save(os.path.join(OUT, f'grain-{name}.png'), optimize=True)
 
 
 def main():

@@ -1,8 +1,16 @@
-import { useImage } from '@shopify/react-native-skia';
+import { AlphaType, ColorType, Skia, useImage, type SkImage } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
 
-import { accentFromImage, type ImageAccent } from '@/lib/image-accent';
+import {
+  ACCENT_SAMPLE_SIZE,
+  accentFromPixels,
+  type ImageAccent,
+} from '@/lib/image-accent';
 
+// Native only — there is a .web.ts beside this one that uses a plain canvas
+// instead. Skia on web needs CanvasKit loaded first and throws if it is not,
+// which is not a thing a hook can wait for.
+//
 // Results, by url. A feed recycles rows constantly and the answer for a given
 // picture never changes, so without this the same photograph is decoded and
 // sampled again every time it scrolls back into view — and worse, the name
@@ -34,7 +42,7 @@ export function useImageAccent(url: string | undefined): ImageAccent | null {
   // sampling is synchronous, so state would only be a copy of something
   // already computable — and setting it from an effect makes every picture
   // render twice, which the compiler's lint calls out as a cascading render.
-  const sampled = useMemo(() => (image == null ? null : accentFromImage(image)), [image]);
+  const sampled = useMemo(() => (image == null ? null : sampleWithSkia(image)), [image]);
 
   // Writing the cache is the one thing that genuinely is a side effect, so it
   // happens after the render that produced the value rather than during it.
@@ -44,4 +52,28 @@ export function useImageAccent(url: string | undefined): ImageAccent | null {
   }, [url, cached, image, sampled]);
 
   return cached ?? sampled;
+}
+
+// The picture drawn into a tiny offscreen surface and read straight back.
+// Sampling the full-size bitmap would work and costs far more; at this size
+// the whole thing is a few hundred bytes, and what is wanted is the broad
+// colour of the image rather than its detail.
+function sampleWithSkia(image: SkImage): ImageAccent | null {
+  const surface = Skia.Surface.MakeOffscreen(ACCENT_SAMPLE_SIZE, ACCENT_SAMPLE_SIZE);
+  if (!surface) return null;
+
+  surface.getCanvas().drawImageRect(
+    image,
+    { x: 0, y: 0, width: image.width(), height: image.height() },
+    { x: 0, y: 0, width: ACCENT_SAMPLE_SIZE, height: ACCENT_SAMPLE_SIZE },
+    Skia.Paint(),
+  );
+
+  const pixels = surface.makeImageSnapshot().readPixels(0, 0, {
+    width: ACCENT_SAMPLE_SIZE,
+    height: ACCENT_SAMPLE_SIZE,
+    colorType: ColorType.RGBA_8888,
+    alphaType: AlphaType.Unpremul,
+  });
+  return pixels == null ? null : accentFromPixels(pixels);
 }

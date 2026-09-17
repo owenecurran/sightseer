@@ -27,9 +27,14 @@ import {
   sheetFor,
 } from "@/lib/postcard-stock";
 import {
-  PAPER_PICTURE_INSET,
+  pictureInsetFor,
   PostcardPaper,
+  turnMarkInsetFor,
 } from "@/components/ui/postcard-paper";
+import {
+  TURN_MARK_PANEL_INK,
+  turnMarkClearance,
+} from "@/components/ui/postcard-turn-mark";
 import { PostcardPhotos } from "@/components/ui/postcard-photos";
 import { Postmark } from "@/components/ui/postmark";
 import { StretchText } from "@/components/ui/stretch-text";
@@ -74,6 +79,12 @@ const MIN_ORNAMENT_BAND = 48;
 // Bounds on the stamp once it is sized to the margin it sits in, rather
 // than always drawn at STAMP_SIZE.
 const MIN_STAMP = 52;
+// The stamp's ceiling, as a share of the card's width. It used to be a flat
+// STAMP_SIZE, which is about a quarter of a phone card's width but only an
+// eighth of a 750dp desktop one — so the identical stamp read as postage on a
+// phone and as a speck on a monitor. Anchored to the card instead: STAMP_SIZE
+// is what it came out at on a ~400dp phone card, and it grows from there.
+const STAMP_WIDTH_SHARE = STAMP_SIZE / 400;
 
 // How far in from the card's edge a tap still counts as "the side of the
 // card" and turns it over. 44 is the smallest target Apple will call
@@ -87,14 +98,16 @@ const FRONT_FLIP_REACH = 44;
 // margin the picture left and carries on into the printed border, and only
 // this stops it reaching the deckle.
 const CAPTION_EDGE_INSET = 14;
+// ...as a share of the card's width, so the clearance a phone card has is the
+// clearance a desktop one has. A flat 14 is 3.5% of a phone card and half that
+// of a 750dp one, which is how a name that sat inside the card on a phone came
+// to run off the edge of the same card on a monitor.
+const CAPTION_EDGE_SHARE = CAPTION_EDGE_INSET / 400;
 // What share of the card's height the name is lettered at. Fixed, so every
 // card in a feed carries its name at the same size relative to the card rather
 // than at whatever size its own character count produced — a short name was
 // coming out enormous and a long one small.
 const CAPTION_HEIGHT_SHARE = 0.25;
-// How far an ornament box has to reach back out of the picture frame to
-// touch the card's own edge — exactly the inset the picture was laid in by.
-const ORNAMENT_OUTDENT = PAPER_PICTURE_INSET;
 // The written side stops short of its own content, which begins 30pt in
 // (the printed border plus the panel's padding). Reaching 44 here would put
 // the strip straight on top of the like button.
@@ -169,6 +182,12 @@ export function VisitCard({
   // shows no ornaments at all — better than guessing high and having them
   // pop away.
   const [frame, setFrame] = useState({ width: 0, height: 0 });
+  // The card's own width. Everything that has to clear the printed border —
+  // the picture, the place name, the stamp — is a fraction of this rather than
+  // a fixed number of points, because the border itself is: the frame is one
+  // image stretched over the card, so it reaches further in the bigger the
+  // card gets. See pictureInsetFor.
+  const [cardWidth, setCardWidth] = useState(0);
 
   const heartScale = useSharedValue(0);
   const heartOpacity = useSharedValue(0);
@@ -294,8 +313,13 @@ export function VisitCard({
   const sheet = sheetFor({ stock, orientation });
   // The card's own border counts toward the margin — it is the same strip of
   // bare card, just the part that is there on every post.
-  const sideMargin = fit.sideBand > 0 ? fit.sideBand + PAPER_PICTURE_INSET : 0;
-  const topMargin = fit.topBand > 0 ? fit.topBand + PAPER_PICTURE_INSET : 0;
+  const pictureInset = pictureInsetFor(cardWidth, orientation);
+  const captionEdgeInset = Math.max(
+    CAPTION_EDGE_INSET,
+    Math.round(cardWidth * CAPTION_EDGE_SHARE),
+  );
+  const sideMargin = fit.sideBand > 0 ? fit.sideBand + pictureInset : 0;
+  const topMargin = fit.topBand > 0 ? fit.topBand + pictureInset : 0;
 
   // A picture narrower than the frame leaves columns down the sides; a
   // wider one leaves bands above and below. The stamp takes whichever
@@ -306,7 +330,10 @@ export function VisitCard({
   // two of them in it is a crowd.
   const showFrontStamp =
     visit.rating != null && !captionBelow && stampMargin >= MIN_ORNAMENT_BAND;
-  const stampSize = Math.round(Math.min(STAMP_SIZE, Math.max(MIN_STAMP, stampMargin * 1.1)));
+  // `max` rather than a straight share, so a stamp on a phone is never
+  // smaller than it is today — this only ever lets it grow.
+  const stampCap = Math.max(STAMP_SIZE, Math.round(cardWidth * STAMP_WIDTH_SHARE));
+  const stampSize = Math.round(Math.min(stampCap, Math.max(MIN_STAMP, stampMargin * 1.1)));
   const showFrontStickers =
     visit.tags.length > 0 && !captionBelow && topMargin >= MIN_ORNAMENT_BAND;
 
@@ -342,19 +369,100 @@ export function VisitCard({
       <View style={{ width: "100%", aspectRatio: POSTCARD_FRAME_RATIO[orientation] }} />
     );
 
+  // The stamp and the tag stickers, in whatever bare card the picture left.
+  //
+  // These go in PostcardPaper's `footer`, which is drawn AFTER the frame, and
+  // not in its body with the picture — which is where they used to be, and
+  // where the frame was painted straight over them. A stamp sits in the
+  // margin at the card's corner, which is exactly where the frame's ring is,
+  // so the card's own border covered half of it: the rating was buried under
+  // the cream corner and only the part hanging off the card was visible.
+  //
+  // Being in the footer also puts their boxes against the CARD rather than
+  // against the picture's padded box, so the insets below are plain zeroes
+  // where they used to have to reach back out by the picture's own inset.
+  const ornaments = (
+    <>
+      {/* Laid along the bare card under the picture, never on top of it.
+          Only the horizontal margin is ever wide enough: a stack of wide
+          labels cannot fit in the 40-odd points a side column leaves. */}
+      {showFrontStickers && (
+        <View
+          style={[
+            styles.frontStickers,
+            {
+              height: topMargin,
+              bottom: 0,
+              // Held off the deckle by the same distance the picture is, so a
+              // label never starts on the torn edge of the card.
+              left: pictureInset + Spacing.three,
+              right: pictureInset + Spacing.three,
+            },
+          ]}
+          pointerEvents="none"
+        >
+          {visit.tags.map((tag) => (
+            <TagSticker
+              key={tag.slug}
+              slug={tag.slug}
+              label={tag.label}
+              placementSeed={visit.id}
+            />
+          ))}
+        </View>
+      )}
+
+      {/* In the bare card the picture left behind — a column down the right
+          when the picture is the narrower shape, the band across the top
+          when it is the wider one. When the picture fills the frame there is
+          no margin and no stamp here at all: it goes on the back, which is
+          where a real card carries one anyway. */}
+      {showFrontStamp && (
+        <View
+          style={[
+            styles.frontStamp,
+            sideMargin >= topMargin
+              ? { top: 0, bottom: 0, right: 0, width: sideMargin }
+              : { left: 0, right: 0, top: 0, height: topMargin },
+          ]}
+          pointerEvents="box-none"
+        >
+          <FeedRatingStamp
+            rating={visit.rating!}
+            seed={visit.id}
+            tags={visit.tags.map((tag) => tag.slug)}
+            placeId={visit.placeId}
+            canSeep={false}
+            corner="top-right"
+            placement="corner"
+            cornerInset={2}
+            size={stampSize}
+          />
+        </View>
+      )}
+    </>
+  );
+
   const front = (
     <PostcardPaper
       sheet={sheet}
-      inset={PAPER_PICTURE_INSET}
+      inset={pictureInset}
       framed
       footer={
-        captionBelow ? (
+        <>
+          {captionBelow ? (
           // Printed on the card under the picture, not set across it. No
           // scrim and no cream: this is ink on paper, so the lettering
           // switches to the card's own dark — see headlineStyleFor's
           // `onCard`.
           <Pressable
-            style={styles.printedCaption}
+            style={[
+              styles.printedCaption,
+              // The same two distances the overlaid caption keeps, and for
+              // the same reason: both are a share of the card, because the
+              // printed border they have to clear is.
+              { paddingHorizontal: captionEdgeInset, paddingBottom: pictureInset },
+            ]}
             onPress={() =>
               router.push({ pathname: "/place/[id]", params: { id: visit.placeId } })
             }
@@ -393,33 +501,27 @@ export function VisitCard({
             <View
               style={[
                 styles.caption,
-                { left: CAPTION_EDGE_INSET, right: CAPTION_EDGE_INSET },
+                {
+                  left: captionEdgeInset,
+                  // Held off the turn-over mark when the name is set along
+                  // the foot of the card, which is the one anchor that puts
+                  // it in the same corner. The name is stretched to whatever
+                  // box it is given, so this costs a little width rather than
+                  // risking an overlap.
+                  right:
+                    captionAnchor === "bottom"
+                      ? captionEdgeInset + turnMarkClearance(turnMarkInsetFor(cardWidth))
+                      : captionEdgeInset,
+                },
                 captionAnchor === "top"
-                  ? { top: PAPER_PICTURE_INSET }
+                  ? { top: pictureInset }
                   : captionAnchor === "bottom"
-                    ? { bottom: PAPER_PICTURE_INSET }
+                    ? { bottom: pictureInset }
                     : // Floating: held off the picture's own foot, which is
                       // where it used to sit unconditionally.
-                      { bottom: PAPER_PICTURE_INSET + fit.topBand + Spacing.three },
+                      { bottom: pictureInset + fit.topBand + Spacing.three },
               ]}
             >
-              {/* Above the name, not below it. StretchText's fill mode trades
-                  horizontal compression for vertical stretch, so a long name
-                  grows past the box it was measured in — and a line sitting
-                  under it ends up in its descenders however much gap it is
-                  given (16pt was not enough). Above, there is nothing to
-                  collide with, and a small line over a big one is how these
-                  cards are set anyway.
-
-                  It carries its own shadow because the gradient that used to
-                  back this whole block is gone: grey type straight onto an
-                  arbitrary photograph is unreadable about half the time. */}
-              {(region || visitedLine) && (
-                <ThemedText type="small" numberOfLines={1} style={styles.captionLine}>
-                  {[region, visitedLine].filter(Boolean).join(" · ")}
-                </ThemedText>
-              )}
-
               <Pressable
                 onPress={() =>
                   router.push({ pathname: "/place/[id]", params: { id: visit.placeId } })
@@ -432,19 +534,55 @@ export function VisitCard({
                 <View style={{ height: frame.height * CAPTION_HEIGHT_SHARE }}>
                   <LayeredHeadline
                     fillHeight
-                    {...headlineTreatmentFor(visit.id, { accent })}
+                    {...headlineTreatmentFor(visit.id, {
+                      accent,
+                      // The same box the name is lettered into, so the
+                      // border-out outline can be a share of the type rather
+                      // than a fixed distance that reads differently on a
+                      // phone and on a desktop card.
+                      boxHeight: frame.height * CAPTION_HEIGHT_SHARE,
+                    })}
                   >
                     {visit.placeName || " "}
                   </LayeredHeadline>
                 </View>
               </Pressable>
+
+              {/* Rendered AFTER the name but shown above it — see the
+                  column-reverse on styles.caption.
+
+                  Above it, because StretchText's fill mode trades horizontal
+                  compression for vertical stretch: a long name grows past the
+                  box it was measured in, and a line sitting under it ends up
+                  in its descenders however much gap it is given (16pt was not
+                  enough). Above, there is nothing to collide with, and a small
+                  line over a big one is how these cards are set anyway.
+
+                  After it in the tree, because paint order is tree order on
+                  both platforms: the name's plates are drawn behind the name
+                  but still over anything earlier in the tree, and a treatment
+                  that spreads out from the letters reaches this line. The
+                  reverse direction is what lets the line be last, and so on
+                  top, without moving.
+
+                  It carries its own shadow because the gradient that used to
+                  back this whole block is gone: grey type straight onto an
+                  arbitrary photograph is unreadable about half the time. */}
+              {(region || visitedLine) && (
+                <ThemedText type="small" numberOfLines={1} style={styles.captionLine}>
+                  {[region, visitedLine].filter(Boolean).join(" · ")}
+                </ThemedText>
+              )}
             </View>
           </View>
-        )
+          )}
+          {ornaments}
+        </>
       }
       onFlip={() => setIsFlipped(true)}
       flipLabel="Read the message"
       flipReach={FRONT_FLIP_REACH}
+      turnMark
     >
       <View
         style={[
@@ -470,73 +608,11 @@ export function VisitCard({
             needs ground of its own, because cream display type over an
             arbitrary photo is unreadable about half the time. A gradient
             rather than a flat bar, so the picture keeps going underneath. */}
-        {/* Laid along the bare card under the picture, never on top of it.
-            Only the horizontal margin is ever wide enough: a stack of wide
-            labels cannot fit in the 40-odd points a side column leaves. */}
-        {showFrontStickers && (
-          // Negative bottom because these sit in the margin measured from
-          // the CARD's edge, while this box's parent is the picture frame,
-          // which the printed border has already inset by PAPER_BORDER.
-          <View
-            style={[styles.frontStickers, { height: topMargin, bottom: -ORNAMENT_OUTDENT }]}
-            pointerEvents="none"
-          >
-            {visit.tags.map((tag) => (
-              <TagSticker
-                key={tag.slug}
-                slug={tag.slug}
-                label={tag.label}
-                placementSeed={visit.id}
-              />
-            ))}
-          </View>
-        )}
-
         <Animated.View style={[styles.heartBurst, heartStyle]} pointerEvents="none">
           <Ionicons name="heart" size={72} color={BrandColors.cream} />
         </Animated.View>
       </View>
 
-      {/* In the bare card the picture left behind — a column down the right
-          when the picture is the narrower shape, the band across the top
-          when it is the wider one. When the picture fills the frame there is
-          no margin and no stamp here at all: it goes on the back, which is
-          where a real card carries one anyway. */}
-      {showFrontStamp && (
-        <View
-          style={[
-            styles.frontStamp,
-            // Same reason as the stickers above: measured from the card's
-            // edge, anchored inside the frame the border has already inset.
-            sideMargin >= topMargin
-              ? {
-                  top: -ORNAMENT_OUTDENT,
-                  bottom: -ORNAMENT_OUTDENT,
-                  right: -ORNAMENT_OUTDENT,
-                  width: sideMargin,
-                }
-              : {
-                  left: -ORNAMENT_OUTDENT,
-                  right: -ORNAMENT_OUTDENT,
-                  top: -ORNAMENT_OUTDENT,
-                  height: topMargin,
-                },
-          ]}
-          pointerEvents="box-none"
-        >
-          <FeedRatingStamp
-            rating={visit.rating!}
-            seed={visit.id}
-            tags={visit.tags.map((tag) => tag.slug)}
-            placeId={visit.placeId}
-            canSeep={false}
-            corner="top-right"
-            placement="corner"
-            cornerInset={2}
-            size={stampSize}
-          />
-        </View>
-      )}
     </PostcardPaper>
   );
 
@@ -560,6 +636,9 @@ export function VisitCard({
       onFlip={() => setIsFlipped(false)}
       flipLabel="Show the picture side"
       flipReach={BACK_FLIP_REACH}
+      turnMark
+      // The written side is a dark panel, not bare card.
+      turnMarkInk={TURN_MARK_PANEL_INK}
     >
     <ThemedView type="backgroundElement" style={styles.back} collapsable={false}>
       {/* Where it was, and the way back to the picture. The overflow menu
@@ -700,7 +779,13 @@ export function VisitCard({
   );
 
   return (
-    <View style={styles.card}>
+    <View
+      style={styles.card}
+      // The card is this box's full width, so measuring here measures the
+      // card — and measuring the card itself would be circular, since its
+      // height comes from the inset this width decides. See pictureInsetFor.
+      onLayout={(e) => setCardWidth(e.nativeEvent.layout.width)}
+    >
       {byline}
       <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
     </View>
@@ -735,6 +820,10 @@ const styles = StyleSheet.create({
     // compression for vertical stretch, anchored at its baseline), so the
     // clearance that matters is the gap above it, not below.
     gap: Spacing.two,
+    // Reversed so the region line can be last in the tree — and so painted
+    // last, over the oversize ghost — while still sitting above the name on
+    // screen. See the line's own note at the call site.
+    flexDirection: "column-reverse",
   },
   captionLine: {
     color: BrandColors.cream,
@@ -762,12 +851,9 @@ const styles = StyleSheet.create({
   // The band under a square picture on a portrait card. Flex so it takes
   // whatever the picture left, and centred in it.
   printedCaption: {
-    // A direct child of the card rather than of its padded body, so this sets
-    // its own margin — the same distance from the card's edge the overlaid
-    // caption keeps.
+    // A direct child of the card rather than of its padded body, so it sets
+    // its own margin — see the call site, which supplies both paddings.
     alignSelf: "stretch",
-    paddingHorizontal: CAPTION_EDGE_INSET,
-    paddingBottom: PAPER_PICTURE_INSET,
     gap: Spacing.one,
     // Centred through the TEXT, not through alignItems. StretchText's fill
     // mode scales the type to the width of the box it is handed, and
@@ -785,6 +871,19 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
+    // Clipped to the card, which nothing else on this face is.
+    //
+    // The name is deliberately allowed to cross off the picture and onto the
+    // printed border, and the border-out treatment grows further outward
+    // still from every letterform — so between them they can reach the
+    // deckle. Ink stops at the edge of the card rather than carrying on onto
+    // the app's own background, which reads as a rendering fault rather than
+    // as something printed.
+    //
+    // Safe for the rest: this layer holds the name and its region line and
+    // nothing else. The stamp and the stickers, which DO lean off the card on
+    // purpose, are siblings of this in the footer rather than children of it.
+    overflow: "hidden",
   },
   printedCaptionName: {
     textAlign: "center",

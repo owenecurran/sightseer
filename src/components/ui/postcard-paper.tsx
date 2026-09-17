@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Image, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 
+import { PostcardTurnMark } from '@/components/ui/postcard-turn-mark';
 import { BrandColors, Spacing } from '@/constants/theme';
+import type { PostcardOrientation } from '@/lib/postcard-orientation';
 import type { Sheet } from '@/lib/postcard-stock';
 
 type PostcardPaperProps = {
@@ -28,6 +31,13 @@ type PostcardPaperProps = {
   // Turning the card over.
   onFlip?: () => void;
   flipLabel?: string;
+  // Prints the card's own "turn over" mark in the foot of this face. Off by
+  // default so a face can opt out — the written side already says what it is,
+  // and a card with no other side has nothing to say at all.
+  turnMark?: boolean;
+  // What that mark is struck in, when the card's own ink is wrong for the
+  // face — see PostcardTurnMark's `ink`.
+  turnMarkInk?: string;
   // How far in from the card's edge the flip strips reach. The printed border
   // alone is a quarter of a thumb — fine as a visual margin, useless as a
   // target. The picture side sends this well past the border and over the
@@ -40,10 +50,55 @@ type PostcardPaperProps = {
 
 // How far the written side holds its content off the card's edge.
 export const PAPER_BORDER = 14;
-// The picture side. Less, because the frame overlay reaches about 16dp in and
-// the picture has to run underneath it — at PAPER_BORDER there would be a
-// ring of bare card between the photo and the frame's inner deckle.
+// How far in from the card's edge its printed marks sit, as a share of the
+// card's width. The scans carry a ragged deckle a couple of percent deep and
+// their own printer's marks just inside it — this puts ours where theirs are,
+// and keeps it there on a card of any size.
+const TURN_MARK_INSET_SHARE = 0.035;
+
+// Where that mark's ink starts, for anything else laid along the foot of the
+// card that has to stop short of it — see visit-card's bottom-anchored name.
+export function turnMarkInsetFor(cardWidth: number): number {
+  return Math.round(cardWidth * TURN_MARK_INSET_SHARE);
+}
+
+// The picture side's fallback, used only until the card has been measured.
+// See pictureInsetFor below, which is what the real inset comes from.
 export const PAPER_PICTURE_INSET = 10;
+
+// How far the frame overlay's opaque ring reaches in from the card's edge, as
+// a fraction of the card's WIDTH.
+//
+// Measured off the assets, not guessed: read the alpha channel of all ten
+// cardframe-*.png at the widest point of each edge. The ring is a constant
+// physical border on a scanned card, which against that card's own width
+// comes out at 5.6–7.1% on a landscape sheet and 8.9–11.1% on a portrait one.
+// These are the worst case of those, so the heaviest border still clears.
+//
+// One number covers all four edges because the border is square: a landscape
+// card is about 1.5x as wide as it is tall, and 7.1% of its width and 10.7%
+// of its height are the same distance. The portrait sheets work out the same
+// way the other way up.
+//
+// The picture is laid in by this much so the frame lands on BARE CARD rather
+// than on the photograph. A flat inset cannot do that: the frame is stretched
+// to the card, so its reach grows with the card while a fixed 10dp does not —
+// the same layout hid about 12dp of the picture's outer band on a phone and
+// 32dp on a 750dp-wide desktop card, which is why it only looked broken on a
+// big screen.
+const FRAME_REACH: Record<PostcardOrientation, number> = {
+  horizontal: 0.072,
+  vertical: 0.112,
+};
+
+// What the picture side holds its content off the card's edge by, for a card
+// of a known width. Width alone, deliberately: the card's HEIGHT is derived
+// from this inset (the picture box inside it sets it), so measuring against
+// height would be circular.
+export function pictureInsetFor(cardWidth: number, orientation: PostcardOrientation): number {
+  if (cardWidth <= 0) return PAPER_PICTURE_INSET;
+  return Math.round(cardWidth * FRAME_REACH[orientation]);
+}
 
 // A review printed on a real piece of card.
 //
@@ -64,9 +119,17 @@ export function PostcardPaper({
   onFlip,
   flipLabel,
   flipReach = PAPER_BORDER,
+  turnMark = false,
+  turnMarkInk,
 }: PostcardPaperProps) {
+  // Only the turn-over mark needs this, and only so it can sit the same
+  // distance inside the deckle on a phone and on a desktop card.
+  const [cardWidth, setCardWidth] = useState(0);
+
   return (
-    <View style={[styles.wrap, style]}>
+    <View
+      style={[styles.wrap, style]}
+      onLayout={turnMark ? (e) => setCardWidth(e.nativeEvent.layout.width) : undefined}>
       {/* Stretched, not cover: the card has to BE the card's shape. Its own
           proportions are close to the frame's already, so the deckle is not
           visibly pulled. */}
@@ -127,6 +190,18 @@ export function PostcardPaper({
             style={[styles.edge, edgeStyle(edge, flipReach)]}
           />
         ))}
+
+      {/* Last, so its own thumb-sized target sits over the shallow strip the
+          foot of the card leaves — both turn the card, but this one is the
+          one that can be aimed at. */}
+      {onFlip && turnMark && (
+        <PostcardTurnMark
+          onPress={onFlip}
+          inset={turnMarkInsetFor(cardWidth)}
+          ink={turnMarkInk}
+          accessibilityLabel={flipLabel}
+        />
+      )}
     </View>
   );
 }
@@ -172,8 +247,14 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    width: undefined,
-    height: undefined,
+    // Explicit rather than `undefined`. Leaving them unset works on native,
+    // where an absolutely-positioned Image with all four insets stretches to
+    // them — but react-native-web applies the ASSET'S OWN intrinsic size to the
+    // element, and an undefined width does not clear it. The card scans are
+    // 900x583, so every sheet rendered at 900px wide inside a 430px card:
+    // measured in the browser, not guessed.
+    width: '100%',
+    height: '100%',
   },
   fill: {
     position: 'absolute',
@@ -181,8 +262,9 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    width: undefined,
-    height: undefined,
+    // Same reason as above.
+    width: '100%',
+    height: '100%',
   },
   // Strong enough to take the grime back to something that reads as aged
   // paper, light enough that the foxing and the printed rules are still

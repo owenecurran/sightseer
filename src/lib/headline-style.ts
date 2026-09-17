@@ -34,13 +34,22 @@ export type HeadlineTreatment = { style: TextStyle; back: HeadlinePlate[] };
 //   extrudeUpRight  a run of copies stepping up and to the right, so the word
 //                   reads as extruded from its bottom edge toward the top
 //                   right corner.
+//   borderOut       a hard border grown outward from the letterforms
+//                   themselves, thick enough that neighbouring letters'
+//                   borders run into each other. Not a bigger copy of the
+//                   word: scaling a copy scales its ADVANCE WIDTHS too, so
+//                   the second impression's letters walk away from the ones
+//                   they are meant to back, further the longer the name. A
+//                   border is grown from each letter where it already stands,
+//                   so it cannot drift.
 export type HeadlineEffect =
   | 'none'
   | 'softShadow'
   | 'outlineCentred'
   | 'floatingColor'
   | 'outlineTopLeft'
-  | 'extrudeUpRight';
+  | 'extrudeUpRight'
+  | 'borderOut';
 
 const ALL_EFFECTS: HeadlineEffect[] = [
   'none',
@@ -49,6 +58,7 @@ const ALL_EFFECTS: HeadlineEffect[] = [
   'floatingColor',
   'outlineTopLeft',
   'extrudeUpRight',
+  'borderOut',
 ];
 
 type Face = {
@@ -95,7 +105,7 @@ const HEADLINE_FACES: Face[] = [
     fontSize: 46,
     // And a heavier second colour to match the weight of the face.
     outlineScale: 1.9,
-    effects: ['outlineCentred', 'outlineTopLeft', 'extrudeUpRight'],
+    effects: ['outlineCentred', 'outlineTopLeft', 'extrudeUpRight', 'borderOut'],
   },
 ];
 
@@ -127,25 +137,103 @@ const WHITE = '#fdfcf6';
 // How far the thrown effects are thrown.
 const OUTLINE_STEP = 3;
 const FLOAT_STEP = 7;
-const EXTRUDE_DEPTH = 5;
 
-function platesFor(effect: HeadlineEffect, color: string, scale: number): HeadlinePlate[] {
+// The extrusion: how deep the block is, how far it leans, and how finely the
+// sweep between the letter and the back of the block is filled in.
+//
+// It used to be one number — a copy at (i, -i) for i up to EXTRUDE_DEPTH *
+// scale — and on the deco face that came out as 10 copies thrown 19pt on a
+// 45 degree diagonal. Three things were wrong with it, and the depth was only
+// the first:
+//
+//  - 19pt sideways is several times the ink gap between deco capitals, so
+//    every letter's block ran into the next letter's and the word came out as
+//    one black mass with a jagged top instead of as letters with depth.
+//  - The SIDEWAYS half is what does that; the rise is free. Leaning the
+//    block rather than throwing it at 45 degrees keeps the up-and-to-the-
+//    right reading while holding the sideways travel inside the gap.
+//  - The step worked out at 1.9pt, which is five device pixels on a phone,
+//    so the block's leading edge was a visible staircase rather than a solid
+//    face. The count now follows the DEPTH rather than the face's scale, so
+//    the step stays put however deep the block is thrown.
+const EXTRUDE_DEPTH = 4;
+// Sideways travel per unit of rise.
+const EXTRUDE_LEAN = 0.5;
+// The largest gap allowed between two copies, in points.
+const EXTRUDE_STEP = 0.8;
+
+// The border-out outline: how far the border stands off the letterforms, and
+// how many directions it is grown in.
+//
+// The border is the union of copies of the word thrown the same distance in
+// every direction at once, which is the outward dilation of the letters by
+// that distance — a border that follows the shape of each letter rather than
+// a box around the word, and one that runs into a neighbouring letter's
+// border instead of drifting away from the letter it belongs to. A larger
+// COPY cannot do that: scaling a copy scales its advance widths too, so its
+// letters walk away from the ones they are backing.
+//
+// The distance is a share of the box the name is fitted into, not a number of
+// points, because that box is a fixed share of the card — so the type is
+// roughly 62pt tall on a desktop card and 33pt on a phone, and a fixed radius
+// would be a tasteful border on one and a slab on the other. It deliberately
+// does NOT take the face's outlineScale the way the thrown effects do: those
+// scale with the face's own weight, but StretchText fits every face to the
+// same box, so a border that should look the same thickness on both is the
+// same thickness on both.
+const BORDER_SHARE = 0.07;
+// A fallback for the first frame, before the card has been measured.
+const BORDER_FALLBACK_BOX = 60;
+// An angular resolution, not a thickness, and the entire cost of the effect
+// at one drawn copy each — so it does not want to be larger than it has to be.
+//
+// Twelve is where the error stops mattering. The outer edge is off by
+// radius * (1 - cos(pi / steps)), which is 3% of the radius here — a quarter
+// of a point, well under a device pixel. Checked rather than assumed: rendered
+// at 8, 10, 12 and 24 and compared pixel for pixel, and 12 against 24 differs
+// no more than two runs of the SAME count differ from each other. Eight is a
+// little worse and not obviously so; there is nothing above twelve to buy.
+const BORDER_STEPS = 12;
+
+// NOTE: the border can only fill where the letter is at least as thick as the
+// radius — a copy thrown `r` outward only covers a point if the letter still
+// has ink `r` back the other way. Both faces this is offered on are heavy, so
+// their stems clear it comfortably; a hairline face would come out hollow and
+// should not be given this effect.
+
+function platesFor(
+  effect: HeadlineEffect,
+  color: string,
+  scale: number,
+  // The height of the box the name is fitted into. See BORDER_SHARE.
+  boxHeight: number,
+): HeadlinePlate[] {
   const step = OUTLINE_STEP * scale;
   switch (effect) {
     case 'outlineTopLeft':
       return [{ color, dx: -step, dy: -step }];
     case 'floatingColor':
       return [{ color, dx: -FLOAT_STEP * scale, dy: FLOAT_STEP * scale }];
-    case 'extrudeUpRight':
+    case 'extrudeUpRight': {
       // One copy per step rather than one thrown far: an extrusion is the
-      // shape swept between the two, so the gap has to be filled in. The
-      // count grows with the scale or a heavier face's extrusion comes out
-      // as a row of separate ghosts.
-      return Array.from({ length: Math.round(EXTRUDE_DEPTH * scale) }, (_, i) => ({
-        color,
-        dx: (i + 1) * scale,
-        dy: -(i + 1) * scale,
-      }));
+      // shape swept between the letter and the back of the block, so the
+      // space between them has to be filled in or it reads as a row of
+      // separate ghosts.
+      const rise = EXTRUDE_DEPTH * scale;
+      const run = rise * EXTRUDE_LEAN;
+      const steps = Math.max(2, Math.ceil(Math.hypot(rise, run) / EXTRUDE_STEP));
+      return Array.from({ length: steps }, (_, i) => {
+        const t = (i + 1) / steps;
+        return { color, dx: run * t, dy: -rise * t };
+      });
+    }
+    case 'borderOut': {
+      const radius = BORDER_SHARE * boxHeight;
+      return Array.from({ length: BORDER_STEPS }, (_, i) => {
+        const angle = (2 * Math.PI * i) / BORDER_STEPS;
+        return { color, dx: radius * Math.cos(angle), dy: radius * Math.sin(angle) };
+      });
+    }
     // 'none', 'softShadow' and 'outlineCentred' are drawn by the front copy's
     // own shadow instead — see shadowFor.
     default:
@@ -182,9 +270,14 @@ function pick<T>(seed: string, items: readonly T[]): T {
   return items[hashSeed(seed) % items.length];
 }
 
+
 type HeadlineOptions = {
   // The name is printed ON the card rather than set across a photograph.
   onCard?: boolean;
+  // The height of the box the name is lettered into, in points. Only the
+  // border-out outline uses it, and only so its thickness can be a share of
+  // the type rather than a fixed distance — see BORDER_SHARE.
+  boxHeight?: number;
   // Colours read off the review's own picture — see useImageAccent. The
   // complement letters the word, so it does not sink into the photograph it is
   // sitting on; the dominant hue is what a coloured plate behind it is struck
@@ -241,7 +334,7 @@ export function headlineTreatmentFor(
     plateColor = INK;
   }
 
-  const back = platesFor(effect, plateColor, scale);
+  const back = platesFor(effect, plateColor, scale, options.boxHeight ?? BORDER_FALLBACK_BOX);
   const shadow = shadowFor(effect, plateColor, scale);
 
   // Light type on a light photograph disappears whatever is behind it, so on

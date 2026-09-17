@@ -26,10 +26,10 @@ type LayeredHeadlineProps = {
 // drawing the word more than once, which is what this does.
 //
 // The copies are absolutely positioned over the front one and shifted by
-// `left`/`right` together rather than by a transform, so every copy is handed
-// exactly the same width — StretchText scales the type to the width of the box
-// it is given, and a copy in a narrower box would come out at a different size
-// and stop registering with the others entirely.
+// `left`/`right` and `top`/`bottom` in pairs rather than by a transform, so
+// every copy is handed exactly the same box — StretchText scales the type to
+// the box it is given, and a copy in a smaller one would come out at a
+// different size and stop registering with the others entirely.
 export function LayeredHeadline({
   children,
   style,
@@ -42,7 +42,17 @@ export function LayeredHeadline({
         <View
           key={index}
           pointerEvents="none"
-          style={[styles.plate, { left: plate.dx, right: -plate.dx, top: plate.dy }]}>
+          style={[
+            styles.plate,
+            // Both members of each pair, always. A box shifted by setting only
+            // one side is a box of a DIFFERENT SIZE, and these copies are
+            // scaled to the box they are handed — so `top: dy` alone made
+            // every plate a few pixels taller than the front copy and each
+            // one came out at its own scaleY (measured: 1.30 on the front,
+            // 1.19 on a plate). The copies then failed to register and the
+            // name read as a blur instead of as two inks out of step.
+            { left: plate.dx, right: -plate.dx, top: plate.dy, bottom: -plate.dy },
+          ]}>
           <StretchText
             type="headline"
             fill
@@ -88,9 +98,5 @@ const styles = StyleSheet.create({
   },
   plate: {
     position: 'absolute',
-    // Bottom pinned too, so a copy scaling to a HEIGHT gets the same box the
-    // front one did. Without it the copies size to their own type and the
-    // plates drift out of register the moment fillHeight is on.
-    bottom: 0,
   },
 });

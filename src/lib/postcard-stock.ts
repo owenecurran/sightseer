@@ -69,13 +69,14 @@ const BLANK_PORTRAIT: Sheet[] = [
   },
 ];
 
-// Dust, scratches and creases, scanned off real card. Nearly black, so they
-// go on with a screen blend: the marks are the light part and the black does
-// nothing.
+// Dust, scratches and creases, scanned off real card. White, with the scan's
+// own luminance carried in the ALPHA channel rather than as a near-black
+// plate that needed a screen blend to read — see PostcardGrain for why the
+// blend had to go and why this is the same picture either way.
 const GRAIN: ImageSourcePropType[] = [
-  require('../../assets/postcard/grain-19.jpg'),
-  require('../../assets/postcard/grain-21.jpg'),
-  require('../../assets/postcard/grain-27.jpg'),
+  require('../../assets/postcard/grain-19.png'),
+  require('../../assets/postcard/grain-21.png'),
+  require('../../assets/postcard/grain-27.png'),
 ];
 
 export const BLANK_COUNT = BLANK_LANDSCAPE.length;

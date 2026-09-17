@@ -8,16 +8,28 @@ type PostcardGrainProps = {
 
 // Dust, scratches and creases over the print.
 //
-// A scan off real card, laid on with a screen blend. The plate is nearly
-// black with the marks picked out in light, which is how these are shot and
-// is the whole reason the blend has to be `screen`: black screens to nothing,
-// so only the marks land. Multiply or darken — the obvious reading of
-// "subtract" — would take the card to black, since almost every pixel of the
-// plate is black.
+// A scan off real card. The plate is white, carrying the scan's own luminance
+// in its alpha — the marks are the opaque part and the rest of the card is
+// transparent — so it goes on with ordinary compositing and no blend mode.
 //
-// If the marks are wanted dark rather than light, that is a one-line change
-// in scripts/build-postcard-assets.py (invert the plate on the way out) and
-// this switches to `multiply`. The plates themselves do not care.
+// It used to be a near-black plate laid on with `mixBlendMode: 'screen'`,
+// which is the natural way to read a scan like this: black screens to
+// nothing, so only the light marks land. That works on native and is silently
+// dropped on the web — react-native-web 0.21.2 has no mixBlendMode at all
+// (the property appears nowhere in its dist, and the computed value comes
+// back `normal`), so the black plate went on as a flat veil over every
+// photograph and over the bare card the picture left. Measured in the
+// browser: the cream around a fitted photo came out at 82% of its own
+// brightness, which is the grain darkening it by almost exactly its own 0.22.
+//
+// Baking the blend into the asset removes the dependency instead of working
+// around it, and loses nothing: screen(b, s) is b + s*(1 - b), and
+// compositing white at alpha s normally gives b*(1 - s) + s — the same
+// expression. See write_grain in scripts/build-postcard-assets.py.
+//
+// If the marks are ever wanted dark rather than light, that is an inversion
+// in that same function plus `multiply` here — which would then need a
+// web-specific path, since the blend genuinely would be doing work.
 //
 // It sits over the picture and under the place name: the dust is on the card
 // the photograph is printed on, so the photograph catches it — but running
@@ -43,8 +55,14 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    width: undefined,
-    height: undefined,
+    // Explicit rather than `undefined`. Leaving them unset works on native,
+    // where an absolutely-positioned Image with all four insets stretches to
+    // them — but react-native-web applies the ASSET'S OWN intrinsic size to the
+    // element, and an undefined width does not clear it. The card scans are
+    // 900x583, so every sheet rendered at 900px wide inside a 430px card:
+    // measured in the browser, not guessed.
+    width: '100%',
+    height: '100%',
   },
   grain: {
     position: 'absolute',
@@ -52,7 +70,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    mixBlendMode: 'screen',
     // The plates are shot dense, and at anything like full strength the
     // scratches read as damage to the screen rather than to the card. This is
     // meant to be felt as the surface not being clean, not spotted as marks

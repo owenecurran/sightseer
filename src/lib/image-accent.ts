@@ -1,7 +1,13 @@
-import { AlphaType, ColorType, Skia, type SkImage } from '@shopify/react-native-skia';
-
 // The colour a review's lettering is set in, taken from the picture it sits on
 // — and then turned to the opposite side of the colour wheel.
+//
+// Deliberately free of any drawing library. Getting a picture down to pixels is
+// the one part of this that differs per platform — Skia on native, a plain
+// canvas on web — so the two hooks in src/hooks do that and hand the bytes
+// here. This file used to import Skia directly, which meant WEB called into
+// Skia before CanvasKit had loaded; that throws, and an uncaught throw there
+// takes the whole page down rather than just the card (see
+// liquid-glass-track-gated.web.tsx, which hit the same thing).
 //
 // The seven lettering variants each carry a fixed colour, which is fine in
 // isolation and arbitrary against any particular photograph — a gold name on a
@@ -122,29 +128,17 @@ export type ImageAccent = {
 // in the middle rather than counting as either.
 const LIGHT_THRESHOLD = 0.58;
 
+// How wide and tall the caller should have drawn the picture before reading
+// its pixels back. Exported so both hooks scale to the same box and produce
+// the same answer for the same photograph.
+export const ACCENT_SAMPLE_SIZE = SAMPLE;
+
+// Straight RGBA bytes, four per pixel, from wherever the caller got them.
+//
 // Null when the picture has no colour worth taking — a black-and-white shot, a
 // snowfield, a photograph of a road. The caller keeps the face's own colour in
 // that case rather than being handed a grey.
-export function accentFromImage(image: SkImage): ImageAccent | null {
-  const surface = Skia.Surface.MakeOffscreen(SAMPLE, SAMPLE);
-  if (!surface) return null;
-
-  surface
-    .getCanvas()
-    .drawImageRect(
-      image,
-      { x: 0, y: 0, width: image.width(), height: image.height() },
-      { x: 0, y: 0, width: SAMPLE, height: SAMPLE },
-      Skia.Paint(),
-    );
-
-  const pixels = surface.makeImageSnapshot().readPixels(0, 0, {
-    width: SAMPLE,
-    height: SAMPLE,
-    colorType: ColorType.RGBA_8888,
-    alphaType: AlphaType.Unpremul,
-  });
-  if (!pixels) return null;
+export function accentFromPixels(pixels: ArrayLike<number>): ImageAccent | null {
 
   // Weighted by saturation, so a small patch of real colour outvotes a large
   // wash of nearly-grey. Summed as vectors on the hue circle rather than
