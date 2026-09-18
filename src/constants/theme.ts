@@ -97,6 +97,14 @@ export const BrandFonts = {
   // Art-deco display, for the postcard lettering that is meant to read as a
   // 1930s luggage label.
   deco: 'PagAuto',
+  // The four faces the broader location line is set in — the state and
+  // country above or below a place's name. Display faces rather than UI
+  // ones, because that line is printing on a card, not a caption in an app.
+  regionRounded: 'AcidGreenPoster',
+  regionGrotesqueBold: 'AntarcticanBold',
+  regionGrotesqueLight: 'AntarcticanLight',
+  regionDidone: 'BohemianSoul',
+  regionDeco: 'BuenaparkJf',
 } as const;
 
 export const Fonts = Platform.select({

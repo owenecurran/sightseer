@@ -39,6 +39,11 @@ type Case = {
   label: string;
   photos: { url: string; ratio: number }[];
   rating: number | null;
+  // Enough tags to make the sticker row wrap. Left out means the usual two.
+  tags?: { slug: string; label: string }[];
+  // Overrides the fixture's place name, for cases about name length.
+  placeName?: string;
+  stateCountry?: string;
   // The visit id to build the fixture with. headlineTreatmentFor hashes this
   // to pick a face and an effect, so spelling it out is the only way to see a
   // GIVEN treatment on demand — otherwise which ones a preview shows is
@@ -46,6 +51,15 @@ type Case = {
   // never appears at all. See TREATMENTS.
   id?: string;
 };
+
+const MANY_TAGS = [
+  { slug: 'scenic-location', label: 'Scenic location' },
+  { slug: 'great-trails', label: 'Great trails' },
+  { slug: 'open-water', label: 'Open water' },
+  { slug: 'walkable', label: 'Walkable' },
+  { slug: 'family-friendly', label: 'Family friendly' },
+  { slug: 'worth-the-detour', label: 'Worth the detour' },
+];
 
 const CASES: Case[] = [
   { key: 'wide', label: 'One wide photo', photos: [{ url: WIDE, ratio: 1.5 }], rating: 8.4 },
@@ -79,6 +93,73 @@ const CASES: Case[] = [
     label: 'Wider than the frame — bands top and bottom, stamp and stickers',
     photos: [{ url: PANORAMA, ratio: 2.4 }],
     rating: 5.5,
+  },
+  {
+    key: 'shortname',
+    // A SHORT name, which is the case that exposed the broader location line
+    // running past it: fill is capped, so a short name stops well short of
+    // its box while the line was still aligning to the box's edge.
+    label: 'Short name — the region line must stay within it',
+    photos: [{ url: WIDE, ratio: 1.5 }],
+    rating: 9.0,
+    id: 'fx-3',
+    placeName: 'Bath',
+  },
+  {
+    key: 'shortright',
+    // The same short name, drawn on the RIGHT margin. It has to end where the
+    // name ends, not at the card's edge.
+    label: 'Short name, right margin — ends where the name ends',
+    photos: [{ url: WIDE, ratio: 1.5 }],
+    rating: 9.0,
+    id: 'fx-12',
+    placeName: 'Bath',
+    // A region string far wider than the name it must stay inside.
+    stateCountry: 'Illinois, United States',
+  },
+  {
+    key: 'cutoff',
+    // A reported card: a long name with the region line above-right, where
+    // the line looked cut off at the card's edge.
+    label: 'Long name, region above-right, no rating — reported as cut off',
+    photos: [{ url: WIDE, ratio: 1.5 }],
+    // No rating, so no stamp in the top-right corner — which is what leaves
+    // the region line on the right margin instead of being moved clear.
+    rating: null,
+    id: 'fx-0',
+    placeName: 'Greene Valley Scenic Overlook',
+    // Deep descenders (g, y, p, j) — the shape that exposes a line box cut
+    // too short for these faces.
+    stateCountry: 'Patagonia, Paraguay',
+  },
+  {
+    key: 'descenders',
+    // A face with real lowercase descenders, on a descender-heavy string.
+    label: 'Lowercase region face — descenders must survive',
+    photos: [{ url: WIDE, ratio: 1.5 }],
+    rating: null,
+    id: 'fx-2',
+    placeName: 'Greene Valley Scenic Overlook',
+    stateCountry: 'Patagonia, Paraguay',
+  },
+  {
+    key: 'nameinband',
+    // Two labels WOULD fit the band, but this card's name is set along the
+    // foot — the same strip — so they belong on the back instead.
+    label: 'Name along the foot — the band is the name’s, so no stickers',
+    photos: [{ url: PANORAMA, ratio: 2.4 }],
+    rating: 7.1,
+    id: 'dev-band-0',
+  },
+  {
+    key: 'manytags',
+    // Six labels will not fit the band on one row. They must drop off the
+    // front entirely rather than wrap up over the photograph.
+    label: 'Six tags — too many for the band, so none on the front',
+    photos: [{ url: PANORAMA, ratio: 2.4 }],
+    rating: 6.7,
+    tags: MANY_TAGS,
+    id: 'dev-panorama',
   },
 ];
 
@@ -115,7 +196,7 @@ const TREATMENT_CASES: Case[] = TREATMENTS.map(({ id, label }) => ({
   rating: 7.4,
 }));
 
-function fixture({ key, photos, rating, id }: Case): VisitCardVisit {
+function fixture({ key, photos, rating, id, tags, placeName, stateCountry }: Case): VisitCardVisit {
   return {
     id: id ?? `dev-${key}`,
     rating,
@@ -125,18 +206,18 @@ function fixture({ key, photos, rating, id }: Case): VisitCardVisit {
     user_id: 'dev-user',
     authorName: 'Preview',
     placeId: 'dev-place',
-    placeName: 'Saint-Michel-de-Provence',
+    placeName: placeName ?? 'Saint-Michel-de-Provence',
     placeLat: 43.6,
     placeLng: 5.1,
     placeLevel: 'locality',
-    stateCountry: 'Provence, France',
+    stateCountry: stateCountry ?? 'Provence, France',
     photoIds: photos.map((_, index) => `${key}-${index}`),
     photoAspectRatios: photos.map((photo) => photo.ratio),
     likeCount: 3,
     isLikedByMe: false,
     taggedUsers: [],
     taggedPlaces: [],
-    tags: [
+    tags: tags ?? [
       { slug: 'scenic-location', label: 'Scenic location' },
       { slug: 'great-trails', label: 'Great trails' },
     ],

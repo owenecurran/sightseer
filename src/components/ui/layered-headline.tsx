@@ -15,6 +15,10 @@ type LayeredHeadlineProps = {
   // every name is lettered at the same size relative to the card it is on
   // instead of at whatever size its own character count happened to produce.
   fillHeight?: boolean;
+  // Forwarded from the FRONT copy only — every plate is fitted to the same
+  // box and so comes out the same width, and four copies reporting the same
+  // number is three too many. See StretchText.
+  onRenderedWidth?: (width: number) => void;
 };
 
 // A place name printed in more than one colour.
@@ -35,6 +39,7 @@ export function LayeredHeadline({
   style,
   back,
   fillHeight = false,
+  onRenderedWidth,
 }: LayeredHeadlineProps) {
   return (
     <View style={[styles.stack, fillHeight && styles.stackFill]}>
@@ -80,6 +85,7 @@ export function LayeredHeadline({
         fillHeight={fillHeight}
         fillHeightExact={fillHeight}
         truncateLongText={false}
+        onRenderedWidth={onRenderedWidth}
         style={style}>
         {children}
       </StretchText>

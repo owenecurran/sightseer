@@ -15,6 +15,28 @@ export const PROFILE_SECTION_LABELS: Record<ProfileSectionKey, string> = {
   collections: 'Boards & travel books',
 };
 
+// What each section actually puts on the profile, in one line.
+//
+// The layout editor used to list these as bare labels, which told you their
+// names and nothing about what you were moving. A name is not a preview.
+export const PROFILE_SECTION_HINTS: Record<ProfileSectionKey, string> = {
+  latest_reviews: 'Your most recent review, as a card',
+  tagged_in: 'The last review someone tagged you in',
+  prompts: 'The prompts you answered above',
+  map: 'A map of everywhere you have been',
+  collections: 'Your boards and travel books',
+};
+
+// The glyph each one is previewed with, for the sections that have no
+// photograph of their own to show. Ionicons names.
+export const PROFILE_SECTION_ICONS: Record<ProfileSectionKey, string> = {
+  latest_reviews: 'reader-outline',
+  tagged_in: 'pricetag-outline',
+  prompts: 'chatbubble-ellipses-outline',
+  map: 'map-outline',
+  collections: 'albums-outline',
+};
+
 function isSectionKey(value: string): value is ProfileSectionKey {
   return (PROFILE_SECTION_KEYS as readonly string[]).includes(value);
 }

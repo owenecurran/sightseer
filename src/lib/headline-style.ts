@@ -1,7 +1,7 @@
 import type { TextStyle } from 'react-native';
 
 import { BrandFonts } from '@/constants/theme';
-import { hashSeed } from '@/lib/seeded-random';
+import { hashSeed, pickOneOfTwo } from '@/lib/seeded-random';
 
 // How a place name is lettered across the front of its postcard.
 //
@@ -17,7 +17,60 @@ import { hashSeed } from '@/lib/seeded-random';
 // face here means adding a row to HEADLINE_FACES and nothing else.
 
 export type HeadlinePlate = { color: string; dx: number; dy: number };
-export type HeadlineTreatment = { style: TextStyle; back: HeadlinePlate[] };
+export type HeadlineTreatment = {
+  style: TextStyle;
+  back: HeadlinePlate[];
+  region: RegionTreatment;
+};
+
+// The broader location — "Montana, United States" — set against the place's
+// own name.
+//
+// It used to be the app's ordinary small UI text, floating a clear gap above
+// the name in plain grey. Next to lettering chosen per card and struck in two
+// inks, it read as a caption that had wandered in from a different screen
+// rather than as part of the printing. It is now set in a display face of its
+// own, in the name's own colour, and tucked against it.
+export type RegionTreatment = {
+  style: TextStyle;
+  // Which side of the name it sits on, and which margin it runs to. Two
+  // independent draws, which is why they use a MIXED two-way pick — see
+  // pickOneOfTwo. With a plain hash they would have been the same coin flip
+  // twice and only two of these four arrangements could ever appear.
+  above: boolean;
+  alignRight: boolean;
+};
+
+type RegionFace = {
+  family: string;
+  fontSize: number;
+  letterSpacing?: number;
+  textTransform?: TextStyle['textTransform'];
+};
+
+// The four faces dropped in for this line. Antarctican carries two weights,
+// which are different enough to be worth offering as separate draws.
+//
+// Sized per face rather than uniformly: these have very different x-heights,
+// and one point size across all of them made the didone tiny beside the
+// grotesques.
+const REGION_FACES: RegionFace[] = [
+  { family: BrandFonts.regionRounded, fontSize: 12, letterSpacing: 0.4 },
+  {
+    family: BrandFonts.regionGrotesqueBold,
+    fontSize: 12,
+    letterSpacing: 1.3,
+    textTransform: 'uppercase',
+  },
+  {
+    family: BrandFonts.regionGrotesqueLight,
+    fontSize: 13,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  { family: BrandFonts.regionDidone, fontSize: 14 },
+  { family: BrandFonts.regionDeco, fontSize: 13, letterSpacing: 0.6 },
+];
 
 // The vocabulary. Each is a way of putting a second colour behind the letters;
 // what varies is where that colour sits.
@@ -182,6 +235,11 @@ const EXTRUDE_STEP = 0.8;
 // same box, so a border that should look the same thickness on both is the
 // same thickness on both.
 const BORDER_SHARE = 0.07;
+
+// The broader location line's leading, as a multiple of its own size. See
+// regionTreatmentFor — deliberately roomy, because a short line box clips
+// these faces rather than scrolling them.
+const REGION_LINE_HEIGHT_RATIO = 1.75;
 // A fallback for the first frame, before the card has been measured.
 const BORDER_FALLBACK_BOX = 60;
 // An angular resolution, not a thickness, and the entire cost of the effect
@@ -299,7 +357,11 @@ export function headlineTreatmentFor(
   };
 
   if (options.onCard) {
-    return { back: [], style: { ...base, color: CARD_INK } };
+    return {
+      back: [],
+      style: { ...base, color: CARD_INK },
+      region: regionTreatmentFor(seed, CARD_INK, false),
+    };
   }
 
   // Its own hash, so a face and its effect move independently — sharing one
@@ -357,5 +419,53 @@ export function headlineTreatmentFor(
     }
   }
 
-  return { back, style: { ...base, color, ...shadow } };
+  return {
+    back,
+    style: { ...base, color, ...shadow },
+    // The name's own colour, so the two read as one piece of printing rather
+    // than as type over a caption.
+    region: regionTreatmentFor(seed, color, isLightLetter(color)),
+  };
+}
+
+// The broader location's own face, colour and position. See RegionTreatment.
+function regionTreatmentFor(seed: string, color: string, isLight: boolean): RegionTreatment {
+  const face = pick(`region-face:${seed}`, REGION_FACES);
+  return {
+    above: pickOneOfTwo(`region-side:${seed}`, true, false),
+    alignRight: pickOneOfTwo(`region-margin:${seed}`, true, false),
+    style: {
+      fontFamily: face.family,
+      fontSize: face.fontSize,
+      // Roomy on purpose, and per face.
+      //
+      // ThemedText's own types carry a line height built for the UI sans —
+      // 20pt at 14 — and these are display faces with far deeper descenders
+      // than that was cut for. A line box shorter than the glyphs need does
+      // not scroll or wrap, it CLIPS, which is why the bottoms of the commas
+      // and the tails were being shaved off. REGION_LINE_HEIGHT_RATIO is
+      // generous rather than exact: it costs a few points of height and it
+      // cannot cut anything off.
+      lineHeight: Math.round(face.fontSize * REGION_LINE_HEIGHT_RATIO),
+      letterSpacing: face.letterSpacing,
+      textTransform: face.textTransform,
+      color,
+      // An edge, always, and in whichever direction actually helps.
+      //
+      // This line used to get a soft dark halo only when its ink was light,
+      // on the reasoning that dark type on bare card needs nothing. That
+      // missed the case this line is most often in: CREAM ON CREAM. The name
+      // is allowed to run off the picture and onto the card, and this line
+      // goes with it — where light ink on light paper has almost no contrast
+      // at all, and a soft halo at radius 4 is too diffuse to give it any.
+      //
+      // So: a tight, strong outline rather than a soft one, struck in the
+      // OPPOSITE direction to the ink. Light type gets the card's near-black,
+      // dark type gets cream. Small radius because an outline is what reads
+      // at this size — the blur is what made it disappear.
+      textShadowColor: isLight ? INK : CREAM,
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 2,
+    },
+  };
 }

@@ -27,6 +27,18 @@ export function LoadableImage({ source, style, onLoad, ...rest }: LoadableImageP
     <View style={[style, styles.clip]}>
       {hasSource && (
         <Image
+          // Decoded bitmaps kept in memory, not just the bytes on disk.
+          //
+          // expo-image defaults to `disk`, which means scrolling a photo out
+          // of the feed and back in re-reads and re-DECODES it every time —
+          // and with no thumbnail derivatives in the database yet, every one
+          // of those decodes is of a 2048px original. PostcardMap already
+          // asks for memory-disk; this is the same request for the thing
+          // there are far more of.
+          //
+          // Overridable per call site: it comes before {...rest}, so a caller
+          // that wants something else still wins.
+          cachePolicy="memory-disk"
           {...rest}
           // Stable disk-cache identity across presigned-URL rotation — see
           // stableImageSource. Non-string sources pass through untouched.

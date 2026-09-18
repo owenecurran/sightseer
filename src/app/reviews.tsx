@@ -129,7 +129,7 @@ export default function AllReviewsScreen() {
             </ThemedText>
           </View>
         ) : viewMode === 'full' ? (
-          <FullReviewsView items={items} photoUrls={photoUrls} />
+          <FullReviewsView items={items} photoUrls={photoUrls} viewerId={session?.user.id} />
         ) : viewMode === 'map' ? (
           <BoardMapView items={items} />
         ) : (

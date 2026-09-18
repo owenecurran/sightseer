@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Platform,
   StyleSheet,
@@ -36,6 +36,18 @@ type StretchTextProps = ThemedTextProps & {
   // TRUNCATE_THRESHOLD). Opt out where the full string genuinely matters
   // more than its legibility at a glance.
   truncateLongText?: boolean;
+  // How wide the text actually came out, once scaled.
+  //
+  // Not the same as the box it was given. `fill` is capped (FILL_MAX_SCALE),
+  // so a SHORT string stops short of the container rather than stretching to
+  // it — which means anything that wants to line up with the text, rather
+  // than with the box around it, cannot use the box. The postcard's broader
+  // location line is exactly that: it has to stay within the range of the
+  // place name, and a short name leaves most of its box empty.
+  //
+  // Must be stable across renders (a setState function is), or this reports
+  // in a loop.
+  onRenderedWidth?: (width: number) => void;
 };
 
 // Past this many characters a name is truncated rather than stretched to
@@ -115,6 +127,7 @@ export function StretchText({
   fillHeight,
   fillHeightExact,
   truncateLongText = true,
+  onRenderedWidth,
   style,
   ...rest
 }: StretchTextProps) {
@@ -248,6 +261,14 @@ export function StretchText({
         }
       : null;
   const Text = outline ? OutlinedText : ThemedText;
+
+  // contentWidth is the string's natural width and scaleX is what it is drawn
+  // at, so their product is the ink's real extent. Reported from an effect
+  // rather than during render, and only once it is knowable.
+  const renderedWidth = contentWidth > 0 ? contentWidth * scaleX : 0;
+  useEffect(() => {
+    if (onRenderedWidth && renderedWidth > 0) onRenderedWidth(renderedWidth);
+  }, [onRenderedWidth, renderedWidth]);
 
   function handleMeasureTextLayout(
     e: NativeSyntheticEvent<TextLayoutEventData>,

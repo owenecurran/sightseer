@@ -1214,9 +1214,10 @@ const styles = StyleSheet.create({
   // rounded corners to the screen edges (see (tabs)/index.tsx's
   // photoBreakout), which only makes sense as that screen's outermost
   // element, not a section nested inside this form's own bordered box.
-  // FeedCardHeaderText and PhotoGrid inside are the same components/props
-  // the real card uses, so content (place name, rating, tagged spots,
-  // photo crops/order) matches exactly — only this outer wrapping differs.
+  // The VisitCard inside IS the real card, so content (place name, rating,
+  // tagged spots, photo crops/order) matches exactly — only this outer
+  // wrapping differs. It named FeedCardHeaderText and PhotoGrid until those
+  // stopped being what a review is drawn with anywhere.
   previewCard: {
     position: 'relative',
     padding: Spacing.three,

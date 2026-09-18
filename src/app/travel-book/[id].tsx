@@ -7,10 +7,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
-import { FeedAuthorLine } from '@/components/feed-author-line';
-import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
+import { VisitCard } from '@/components/visit-card';
+import { likeVisit, unlikeVisit } from '@/lib/feed';
+import { shareText } from '@/lib/share';
 import { LocationSearchModal } from '@/components/location-search-modal';
-import { PhotoGrid } from '@/components/photo-grid';
 import { SaveCollectionButton } from '@/components/save-collection-button';
 import { ThemedText } from '@/components/themed-text';
 import { InkBlot } from '@/components/ui/ink-blot';
@@ -70,6 +70,28 @@ export default function TravelBookDetailScreen() {
   const [locationName, setLocationName] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<TravelBookCollaborator[]>([]);
   const [items, setItems] = useState<TravelBookItem[]>([]);
+
+  // Optimistic, reverted on failure — the same bargain the feed makes, so a
+  // like feels identical wherever it is pressed.
+  function handleToggleLike(visit: Extract<TravelBookItem, { kind: 'visit' }>) {
+    if (!session) return;
+    const nowLiked = !visit.isLikedByMe;
+    setItems((prev) =>
+      prev.map((i) =>
+        i.kind === 'visit' && i.itemId === visit.itemId
+          ? { ...i, isLikedByMe: nowLiked, likeCount: i.likeCount + (nowLiked ? 1 : -1) }
+          : i,
+      ),
+    );
+    const request = nowLiked
+      ? likeVisit(session.user.id, visit.id)
+      : unlikeVisit(session.user.id, visit.id);
+    void request.catch(() => {
+      setItems((prev) =>
+        prev.map((i) => (i.kind === 'visit' && i.itemId === visit.itemId ? visit : i)),
+      );
+    });
+  }
   const [recap, setRecap] = useState<TravelBookRecapRow | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
@@ -424,10 +446,14 @@ export default function TravelBookDetailScreen() {
               return (
               <Pressable
                 key={item.itemId}
-                onPress={() =>
-                  item.kind === 'visit'
-                    ? router.push({ pathname: '/visit/[id]', params: { id: item.id } })
-                    : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+                // A review is the card itself now, and the card's surface is
+                // spoken for — it turns over, its photograph zooms, two taps
+                // like it. Only a bare place, which has no card, still pushes
+                // through on a press.
+                onPress={
+                  item.kind === 'place'
+                    ? () => router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+                    : undefined
                 }>
                 <PaperPanel seed={`book-item-${item.itemId}`} style={styles.itemRow}>
                   {canCheck && (
@@ -442,19 +468,12 @@ export default function TravelBookDetailScreen() {
                   <View style={styles.itemInfo}>
                     {item.kind === 'visit' ? (
                       <>
+                        {/* The card carries the author, the place, the
+                            rating and the photographs. What stays beside it
+                            is what belongs to the BOOK rather than to the
+                            review: when it was visited, and the way to take
+                            it back out again. */}
                         <View style={styles.headerRow}>
-                          <View style={styles.headerAuthor}>
-                            <Pressable
-                              onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.user_id } })}>
-                              <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />
-                            </Pressable>
-                            <FeedAuthorLine
-                              authorId={item.user_id}
-                              authorName={item.authorName}
-                              taggedUsers={item.taggedUsers}
-                              style={styles.headerText}
-                            />
-                          </View>
                           <ThemedText type="small" themeColor="textSecondary">
                             {item.visited_on}
                           </ThemedText>
@@ -467,22 +486,24 @@ export default function TravelBookDetailScreen() {
                             </Pressable>
                           )}
                         </View>
-                        <FeedCardHeaderText
-                          placeName={item.placeName}
-                          placeId={item.placeId}
-                          stateCountry={item.stateCountry}
-                          taggedPlaces={item.taggedPlaces}
-                          visitedLine={[item.rating == null ? 'Visited' : null, item.note || null]
-                            .filter(Boolean)
-                            .join(' · ')}
-                          rating={item.rating}
-                          stampSeed={item.itemId}
-                          stampCanSeep={item.photoIds.length > 0}
+                        <VisitCard
+                          visit={item}
+                          photoUrls={photoUrls}
+                          avatarUrl={avatarUrls[item.user_id]}
+                          isOwner={session?.user.id === item.user_id}
+                          isCopied={false}
+                          onToggleLike={() => handleToggleLike(item)}
+                          onShare={() => {
+                            void shareText(`${item.placeName}
+${item.note ?? ''}`.trim());
+                          }}
+                          onDeleted={() =>
+                            setItems((prev) => prev.filter((i) => i.itemId !== item.itemId))
+                          }
                         />
                         {showOwnRating && (
                           <OwnRatingLine rating={ownRating} />
                         )}
-                        <PhotoGrid urls={item.photoIds.map((pid) => photoUrls[pid]).filter((url): url is string => url != null)} />
                         {session && book?.user_id === session.user.id && item.photoIds[0] && (
                           <Pressable onPress={() => handleSetCover(item.photoIds[0])} hitSlop={8}>
                             <ThemedText type="small" themeColor="sage">
@@ -653,15 +674,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: Spacing.two,
-  },
-  headerAuthor: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  headerText: {
-    flex: 1,
   },
   checkbox: {
     width: 24,

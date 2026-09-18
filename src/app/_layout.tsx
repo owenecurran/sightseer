@@ -362,6 +362,15 @@ export default function RootLayout() {
     // null until it does. The .otf of the pair rather than the .ttf beside it:
     // same face, and the OpenType build carries the full kerning table.
     PagAuto: require('@/assets/fonts/PagAutoRegular.otf'),
+    // The broader-location faces. Copied to space-free names for exactly the
+    // reason above — every one of these arrived as "ACID GREEN POSTER.TTF"
+    // and friends, and a spaced filename is the one thing known to hang this
+    // gate and leave the app on a blank screen.
+    AcidGreenPoster: require('@/assets/fonts/AcidGreenPoster.ttf'),
+    AntarcticanBold: require('@/assets/fonts/AntarcticanHeadlineBold.ttf'),
+    AntarcticanLight: require('@/assets/fonts/AntarcticanHeadlineLight.ttf'),
+    BohemianSoul: require('@/assets/fonts/BohemianSoul.otf'),
+    BuenaparkJf: require('@/assets/fonts/BuenaparkJfRegular.ttf'),
   });
 
   // Native splash stays up (SplashScreen.preventAutoHideAsync() above) until

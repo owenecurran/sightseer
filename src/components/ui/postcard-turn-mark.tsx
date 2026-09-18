@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -59,7 +59,10 @@ export function PostcardTurnMark({
       // with it, which is the opposite of the point.
       style={[
         styles.mark,
-        { paddingRight: Spacing.two + inset, paddingBottom: Spacing.one + inset },
+        {
+          paddingRight: Spacing.two + inset,
+          paddingBottom: Spacing.one + inset - MOBILE_DROP,
+        },
       ]}>
       <View style={styles.row} pointerEvents="none">
         <Ionicons name="arrow-redo" size={9} color={ink} style={styles.glyph} />
@@ -75,6 +78,20 @@ export function PostcardTurnMark({
 const CARD_INK = 'rgba(28, 34, 24, 0.55)';
 // The written side's, for the same mark on a dark panel.
 export const TURN_MARK_PANEL_INK = 'rgba(238, 236, 214, 0.45)';
+
+// Dropped this much closer to the foot of the card on a phone.
+//
+// The border strip the mark sits in is a share of the card, but the type in it
+// is a fixed 8pt — so on a small card the ink takes up most of the strip and
+// ends up against the bottom edge of the picture, where it is hard to pick
+// out. Measured: 28pt of strip with the ink at 17-27, leaving one point of gap
+// to the photograph and seventeen of empty cream below it.
+//
+// NOTE: this is keyed on the PLATFORM because that is how it was asked for,
+// but the cause is the card's SIZE — the web build at a phone width has the
+// same crowding and will not get this drop. Centring the ink in the strip
+// instead would fix both and is a couple of lines; see the call site's `inset`.
+const MOBILE_DROP = Platform.OS === 'web' ? 0 : 3;
 
 // Roughly how wide the printed ink is: the glyph, its gap, and "TURN OVER" at
 // 8pt with 1.4 of letterspacing. Measured in the browser at 68pt, rounded up.

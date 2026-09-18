@@ -157,8 +157,14 @@ export type TravelBookItem = TravelBookVisitItem | TravelBookPlaceItem;
 export async function getTravelBookItems(bookId: string, viewerId: string): Promise<TravelBookItem[]> {
   const { data, error } = await supabase
     .from('travel_book_items')
+    // The feed's own select, nested. It used to be a hand-written copy that
+    // had drifted: no card_* columns, no lat/lng/level on the place, and no
+    // visit_tags. A review read through here was therefore missing the stock
+    // it is printed on, the coordinates its map needs when it has no
+    // photographs, and its tag stickers — so the same review came out looking
+    // like a different one here than in the feed.
     .select(
-      'id, item_type, place_id, added_by, added_at, visits(id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name), photos(id, position, width, height), likes(count), visit_tagged_users(user_id, users(handle, name)), visit_tagged_places(places(name, category)), comments(count)), places!place_id(name)'
+      `id, item_type, place_id, added_by, added_at, visits(${FEED_VISIT_SELECT}), places!place_id(name)`
     )
     .eq('travel_book_id', bookId);
   if (error) throw error;

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -103,6 +103,20 @@ const CAPTION_EDGE_INSET = 14;
 // of a 750dp one, which is how a name that sat inside the card on a phone came
 // to run off the edge of the same card on a monitor.
 const CAPTION_EDGE_SHARE = CAPTION_EDGE_INSET / 400;
+// How long after one double tap another is ignored — see handleDoubleTap.
+const DOUBLE_TAP_GUARD_MS = 500;
+// How much of the name's band the region line is pulled back into, to sit
+// against the lettering rather than off it. See the call site.
+const REGION_TUCK_SHARE = 0.16;
+// Clear card the sticker row has to leave above and below itself to count as
+// fitting its band.
+//
+// Without it "fits" meant "is not taller than the band", which a row can
+// satisfy by one point and still look wrong: measured on a phone, six labels
+// came to 67pt in a 68.6pt band, so they passed — and then sat with their
+// bottom row on the deckle and their top row against the underside of the
+// photograph. Filling a band edge to edge is not sitting in it.
+const STICKER_BAND_CLEARANCE = Spacing.two;
 // What share of the card's height the name is lettered at. Fixed, so every
 // card in a feed carries its name at the same size relative to the card rather
 // than at whatever size its own character count produced — a short name was
@@ -146,6 +160,11 @@ type VisitCardProps = {
   // top corner rather than to a block of text, there is no longer anything
   // underneath it for it to bury.
   maxStampRise?: number;
+  // Open the card's comments straight away. The feed leaves them shut —
+  // scanning many posts matters more there — but a screen you reached BY
+  // pressing a review is already the answer to "which one", so making you
+  // ask twice is a tap for nothing. See visit/[id].tsx.
+  initialCommentsOpen?: boolean;
 };
 
 // The feed's own visit card — a postcard with two sides.
@@ -172,8 +191,9 @@ export function VisitCard({
   onUntagSelf,
   maxStampRise,
   onPhotoLayout,
+  initialCommentsOpen = false,
 }: VisitCardProps) {
-  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isCommentsOpen, setIsCommentsOpen] = useState(initialCommentsOpen);
   const [commentCount, setCommentCount] = useState(visit.commentCount);
   // Which side is showing. A review can be written to open on its message
   // rather than its picture — some of them are the writing.
@@ -188,6 +208,11 @@ export function VisitCard({
   // image stretched over the card, so it reaches further in the bigger the
   // card gets. See pictureInsetFor.
   const [cardWidth, setCardWidth] = useState(0);
+  // How wide the place name actually came out. `fill` is capped, so a short
+  // name stops well short of its box — and the broader location line has to
+  // stay within the NAME's range, not the box's. Zero until it is measured,
+  // which falls back to the full width.
+  const [nameWidth, setNameWidth] = useState(0);
 
   const heartScale = useSharedValue(0);
   const heartOpacity = useSharedValue(0);
@@ -201,7 +226,18 @@ export function VisitCard({
   // post (so a stray extra tap can't accidentally undo a like) — the heart
   // still bursts every time as a tap acknowledgement, even when it's a
   // visual-only no-op on the like state itself.
+  // Guarded because two things can see the same double tap: the photograph's
+  // own timestamp-based one (see usePhotoTaps) and the card-wide gesture that
+  // now covers the borders and the written side too. Where they overlap — the
+  // photograph — both fire, and without this the heart bursts twice for one
+  // gesture. The like itself was always idempotent; the animation was not.
+  const lastBurstAtRef = useRef(0);
+
   function handleDoubleTap() {
+    const now = Date.now();
+    if (now - lastBurstAtRef.current < DOUBLE_TAP_GUARD_MS) return;
+    lastBurstAtRef.current = now;
+
     if (!visit.isLikedByMe) onToggleLike();
     heartScale.value = 0.6;
     heartOpacity.value = 1;
@@ -314,6 +350,16 @@ export function VisitCard({
   // The card's own border counts toward the margin — it is the same strip of
   // bare card, just the part that is there on every post.
   const pictureInset = pictureInsetFor(cardWidth, orientation);
+  // One draw for the pair. The region line takes the name's own colour and
+  // its own face, and decides which side of the name it sits on and which
+  // margin it runs to — see RegionTreatment.
+  const headline = headlineTreatmentFor(visit.id, {
+    accent,
+    // The same box the name is lettered into, so the border-out outline can
+    // be a share of the type rather than a fixed distance that reads
+    // differently on a phone and on a desktop card.
+    boxHeight: frame.height * CAPTION_HEIGHT_SHARE,
+  });
   const captionEdgeInset = Math.max(
     CAPTION_EDGE_INSET,
     Math.round(cardWidth * CAPTION_EDGE_SHARE),
@@ -334,8 +380,43 @@ export function VisitCard({
   // smaller than it is today — this only ever lets it grow.
   const stampCap = Math.max(STAMP_SIZE, Math.round(cardWidth * STAMP_WIDTH_SHARE));
   const stampSize = Math.round(Math.min(stampCap, Math.max(MIN_STAMP, stampMargin * 1.1)));
+  // The labels only go on the front when there is genuinely a clean band for
+  // them. Two things can take that band away, and both were letting them
+  // through onto the picture:
+  //
+  //  - The NAME, when it is set along the foot of the card. That is the same
+  //    strip the labels sit in, so they printed straight over each other.
+  //  - Their own number. The row wraps, and it used to be given a box of a
+  //    fixed height — so a second row of labels did not make the box taller,
+  //    it hung out of the top of it and over the photograph.
+  //
+  // The first is known up front. The second is only knowable once the row has
+  // been laid out and measured, which is what stickerRowHeight is for.
+  //
+  // Nothing is lost by dropping them: every tag is printed on the written
+  // side regardless, which is where a card carries them anyway.
+  const [stickerRowHeight, setStickerRowHeight] = useState(0);
+  const stickersMeasured = stickerRowHeight > 0;
+  const stickersFit =
+    stickersMeasured && stickerRowHeight + 2 * STICKER_BAND_CLEARANCE <= topMargin;
+  // The right margin is not always free. The stamp sits in the card's
+  // top-right corner, so a region line drawn there too ends up underneath it
+  // — confirmed on a card whose line read "PROVENCE," with "FRANCE" behind
+  // the stamp. The line gives way rather than the stamp: it is the smaller
+  // thing and it has another margin to go to.
+  //
+  // The foot needs no equivalent. The turn-over mark is in the bottom-right,
+  // but a name anchored there already inset the whole caption box past it
+  // (see turnMarkClearance), and a line right-aligned inside that box clears
+  // it for free.
+  const regionAlignRight =
+    headline.region.alignRight &&
+    !(captionAnchor === "top" && headline.region.above && showFrontStamp);
   const showFrontStickers =
-    visit.tags.length > 0 && !captionBelow && topMargin >= MIN_ORNAMENT_BAND;
+    visit.tags.length > 0 &&
+    !captionBelow &&
+    captionAnchor !== "bottom" &&
+    topMargin >= MIN_ORNAMENT_BAND;
 
   const picture =
     photos.length > 0 ? (
@@ -391,15 +472,23 @@ export function VisitCard({
           style={[
             styles.frontStickers,
             {
-              height: topMargin,
-              bottom: 0,
+              // No fixed height — that is what let a wrapped second row hang
+              // out of the box. The row takes its own height and is centred
+              // in the band once that height is known.
+              bottom: stickersMeasured ? Math.max((topMargin - stickerRowHeight) / 2, 0) : 0,
               // Held off the deckle by the same distance the picture is, so a
               // label never starts on the torn edge of the card.
               left: pictureInset + Spacing.three,
               right: pictureInset + Spacing.three,
+              // Transparent until measured, so a row that turns out not to
+              // fit is never seen doing it. It stays mounted rather than
+              // being torn out — unmounting would lose the measurement and
+              // the two would chase each other forever.
+              opacity: stickersFit ? 1 : 0,
             },
           ]}
           pointerEvents="none"
+          onLayout={(e) => setStickerRowHeight(e.nativeEvent.layout.height)}
         >
           {visit.tags.map((tag) => (
             <TagSticker
@@ -502,6 +591,10 @@ export function VisitCard({
               style={[
                 styles.caption,
                 {
+                  // Which side of the name the region line falls on. Both
+                  // orders put it last in the tree, so it paints over the
+                  // name's plates rather than under them.
+                  flexDirection: headline.region.above ? "column-reverse" : "column",
                   left: captionEdgeInset,
                   // Held off the turn-over mark when the name is set along
                   // the foot of the card, which is the one anchor that puts
@@ -534,14 +627,9 @@ export function VisitCard({
                 <View style={{ height: frame.height * CAPTION_HEIGHT_SHARE }}>
                   <LayeredHeadline
                     fillHeight
-                    {...headlineTreatmentFor(visit.id, {
-                      accent,
-                      // The same box the name is lettered into, so the
-                      // border-out outline can be a share of the type rather
-                      // than a fixed distance that reads differently on a
-                      // phone and on a desktop card.
-                      boxHeight: frame.height * CAPTION_HEIGHT_SHARE,
-                    })}
+                    style={headline.style}
+                    back={headline.back}
+                    onRenderedWidth={setNameWidth}
                   >
                     {visit.placeName || " "}
                   </LayeredHeadline>
@@ -569,9 +657,41 @@ export function VisitCard({
                   back this whole block is gone: grey type straight onto an
                   arbitrary photograph is unreadable about half the time. */}
               {(region || visitedLine) && (
-                <ThemedText type="small" numberOfLines={1} style={styles.captionLine}>
+                // Held to the name's own extent rather than the caption's.
+                // The name grows from its left edge (StretchText's transform
+                // origin), so its range is 0..nameWidth — and aligning the
+                // line to the BOX instead put it out past the end of a short
+                // name entirely, which is what this box exists to stop.
+                <View
+                  style={[
+                    styles.regionRange,
+                    nameWidth > 0 ? { width: nameWidth } : null,
+                    {
+                      alignItems: regionAlignRight ? "flex-end" : "flex-start",
+                      // Tucked against the name rather than floating off it.
+                      //
+                      // The name is set with fillHeightExact, which fits its
+                      // LAYOUT box — ascent and descent included — to the band
+                      // it is given. The visible caps are a good deal shorter
+                      // than that box, so a plain gap here left a space the
+                      // size of the gap PLUS all the room the name's own box
+                      // was not using, and the line read as unrelated to it.
+                      // Pulling back a share of the band closes that, and a
+                      // share rather than a number because the band scales
+                      // with the card.
+                      //
+                      // On this box rather than the text inside it, so it
+                      // acts on the caption's own column directly.
+                      [headline.region.above ? "marginBottom" : "marginTop"]:
+                        -frame.height * CAPTION_HEIGHT_SHARE * REGION_TUCK_SHARE,
+                    },
+                  ]}
+                  pointerEvents="none"
+                >
+                <ThemedText numberOfLines={1} style={[styles.captionLine, headline.region.style]}>
                   {[region, visitedLine].filter(Boolean).join(" · ")}
                 </ThemedText>
+                </View>
               )}
             </View>
           </View>
@@ -582,6 +702,7 @@ export function VisitCard({
       onFlip={() => setIsFlipped(true)}
       flipLabel="Read the message"
       flipReach={FRONT_FLIP_REACH}
+      onDoubleTap={handleDoubleTap}
       turnMark
     >
       <View
@@ -636,6 +757,7 @@ export function VisitCard({
       onFlip={() => setIsFlipped(false)}
       flipLabel="Show the picture side"
       flipReach={BACK_FLIP_REACH}
+      onDoubleTap={handleDoubleTap}
       turnMark
       // The written side is a dark panel, not bare card.
       turnMarkInk={TURN_MARK_PANEL_INK}
@@ -825,12 +947,27 @@ const styles = StyleSheet.create({
     // screen. See the line's own note at the call site.
     flexDirection: "column-reverse",
   },
-  captionLine: {
-    color: BrandColors.cream,
-    opacity: 0.85,
-    textShadowColor: "rgba(8, 16, 12, 0.9)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 5,
+  // Deliberately carries no colour, opacity or shadow of its own any more:
+  // the region treatment supplies all three, so that this line is struck in
+  // the same ink as the name above or below it and is given a ground only
+  // when light type on a photograph actually needs one. A cream set here
+  // would simply have been overridden on every card, and the flat 0.85
+  // opacity was dimming a colour that had been chosen to match.
+  captionLine: {},
+  // The band the broader location line is allowed to sit in: exactly as wide
+  // as the name above or below it. See the call site.
+  regionRange: {
+    alignSelf: "flex-start",
+    // Never wider than the caption itself, whatever the name measured.
+    //
+    // The name's rendered width can come out slightly OVER the box it was
+    // fitted to — measured at 703 against a 700pt box, from StretchText's own
+    // 2pt safety margin — and StretchText's scale has a floor, so a name long
+    // enough to hit it overflows its box outright. Either way this box would
+    // inherit that width, and a right-aligned line inside it would be pushed
+    // past the card's edge and clipped by captionLayer's overflow. Capping
+    // here costs nothing in the ordinary case and removes that whole class.
+    maxWidth: "100%",
   },
   // A row along the bare card under the picture. `height` is set inline to
   // whatever margin the picture actually left.

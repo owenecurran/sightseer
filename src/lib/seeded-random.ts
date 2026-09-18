@@ -19,6 +19,24 @@ export function hashSeed(seed: string): number {
   return h >>> 0;
 }
 
+// A two-way draw, mixed before it is used.
+//
+// `hashSeed(seed) % 2` is the hash's LOWEST BIT, and FNV-1a leaves that bit
+// XOR-linear in the seed's characters: it multiplies by an odd prime, and an
+// odd multiply preserves parity. Two such draws over the same id are
+// therefore perfectly correlated — their low bits differ by a constant that
+// depends only on the two prefixes. Measured, not assumed: over 200,000 ids
+// the low bits of two different prefixes agreed every single time.
+//
+// That makes any pair of coin flips on one item secretly the same flip. The
+// region line needs two — above or below, and which margin — and without
+// this they would only ever produce two of their four combinations.
+//
+// mulberry32 mixes the whole hash, so the bit actually varies.
+export function pickOneOfTwo<T>(seed: string, a: T, b: T): T {
+  return mulberry32(hashSeed(seed))() < 0.5 ? a : b;
+}
+
 // mulberry32 — small, fast, and good enough for this.
 export function mulberry32(seed: number) {
   let state = seed;

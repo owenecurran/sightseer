@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+
+import { useFlipGesture } from '@/components/ui/postcard-flip';
 
 import { PostcardTurnMark } from '@/components/ui/postcard-turn-mark';
 import { BrandColors, Spacing } from '@/constants/theme';
@@ -34,6 +37,9 @@ type PostcardPaperProps = {
   // Prints the card's own "turn over" mark in the foot of this face. Off by
   // default so a face can opt out — the written side already says what it is,
   // and a card with no other side has nothing to say at all.
+  // Two taps anywhere on the card. Passed here rather than left to the
+  // photograph so the borders, the caption and the written side take them too.
+  onDoubleTap?: () => void;
   turnMark?: boolean;
   // What that mark is struck in, when the card's own ink is wrong for the
   // face — see PostcardTurnMark's `ink`.
@@ -61,6 +67,11 @@ const TURN_MARK_INSET_SHARE = 0.035;
 export function turnMarkInsetFor(cardWidth: number): number {
   return Math.round(cardWidth * TURN_MARK_INSET_SHARE);
 }
+
+// How long a press on the card's own controls waits to see whether a second
+// one is coming. The same window the photograph's own tap already uses (see
+// usePhotoTaps), for the same reason and so the two feel alike.
+const DOUBLE_TAP_MS = 300;
 
 // The picture side's fallback, used only until the card has been measured.
 // See pictureInsetFor below, which is what the real inset comes from.
@@ -119,17 +130,64 @@ export function PostcardPaper({
   onFlip,
   flipLabel,
   flipReach = PAPER_BORDER,
+  onDoubleTap,
   turnMark = false,
   turnMarkInk,
 }: PostcardPaperProps) {
-  // Only the turn-over mark needs this, and only so it can sit the same
-  // distance inside the deckle on a phone and on a desktop card.
+  // The card's own width, so the turn-over mark sits the same distance inside
+  // the deckle at any card size.
   const [cardWidth, setCardWidth] = useState(0);
 
-  return (
+  // Turning the card waits out the double-tap window, when there is a double
+  // tap to wait for.
+  //
+  // The card's border is where a turn is pressed AND, now, where a double tap
+  // likes — and on the picture side those are the same strip of card: the
+  // printed border is about 26pt and the press target reaches 44, so every
+  // visible scrap of border is inside it. Without this, two taps on the border
+  // turned the card and turned it straight back instead of liking anything.
+  //
+  // The cost is that a tap on the border turns the card 300ms later than it
+  // used to. That is the same delay tapping a photograph to open it already
+  // carries, so it is a delay this card already has rather than a new one.
+  const pendingTurn = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPressAt = useRef(0);
+
+  useEffect(
+    () => () => {
+      if (pendingTurn.current) clearTimeout(pendingTurn.current);
+    },
+    [],
+  );
+
+  const handleTurnPress = useCallback(() => {
+    if (onFlip == null) return;
+    if (onDoubleTap == null) {
+      onFlip();
+      return;
+    }
+    const now = Date.now();
+    if (now - lastPressAt.current < DOUBLE_TAP_MS) {
+      // A second press: this is a double tap, and the card-wide gesture is
+      // the thing that answers it. Drop the turn that was waiting.
+      if (pendingTurn.current) clearTimeout(pendingTurn.current);
+      pendingTurn.current = null;
+      lastPressAt.current = 0;
+      return;
+    }
+    lastPressAt.current = now;
+    pendingTurn.current = setTimeout(() => {
+      pendingTurn.current = null;
+      onFlip();
+    }, DOUBLE_TAP_MS);
+  }, [onFlip, onDoubleTap]);
+
+  const gesture = useFlipGesture(onFlip, { onDoubleTap });
+
+  const card = (
     <View
       style={[styles.wrap, style]}
-      onLayout={turnMark ? (e) => setCardWidth(e.nativeEvent.layout.width) : undefined}>
+      onLayout={(e) => setCardWidth(e.nativeEvent.layout.width)}>
       {/* Stretched, not cover: the card has to BE the card's shape. Its own
           proportions are close to the frame's already, so the deckle is not
           visibly pulled. */}
@@ -180,11 +238,15 @@ export function PostcardPaper({
           here: a tap on the border reached whichever face was painted last
           rather than whichever one was facing you. Four explicit strips are
           unambiguous. */}
+      {/* Tap targets only — the drag is on the card's root now, so these are
+          back to being plain presses. They still exist because a tap on the
+          border has to turn the card and a tap in the middle of it must not:
+          the middle is a photograph. */}
       {onFlip &&
         (['left', 'right', 'top', 'bottom'] as const).map((edge) => (
           <Pressable
             key={edge}
-            onPress={onFlip}
+            onPress={handleTurnPress}
             accessibilityRole="button"
             accessibilityLabel={flipLabel}
             style={[styles.edge, edgeStyle(edge, flipReach)]}
@@ -196,7 +258,7 @@ export function PostcardPaper({
           one that can be aimed at. */}
       {onFlip && turnMark && (
         <PostcardTurnMark
-          onPress={onFlip}
+          onPress={handleTurnPress}
           inset={turnMarkInsetFor(cardWidth)}
           ink={turnMarkInk}
           accessibilityLabel={flipLabel}
@@ -204,6 +266,10 @@ export function PostcardPaper({
       )}
     </View>
   );
+
+  // The whole card is the drag surface. See useFlipGesture for why it is the
+  // root and not an overlay.
+  return gesture == null ? card : <GestureDetector gesture={gesture}>{card}</GestureDetector>;
 }
 
 function edgeStyle(edge: 'left' | 'right' | 'top' | 'bottom', reach: number): ViewStyle {
