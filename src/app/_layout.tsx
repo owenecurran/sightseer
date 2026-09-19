@@ -19,6 +19,7 @@ import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { initDeferredLinks } from '@/lib/deferred-links';
 import { addPushTapListener, getPushPermissionState, registerForPush } from '@/lib/push';
 import { TERMS_VERSION } from '@/lib/terms';
+import { useTutorialSeen } from '@/lib/tutorial';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -78,6 +79,8 @@ function RootNavigator() {
     profile?.terms_accepted_at != null && profile?.terms_version === TERMS_VERSION;
   const hasCompletedOnboarding = profile?.handle != null;
   const hasSetDemographics = profile?.has_set_demographics === true;
+  // Null until storage answers — see the guard below for why that matters.
+  const { seen: tutorialSeen } = useTutorialSeen();
   const hasSetPrivacy = profile?.has_set_privacy === true;
   const hasPassedInviteGate =
     profile?.has_shared_invite === true || profile?.invite_exempt === true;
@@ -307,6 +310,15 @@ function RootNavigator() {
               <Stack.Screen name="invite-gate" />
             </Stack.Protected>
 
+            {/* How the app works, once per install — see lib/tutorial.ts.
+                Registered BEFORE (tabs) so it sits in front of the app the
+                way every other gate above it does.
+
+                `=== false` and not `!tutorialSeen`, deliberately: the flag
+                starts as null while storage is being read, and treating that
+                as "not seen" would throw the tutorial up for a frame on every
+                single launch before it resolved. Unknown means show the app;
+                only a definite "never seen this" opens it. */}
             <Stack.Protected
               guard={
                 isAuthenticated &&
@@ -315,7 +327,31 @@ function RootNavigator() {
                 hasCompletedOnboarding &&
                 hasSetDemographics &&
                 hasSetPrivacy &&
-                hasPassedInviteGate
+                hasPassedInviteGate &&
+                tutorialSeen === false
+              }
+            >
+              <Stack.Screen name="tutorial" options={{ gestureEnabled: false }} />
+            </Stack.Protected>
+
+            <Stack.Protected
+              guard={
+                isAuthenticated &&
+                !isBanned &&
+                hasAcceptedTerms &&
+                hasCompletedOnboarding &&
+                hasSetDemographics &&
+                hasSetPrivacy &&
+                hasPassedInviteGate &&
+                // The app has to be UNAVAILABLE while the tutorial is
+                // pending, not merely registered after it. A Protected route
+                // is a gate on availability, and the navigator resolves the
+                // current path against whatever is available — so with both
+                // this and the tutorial open, '/' still resolves straight to
+                // the tabs and the tutorial never appears. Closing this is
+                // what makes the router fall through, exactly as it does for
+                // every other gate above.
+                tutorialSeen !== false
               }
             >
               <Stack.Screen name="(tabs)" />

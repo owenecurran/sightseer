@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { createContext, useContext, useEffect, useRef, type RefObject } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, type RefObject } from 'react';
 import { InteractionManager, Platform } from 'react-native';
 import type PagerView from 'react-native-pager-view';
 
@@ -33,6 +33,49 @@ export function useTabPager() {
   const ctx = useContext(TabPagerContext);
   if (!ctx) throw new Error('useTabPager must be used within TabPagerProvider');
   return ctx;
+}
+
+// The same thing, for code that must work where there is no pager at all.
+//
+// The five tab screens always have one; a shared UI component does not. Web
+// has no PagerView (see (tabs)/_layout.tsx), and a postcard is rendered from
+// plenty of places outside the tab tree — a modal, the dev gallery, a Stack
+// route. Those must not throw just for asking.
+export function useTabPagerOptional(): TabPagerContextValue | null {
+  return useContext(TabPagerContext);
+}
+
+// Stops the tab pager reacting to a horizontal drag, for as long as a card is
+// being touched.
+//
+// The postcard turns over on a sideways drag, and the five tabs are a
+// PagerView — so the two want the same gesture. On Android the card's own
+// activation threshold was enough to win it; on iOS it is not. PagerView
+// there is a UIPageViewController whose scroll view claims the touch almost
+// immediately, well before the card's pan has seen the 18pt of travel it
+// needs to activate, so a drag meant to flip a review paged across to Search
+// instead.
+//
+// Rather than fight over recognition order, the pager is simply switched off
+// while a finger is down on a card. That is exactly the rule asked for — a
+// swipe inside a postcard's bounds is never a page swipe — and it does not
+// depend on which gesture system wins a race on which platform.
+//
+// The imperative command rather than the `scrollEnabled` prop deliberately:
+// the prop is React state, so it would take a render to land, and the whole
+// problem is that the pager claims the touch within a frame or two of it
+// starting. `setScrollEnabled` goes straight to the native view. It is also
+// what react-native-pager-view documents the method for.
+export function usePagerSwipeLock(): (locked: boolean) => void {
+  const ctx = useTabPagerOptional();
+  const pagerRef = ctx?.pagerRef;
+
+  return useCallback(
+    (locked: boolean) => {
+      pagerRef?.current?.setScrollEnabled(!locked);
+    },
+    [pagerRef],
+  );
 }
 
 // Replaces `useFocusEffect` for the 5 main tab screens: they're all mounted
