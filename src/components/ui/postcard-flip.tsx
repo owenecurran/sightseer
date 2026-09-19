@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
+import { hapticFlip } from '@/lib/haptics';
 import { usePagerSwipeLock } from '@/hooks/use-tab-pager';
 import Animated, {
   interpolate,
@@ -144,7 +145,13 @@ export function useFlipGesture(
         // The commit is the STATE change, not an animation: flipping the prop
         // re-runs the effect below, which carries the turn the rest of the way
         // from wherever the finger left it rather than restarting it.
-        if (release(e.translationX, e.velocityX)) runOnJS(onFlip)();
+        if (release(e.translationX, e.velocityX)) {
+          // At the moment the drag COMMITS, not when the finger lands. That
+          // instant is the thing a card cannot show you — it is the answer to
+          // "was that far enough?", delivered before the animation says so.
+          runOnJS(hapticFlip)();
+          runOnJS(onFlip)();
+        }
       })
       .onFinalize(() => {
         release(0, 0);

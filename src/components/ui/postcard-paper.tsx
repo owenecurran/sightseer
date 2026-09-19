@@ -5,6 +5,7 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import { useFlipGesture } from '@/components/ui/postcard-flip';
 
 import { PostcardTurnMark } from '@/components/ui/postcard-turn-mark';
+import { hapticFlip } from '@/lib/haptics';
 import { BrandColors, Spacing } from '@/constants/theme';
 import type { PostcardOrientation } from '@/lib/postcard-orientation';
 import type { Sheet } from '@/lib/postcard-stock';
@@ -163,6 +164,7 @@ export function PostcardPaper({
   const handleTurnPress = useCallback(() => {
     if (onFlip == null) return;
     if (onDoubleTap == null) {
+      hapticFlip();
       onFlip();
       return;
     }
@@ -178,6 +180,10 @@ export function PostcardPaper({
     lastPressAt.current = now;
     pendingTurn.current = setTimeout(() => {
       pendingTurn.current = null;
+      // Inside the timer, so a press that turns out to be the first half of a
+      // double tap never knocks — that press is cancelled above and a card
+      // that did not turn must not feel as though it did.
+      hapticFlip();
       onFlip();
     }, DOUBLE_TAP_MS);
   }, [onFlip, onDoubleTap]);

@@ -42,6 +42,7 @@ import { TagSticker } from "@/components/ui/tag-sticker";
 import { VisitActionsRow } from "@/components/visit-actions-row";
 import { VisitMenu } from "@/components/visit-menu";
 import { BrandColors, Spacing } from "@/constants/theme";
+import { hapticLike, hapticUnlike } from "@/lib/haptics";
 import type { FeedVisit } from "@/lib/feed";
 import { useImageAccent } from "@/hooks/use-image-accent";
 import { hashSeed } from "@/lib/seeded-random";
@@ -239,12 +240,22 @@ export function VisitCard({
   // gesture. The like itself was always idempotent; the animation was not.
   const lastBurstAtRef = useRef(0);
 
+  // Both ways of liking go through here, so the knock is tied to the STATE
+  // changing rather than to one of the two buttons. A double tap on a card
+  // that is already liked replays the heart burst but changes nothing, and
+  // buzzing for that would be buzzing for a no-op.
+  function handleToggleLike() {
+    if (visit.isLikedByMe) hapticUnlike();
+    else hapticLike();
+    onToggleLike();
+  }
+
   function handleDoubleTap() {
     const now = Date.now();
     if (now - lastBurstAtRef.current < DOUBLE_TAP_GUARD_MS) return;
     lastBurstAtRef.current = now;
 
-    if (!visit.isLikedByMe) onToggleLike();
+    if (!visit.isLikedByMe) handleToggleLike();
     heartScale.value = 0.6;
     heartOpacity.value = 1;
     heartScale.value = withSequence(
@@ -931,7 +942,7 @@ export function VisitCard({
           visitId={visit.id}
           isLiked={visit.isLikedByMe}
           likeCount={visit.likeCount}
-          onToggleLike={onToggleLike}
+          onToggleLike={handleToggleLike}
           onShare={onShare}
           isCopied={isCopied}
           isOwnerOrTagged={isOwner || visit.isViewerTagged}

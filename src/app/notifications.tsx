@@ -1,9 +1,11 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/ui/avatar';
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -12,12 +14,28 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
+import { getAvatarViewUrls } from '@/lib/avatar';
+import { getPhotoThumbUrls } from '@/lib/photo-view';
+import { followUser, listFollowing } from '@/lib/follows';
 import {
+  actorSummary,
+  groupNotifications,
   listNotifications,
+  type NotificationGroup,
   markAllNotificationsRead,
   markNotificationRead,
   type AppNotification,
 } from '@/lib/notifications';
+
+// How many faces a grouped row shows before the names take over.
+const MAX_FACES = 3;
+const AVATAR_SIZE = 34;
+const PREVIEW_SIZE = 48;
+
+// 'working' is its own state rather than a separate boolean: the button has
+// to stop being pressable the moment it is pressed, and a private account
+// lands on 'pending' rather than 'following'.
+type FollowState = 'none' | 'following' | 'pending' | 'working';
 
 function relativeTime(isoDate: string): string {
   const seconds = Math.max(0, (Date.now() - new Date(isoDate).getTime()) / 1000);
@@ -35,7 +53,13 @@ function relativeTime(isoDate: string): string {
 // previous if/else version's `else` branch silently assumed "must be
 // travel_book_item_added", which would have quietly mis-rendered every one
 // of the 7 new types added in this batch had it been left as-is.
-function describe(notification: AppNotification): string {
+function describe(notification: AppNotification, actors: { name: string }[]): string {
+  // Likes are the one type that can carry several people — see
+  // groupNotifications. Everything else names its single actor.
+  if (notification.type === 'like') {
+    return `${actorSummary(actors)} liked your review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+  }
+
   switch (notification.type) {
     case 'board_item_added':
       return `${notification.actorName} added something new to "${notification.boardName ?? 'a board'}"`;
@@ -45,8 +69,6 @@ function describe(notification: AppNotification): string {
       return `${notification.actorName} saved your board "${notification.boardName ?? 'a board'}"`;
     case 'travel_book_saved':
       return `${notification.actorName} saved your travel book "${notification.travelBookTitle ?? 'a travel book'}"`;
-    case 'like':
-      return `${notification.actorName} liked your review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
     case 'comment':
       return `${notification.actorName} commented on your review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
     case 'friend_visit':
@@ -68,6 +90,14 @@ export default function NotificationsScreen() {
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
+  // Keyed by photo id. Thumbnails, not originals — these are 48pt squares,
+  // and the backfill means the small copies actually exist for the backlog.
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  // Who the viewer already follows, of the people who appear here. Drives the
+  // follow-back button: someone who followed you and whom you already follow
+  // needs no button, only the word for it.
+  const [followBack, setFollowBack] = useState<Record<string, FollowState>>({});
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
@@ -80,6 +110,35 @@ export default function NotificationsScreen() {
         try {
           const list = await listNotifications(session.user.id);
           setNotifications(list);
+
+          // Faces, and who is already followed. Second pass on purpose:
+          // neither is worth holding the list blank for, and both depend on
+          // who turned out to be in it.
+          const actorIds = [
+            ...new Set(list.map((n) => n.actorUserId).filter((id): id is string => id != null)),
+          ];
+          const previewPhotoIds = [
+            ...new Set(list.map((n) => n.visitPhotoId).filter((id): id is string => id != null)),
+          ];
+          if (actorIds.length > 0) {
+            const [avatars, following, previews] = await Promise.all([
+              getAvatarViewUrls(actorIds),
+              listFollowing(session.user.id),
+              previewPhotoIds.length > 0
+                ? getPhotoThumbUrls(previewPhotoIds)
+                : Promise.resolve({}),
+            ]);
+            setAvatarUrls(avatars);
+            setPreviewUrls(previews);
+            const followed = new Set(following.map((entry) => entry.id));
+            setFollowBack(
+              Object.fromEntries(
+                list
+                  .filter((n) => n.type === 'follow' && n.actorUserId)
+                  .map((n) => [n.actorUserId!, followed.has(n.actorUserId!) ? 'following' : 'none']),
+              ),
+            );
+          }
           // Mark-as-read on view, not on individual tap — matches this
           // screen's own purpose (a feed you check), not a to-do list.
           if (list.some((n) => !n.isRead)) {
@@ -93,6 +152,29 @@ export default function NotificationsScreen() {
       })();
     }, [session])
   );
+
+  const groups = useMemo(() => groupNotifications(notifications), [notifications]);
+
+  async function handleFollowBack(notification: AppNotification) {
+    const actorId = notification.actorUserId;
+    if (!session || !actorId) return;
+    setFollowBack((current) => ({ ...current, [actorId]: 'working' }));
+    try {
+      const status = await followUser({
+        followerId: session.user.id,
+        followeeId: actorId,
+        followeeIsPrivate: notification.actorIsPrivate,
+      });
+      // A private account turns the press into a REQUEST, not a follow, and
+      // the row has to say so — otherwise it reads as done when it is not.
+      setFollowBack((current) => ({
+        ...current,
+        [actorId]: status === 'accepted' ? 'following' : 'pending',
+      }));
+    } catch {
+      setFollowBack((current) => ({ ...current, [actorId]: 'none' }));
+    }
+  }
 
   async function handlePress(notification: AppNotification) {
     if (!notification.isRead) {
@@ -136,8 +218,8 @@ export default function NotificationsScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Animated.FlatList
-          data={notifications}
-          keyExtractor={(item: AppNotification) => item.id}
+          data={groups}
+          keyExtractor={(item: NotificationGroup) => item.key}
           contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -158,16 +240,74 @@ export default function NotificationsScreen() {
               No notifications yet. Save a board or travel book with notifications on to hear about new additions.
             </ThemedText>
           }
-          renderItem={({ item }) => (
-            <Pressable onPress={() => handlePress(item)}>
-              <ThemedView type={item.isRead ? 'backgroundElement' : 'backgroundSelected'} style={styles.row}>
-                <ThemedText type="default">{describe(item)}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {relativeTime(item.createdAt)}
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
-          )}
+          renderItem={({ item }: { item: NotificationGroup }) => {
+            const actorId = item.latest.actorUserId;
+            const state = actorId ? followBack[actorId] : undefined;
+            return (
+              <Pressable onPress={() => handlePress(item.latest)}>
+                <ThemedView
+                  type={item.isRead ? 'backgroundElement' : 'backgroundSelected'}
+                  style={styles.row}>
+                  {/* Up to three faces, overlapped. Beyond three the names in
+                      the line already say how many there were, and a fourth
+                      circle only makes the row taller. */}
+                  <View style={styles.avatars}>
+                    {item.actors.slice(0, MAX_FACES).map((actor, index) => (
+                      <View
+                        key={actor.id}
+                        style={index === 0 ? undefined : styles.stackedAvatar}>
+                        <Avatar uri={avatarUrls[actor.id]} name={actor.name} size={AVATAR_SIZE} />
+                      </View>
+                    ))}
+                  </View>
+
+                  <View style={styles.rowText}>
+                    <ThemedText type="default">{describe(item.latest, item.actors)}</ThemedText>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {relativeTime(item.latest.createdAt)}
+                    </ThemedText>
+                  </View>
+
+                  {/* What the notification is ABOUT, where that is a review.
+                      A line of text names the place; the picture is what
+                      actually identifies which of your reviews this is. */}
+                  {item.latest.visitPhotoId && previewUrls[item.latest.visitPhotoId] && (
+                    <LoadableImage
+                      source={{ uri: previewUrls[item.latest.visitPhotoId] }}
+                      style={styles.preview}
+                    />
+                  )}
+
+                  {/* Only on a follow, and only where there is something to
+                      do about it. Someone you already follow gets the word
+                      rather than a button that would unfollow them by
+                      accident. */}
+                  {item.latest.type === 'follow' && actorId && (
+                    state === 'following' ? (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Following
+                      </ThemedText>
+                    ) : state === 'pending' ? (
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Requested
+                      </ThemedText>
+                    ) : (
+                      <Pressable
+                        onPress={() => void handleFollowBack(item.latest)}
+                        hitSlop={8}
+                        disabled={state === 'working'}>
+                        <ThemedView type="backgroundSelected" style={styles.followButton}>
+                          <ThemedText type="smallBold">
+                            {state === 'working' ? '…' : 'Follow back'}
+                          </ThemedText>
+                        </ThemedView>
+                      </Pressable>
+                    )
+                  )}
+                </ThemedView>
+              </Pressable>
+            );
+          }}
         />
       </SafeAreaView>
     </ThemedView>
@@ -191,8 +331,35 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   row: {
-    gap: Spacing.half,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
     padding: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  rowText: {
+    flex: 1,
+    gap: Spacing.half,
+  },
+  avatars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // Overlapped rather than spaced, so three faces cost about the width of
+  // one and a half and the row keeps its height.
+  stackedAvatar: {
+    marginLeft: -AVATAR_SIZE / 3,
+  },
+  // A square, so a portrait and a landscape photograph both read as the same
+  // object in the column rather than as rows of different heights.
+  preview: {
+    width: PREVIEW_SIZE,
+    height: PREVIEW_SIZE,
+    borderRadius: Spacing.two,
+  },
+  followButton: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.four,
   },
 });
