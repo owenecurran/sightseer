@@ -1,9 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { StickerArrow } from '@/components/ui/sticker-arrow';
 import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
 
 type SettingsRowProps = {
   label: string;
@@ -22,7 +21,6 @@ type SettingsRowProps = {
 // my account" — so a destructive action and a legal link were styled
 // identically while two navigations to sibling screens were not.
 export function SettingsRow({ label, description, onPress, tone = 'default' }: SettingsRowProps) {
-  const theme = useTheme();
   const isDanger = tone === 'danger';
 
   return (
@@ -37,7 +35,12 @@ export function SettingsRow({ label, description, onPress, tone = 'default' }: S
           </ThemedText>
         )}
       </View>
-      {!isDanger && <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />}
+      {/* The app's own "go here" mark rather than a chevron — the same
+          sticker StickerLink and the ticket cards use, so every forward
+          affordance in the app is one object instead of three. Seeded off
+          the label so a settings list is a row of different stickers rather
+          than the same one repeated. */}
+      {!isDanger && <StickerArrow direction="right" size={20} seed={`settings:${label}`} />}
     </Pressable>
   );
 }

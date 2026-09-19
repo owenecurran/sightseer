@@ -10,6 +10,8 @@ import type { BoardVisitItem } from '@/lib/boards';
 type ImagesGridViewProps = {
   items: BoardVisitItem[];
   photoUrls: Record<string, string>;
+  // Selection mode, for a picker — see ListView's own pair.
+  onSelectVisit?: (visitId: string) => void;
   isOwner?: boolean;
   coverPhotoId?: string | null;
   onSetCover?: (photoId: string) => void;
@@ -22,7 +24,14 @@ const GAP = 2;
 // is looking for" — a uniform Instagram-Explore-style grid (not variable-
 // height masonry, which Instagram's own grid isn't either), flattening
 // every item's photos into one continuous scroll.
-export function ImagesGridView({ items, photoUrls, isOwner, coverPhotoId, onSetCover }: ImagesGridViewProps) {
+export function ImagesGridView({
+  items,
+  photoUrls,
+  isOwner,
+  coverPhotoId,
+  onSetCover,
+  onSelectVisit,
+}: ImagesGridViewProps) {
   const tiles = items.flatMap((item) =>
     item.photoIds
       .filter((photoId) => photoUrls[photoId] != null)
@@ -45,7 +54,11 @@ export function ImagesGridView({ items, photoUrls, isOwner, coverPhotoId, onSetC
         <Pressable
           key={tile.key}
           style={styles.tile}
-          onPress={() => router.push({ pathname: '/visit/[id]', params: { id: tile.visitId } })}>
+          onPress={
+            onSelectVisit
+              ? () => onSelectVisit(tile.visitId)
+              : () => router.push({ pathname: '/visit/[id]', params: { id: tile.visitId } })
+          }>
           <LoadableImage source={{ uri: tile.url }} style={styles.image} />
           {isOwner && onSetCover && (
             <Pressable

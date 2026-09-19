@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 
 import { PhotoLightbox } from '@/components/photo-lightbox';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { Spacing } from '@/constants/theme';
+import { usePhotoTaps } from '@/hooks/use-photo-taps';
 
 export const MAX_VISIT_PHOTOS = 4;
 
@@ -16,9 +17,6 @@ const MAX_PHOTO_HEIGHT = 520;
 // Matches photo-crop-modal.tsx's own crop bound.
 const MIN_DISPLAY_RATIO = 9 / 16;
 const MAX_DISPLAY_RATIO = 16 / 9;
-
-// Standard single/double-tap disambiguation window.
-const DOUBLE_TAP_MS = 300;
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
@@ -113,49 +111,9 @@ export function PhotoGrid({ urls, thumbUrls, aspectRatios, onDoubleTap }: PhotoG
   const displayUrls =
     urls.length > 1 && thumbUrls ? urls.map((url, i) => thumbUrls[i] ?? url) : urls;
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  // Plain RN Pressable + a manual tap-timestamp comparison, not an RNGH
-  // gesture — an RNGH GestureDetector nested inside the feed's *outer*
-  // double-tap detector didn't reliably receive events, and neither did a
-  // later attempt building both taps as one RNGH Gesture.Exclusive() per
-  // tile. This sidesteps RNGH entirely: single tap opens the lightbox
-  // after a short window with no second tap; a second tap inside that
-  // window cancels it and fires onDoubleTap instead — the same debounce
-  // pattern gesture libraries use internally, implemented directly. One
-  // ref per grid (keyed by tile index), not one per tile, since the
-  // number of tiles varies with props and hooks can't be called a
-  // variable number of times.
-  const lastTapAtRef = useRef<Map<number, number>>(new Map());
-  const pendingOpenRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-
-  const handleTilePress = useCallback(
-    (index: number) => {
-      const now = Date.now();
-      const lastTapAt = lastTapAtRef.current.get(index) ?? 0;
-      lastTapAtRef.current.set(index, now);
-
-      if (onDoubleTap && now - lastTapAt < DOUBLE_TAP_MS) {
-        const pending = pendingOpenRef.current.get(index);
-        if (pending) {
-          clearTimeout(pending);
-          pendingOpenRef.current.delete(index);
-        }
-        lastTapAtRef.current.set(index, 0);
-        onDoubleTap();
-        return;
-      }
-
-      if (onDoubleTap) {
-        const timeout = setTimeout(() => {
-          pendingOpenRef.current.delete(index);
-          setSelectedIndex(index);
-        }, DOUBLE_TAP_MS);
-        pendingOpenRef.current.set(index, timeout);
-      } else {
-        setSelectedIndex(index);
-      }
-    },
-    [onDoubleTap]
-  );
+  const openAt = useCallback((index: number) => setSelectedIndex(index), []);
+  // See usePhotoTaps for why this is timestamps rather than an RNGH gesture.
+  const handleTilePress = usePhotoTaps(openAt, onDoubleTap);
 
   if (urls.length === 0) return null;
 

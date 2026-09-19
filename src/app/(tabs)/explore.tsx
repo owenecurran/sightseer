@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LocationSearchModal } from '@/components/location-search-modal';
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { TextField } from '@/components/ui/text-field';
@@ -201,16 +202,16 @@ export default function SearchScreen() {
                     <Pressable
                       key={board.id}
                       onPress={() => router.push({ pathname: '/board/[id]', params: { id: board.id } })}>
-                      <ThemedView type="backgroundElement" style={styles.resultRow}>
+                      <PaperPanel seed={`result-board`} style={styles.resultRow}>
                         {coverUrls[board.id] && <Image source={{ uri: coverUrls[board.id] }} style={styles.resultThumbnail} />}
                         <View style={styles.resultInfo}>
-                          <ThemedText type="headline">{board.name}</ThemedText>
+                          <ThemedText type="headlineWrapped">{board.name}</ThemedText>
                           <ThemedText type="small" themeColor="textSecondary">
                             by {board.creatorName}
                             {board.is_private ? ' · Private' : ''}
                           </ThemedText>
                         </View>
-                      </ThemedView>
+                      </PaperPanel>
                     </Pressable>
                   ))}
 
@@ -219,16 +220,16 @@ export default function SearchScreen() {
                     <Pressable
                       key={book.id}
                       onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: book.id } })}>
-                      <ThemedView type="backgroundElement" style={styles.resultRow}>
+                      <PaperPanel seed={`result-book`} style={styles.resultRow}>
                         {coverUrls[book.id] && <Image source={{ uri: coverUrls[book.id] }} style={styles.resultThumbnail} />}
                         <View style={styles.resultInfo}>
-                          <ThemedText type="headline">{book.title}</ThemedText>
+                          <ThemedText type="headlineWrapped">{book.title}</ThemedText>
                           <ThemedText type="small" themeColor="textSecondary">
                             by {book.creatorName}
                             {book.is_private ? ' · Private' : ''}
                           </ThemedText>
                         </View>
-                      </ThemedView>
+                      </PaperPanel>
                     </Pressable>
                   ))}
 
@@ -239,10 +240,10 @@ export default function SearchScreen() {
                       <Pressable
                         key={user.id}
                         onPress={() => router.push({ pathname: '/user/[id]', params: { id: user.id } })}>
-                        <ThemedView type="backgroundElement" style={styles.resultRow}>
+                        <PaperPanel seed={`result-user`} style={styles.resultRow}>
                           <Avatar uri={avatarUrls[user.id]} name={user.name ?? user.handle} size={40} />
                           <View style={styles.resultInfo}>
-                            <ThemedText type="headline">{user.name ?? user.handle ?? 'Unnamed'}</ThemedText>
+                            <ThemedText type="headlineWrapped">{user.name ?? user.handle ?? 'Unnamed'}</ThemedText>
                             {user.handle && (
                               <ThemedText type="small" themeColor="textSecondary">
                                 @{user.handle}
@@ -257,7 +258,7 @@ export default function SearchScreen() {
                           <Pressable onPress={() => handleFollowToggle(user)} hitSlop={8}>
                             <ThemedText type="smallBold">{followLabel(user.followStatus)}</ThemedText>
                           </Pressable>
-                        </ThemedView>
+                        </PaperPanel>
                       </Pressable>
                     );
                   })}
@@ -265,12 +266,12 @@ export default function SearchScreen() {
             </>
           ) : (
             <Pressable onPress={() => setIsPickerOpen(true)}>
-              <ThemedView type="backgroundElement" style={styles.locationsCard}>
-                <ThemedText type="headline">Search the map</ThemedText>
+              <PaperPanel seed="explore-map" accentIndex={3} style={styles.locationsCard}>
+                <ThemedText type="headlineWrapped">Search the map</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   Browse reviewed places, or search for one to view its page.
                 </ThemedText>
-              </ThemedView>
+              </PaperPanel>
             </Pressable>
           )}
         </Animated.ScrollView>

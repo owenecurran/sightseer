@@ -36,7 +36,7 @@ export function RatingSliderWithPreview({ value, onChange, previewSize = 64 }: R
           <RatingGlassBadgeGated rating={value} size={previewSize} />
         </View>
       ) : (
-        <ThemedText type="title" style={styles.placeholder}>
+        <ThemedText type="headline" style={styles.placeholder}>
           Rate it
         </ThemedText>
       )}
@@ -54,5 +54,13 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     textAlign: 'center',
+    // `headline` rather than `title`: title is a plain 48px system face, and
+    // it was the only heading on this screen not in a brand font — jarring
+    // next to the stamp it gets replaced by the moment a score is set. The
+    // slider itself is untouched.
+    //
+    // headline sets no lineHeight, so this pins one; at 34px the default
+    // leading crowds the track below it.
+    lineHeight: 40,
   },
 });

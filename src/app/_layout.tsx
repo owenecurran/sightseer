@@ -46,6 +46,19 @@ const AUTH_PATHS = [
 // is from is just a link.
 const INVITE_PATH_PREFIX = '/i/';
 
+// The postcard gallery in src/app/dev-postcards.tsx, which renders the feed
+// card from fixtures so a layout can be looked at without a session. Every
+// screen that shows a card is behind auth, which made checking the WEB build
+// need a signed-in browser — this is the way around that.
+//
+// __DEV__ only, so a release build redirects it away like any other unknown
+// path and the gallery is unreachable.
+const DEV_PREVIEW_PATH = '/dev-postcards';
+
+function isDevPreviewPath(pathname: string): boolean {
+  return __DEV__ && pathname === DEV_PREVIEW_PATH;
+}
+
 // The paths that say something meaningful with no session behind them, and
 // therefore the only ones worth putting into the prerendered HTML. Kept
 // deliberately short: every entry is a page that must be correct before the
@@ -109,6 +122,7 @@ function RootNavigator() {
     if (isLoading || isAuthenticated) return;
     if (AUTH_PATHS.includes(pathname)) return;
     if (pathname.startsWith(INVITE_PATH_PREFIX)) return;
+    if (isDevPreviewPath(pathname)) return;
     // The welcome screen, not the sign-in form: someone arriving with no
     // session is usually meeting the app for the first time, and a password
     // field is a poor introduction. Anyone who already has an account is
@@ -342,6 +356,21 @@ export default function RootLayout() {
     MoonGetHeavy: require('@/assets/fonts/MOON_GET-HEAVY.otf'),
     HelveticaRoundedBold: require('@/assets/fonts/HELVETICA-ROUNDED-BOLD-5871D05EAD8DE.otf'),
     ObviouslyWideMedium: require('@/assets/fonts/ObviouslyWideMedium.otf'),
+    // Copied from "PAG Auto W01 Regular.otf" to a name with no spaces. The
+    // spaced original bundles and resolves fine, but useFonts never settles on
+    // it — the whole app sits on a blank screen, because this gate returns
+    // null until it does. The .otf of the pair rather than the .ttf beside it:
+    // same face, and the OpenType build carries the full kerning table.
+    PagAuto: require('@/assets/fonts/PagAutoRegular.otf'),
+    // The broader-location faces. Copied to space-free names for exactly the
+    // reason above — every one of these arrived as "ACID GREEN POSTER.TTF"
+    // and friends, and a spaced filename is the one thing known to hang this
+    // gate and leave the app on a blank screen.
+    AcidGreenPoster: require('@/assets/fonts/AcidGreenPoster.ttf'),
+    AntarcticanBold: require('@/assets/fonts/AntarcticanHeadlineBold.ttf'),
+    AntarcticanLight: require('@/assets/fonts/AntarcticanHeadlineLight.ttf'),
+    BohemianSoul: require('@/assets/fonts/BohemianSoul.otf'),
+    BuenaparkJf: require('@/assets/fonts/BuenaparkJfRegular.ttf'),
   });
 
   // Native splash stays up (SplashScreen.preventAutoHideAsync() above) until

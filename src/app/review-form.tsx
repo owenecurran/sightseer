@@ -7,10 +7,9 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
-import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { LocationSearchModal } from '@/components/location-search-modal';
-import { MAX_VISIT_PHOTOS, PhotoGrid } from '@/components/photo-grid';
+import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
 import { PhotoCropModal, type CroppedPhoto } from '@/components/photo-crop-modal';
 import { PhotoSourceModal } from '@/components/photo-source-modal';
 import { SaveToBoard } from '@/components/save-to-board';
@@ -21,9 +20,27 @@ import { getTripSuggestion, type TripSuggestion } from '@/lib/trips';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
+import { PaperPanel } from '@/components/ui/paper-panel';
+import { pickStampDesign } from '@/lib/stamp-matching';
+import { BLANK_COUNT, GRAIN_COUNT } from '@/lib/postcard-stock';
+
+// Which sheet and which dust plate this review gets. At module scope because
+// the React Compiler's lint counts Math.random() inside a component as an
+// impure call during render — it cannot see that this only ever runs inside
+// the submit handler.
+// The preview's handlers. A preview has nothing to like, share or delete.
+function noop() {}
+
+function drawCard() {
+  return {
+    stock: Math.floor(Math.random() * BLANK_COUNT),
+    grain: Math.floor(Math.random() * GRAIN_COUNT),
+  };
+}
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
 import { TagSticker } from '@/components/ui/tag-sticker';
+import { VisitCard, type VisitCardVisit } from '@/components/visit-card';
 import { TagPickerModal } from '@/components/tag-picker-modal';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -119,6 +136,12 @@ export default function ReviewFormScreen() {
   const [rating, setRating] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [visitedOn, setVisitedOn] = useState(todayIsoDate());
+  // How this review's postcard is printed. Null orientation means the photos
+  // decide, which is what every review did before the choice existed.
+  const [cardOrientation, setCardOrientation] = useState<'horizontal' | 'vertical' | null>(
+    null,
+  );
+  const [cardSide, setCardSide] = useState<'picture' | 'message'>('picture');
   const [isSavingVisit, setIsSavingVisit] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
 
@@ -146,14 +169,22 @@ export default function ReviewFormScreen() {
 
   const peopleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Derived, not stored. Both of these used to be kept in sync by an effect
+  // that reset them; reading through a guard here is the same result with
+  // one less render and no effect-body setState.
+  const visiblePeopleSuggestions = peopleQuery.trim() ? peopleSuggestions : [];
+  const visibleStateCountry = selectedPlace ? previewStateCountry : null;
+
   useEffect(() => {
     if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     if (!session) return;
 
-    if (!peopleQuery.trim()) {
-      setPeopleSuggestions([]);
-      return;
-    }
+    // Nothing to search for. The stored list is deliberately NOT cleared
+    // here: what renders is derived below, so a stale list simply stops
+    // being shown. Clearing it synchronously in an effect body is what
+    // react-hooks/set-state-in-effect flags, and deriving is the fix the
+    // rule is pointing at.
+    if (!peopleQuery.trim()) return;
 
     peopleDebounceRef.current = setTimeout(async () => {
       try {
@@ -171,10 +202,9 @@ export default function ReviewFormScreen() {
   }, [peopleQuery, session]);
 
   useEffect(() => {
-    if (!selectedPlace) {
-      setPreviewStateCountry(null);
-      return;
-    }
+    // As above: with no place there is nothing to resolve, and the value
+    // that renders is derived rather than reset from in here.
+    if (!selectedPlace) return;
     let cancelled = false;
     resolveStateCountries([selectedPlace.id])
       .then((map) => {
@@ -298,7 +328,6 @@ export default function ReviewFormScreen() {
         setError(err instanceof Error ? err.message : 'Could not load that draft.');
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId, session]);
 
   // LocationSearchModal already runs fetchPlaceDetails/cachePlaceHierarchy
@@ -562,6 +591,36 @@ export default function ReviewFormScreen() {
 
       setSavedVisitId(visitId);
 
+      // The postcard this review is printed on, fixed now rather than
+      // re-derived on every render. Written as an update after the fact
+      // instead of inline in the insert above, because there are two ways a
+      // visit gets created — straight insert and publishDraft — and one
+      // update covers both without the draft table needing these columns too.
+      //
+      // Sheet and plate are drawn once here; orientation and side are the
+      // author's. The stamp is resolved from the tags AS THEY ARE NOW, which
+      // is the point: matched at render time it would quietly change every
+      // time somebody edited a tag.
+      const drawn = drawCard();
+      await supabase
+        .from('visits')
+        .update({
+          card_stock: drawn.stock,
+          card_grain: drawn.grain,
+          card_stamp:
+            rating == null
+              ? null
+              : (pickStampDesign({
+                  seed: visitId,
+                  rating,
+                  tags: selectedTags.map((tag) => tag.slug),
+                  placeId: selectedPlace.id,
+                })?.id ?? null),
+          card_orientation: cardOrientation,
+          card_side: cardSide,
+        })
+        .eq('id', visitId);
+
       // Does this review complete a day that reads like a trip? Best-effort
       // and deliberately after the visit itself is safely saved — a failure
       // here must never make a successful publish look like it failed.
@@ -629,6 +688,10 @@ export default function ReviewFormScreen() {
   // look. Existing (already-uploaded) photos have no width/height on hand
   // here, so their aspect ratio is unknown (null, PhotoGrid's own
   // documented fallback) rather than assumed square.
+  // Everything the feed card needs, assembled from what is on screen. Ids
+  // are the place's — nothing here is saved, and the seeds only have to be
+  // stable while the form is open.
+  const previewPhotoUrls: Record<string, string> = {};
   const previewPhotos: { url: string; aspectRatio: number | null }[] = currentDraftId
     ? photoSlots.map((slot) =>
         slot.kind === 'existing'
@@ -639,6 +702,47 @@ export default function ReviewFormScreen() {
         ...pendingPhotos.map((p) => ({ url: p.uri, aspectRatio: p.width / p.height })),
         ...uploadedPhotoUris.map((url) => ({ url, aspectRatio: null })),
       ];
+
+  previewPhotos.forEach((photo, index) => {
+    previewPhotoUrls[`preview-${index}`] = photo.url;
+  });
+
+  // The card as the feed would render it, from a place that has been picked.
+  // Stock and grain are seeded off the place rather than drawn at random: the
+  // published review gets its own draw (see drawCard), and a preview that
+  // reprinted itself on a different sheet every keystroke would be worse than
+  // one that is a sheet out.
+  const previewVisit: VisitCardVisit = {
+    id: currentDraftId ?? selectedPlace?.id ?? 'preview',
+    rating,
+    note: note.trim() || null,
+    visited_on: visitedOn,
+    created_at: new Date().toISOString(),
+    user_id: session?.user.id ?? 'preview',
+    authorName: 'You',
+    placeId: selectedPlace?.id ?? 'preview',
+    placeName: selectedPlace?.name ?? '',
+    placeLat: selectedPlace?.lat ?? null,
+    placeLng: selectedPlace?.lng ?? null,
+    placeLevel: selectedPlace?.level ?? null,
+    stateCountry: visibleStateCountry,
+    photoIds: previewPhotos.map((_, index) => `preview-${index}`),
+    photoAspectRatios: previewPhotos.map((photo) => photo.aspectRatio),
+    likeCount: 0,
+    isLikedByMe: false,
+    taggedUsers: [],
+    taggedPlaces,
+    tags: selectedTags,
+    commentCount: 0,
+    isViewerTagged: false,
+    card: {
+      stock: null,
+      grain: null,
+      stamp: null,
+      orientation: cardOrientation,
+      side: cardSide,
+    },
+  };
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -659,7 +763,7 @@ export default function ReviewFormScreen() {
           </ThemedText>
         )}
 
-        <View style={styles.box}>
+        <PaperPanel seed="form-0" accentIndex={0}>
           <ThemedText type="sectionLabel">Place</ThemedText>
 
           {selectedPlace ? (
@@ -695,11 +799,11 @@ export default function ReviewFormScreen() {
               <Button label="Search for a spot" variant="secondary" onPress={() => setIsTagPickerOpen(true)} />
             </View>
           )}
-        </View>
+        </PaperPanel>
 
         {selectedPlace &&
           (!savedVisitId ? (
-            <View style={styles.box}>
+            <PaperPanel seed="form-1" accentIndex={1}>
               <View style={styles.section}>
                 <View style={styles.row}>
                   <ThemedText type="sectionLabel">Rating</ThemedText>
@@ -868,6 +972,52 @@ export default function ReviewFormScreen() {
               </View>
 
               <View style={styles.section}>
+                <ThemedText type="sectionLabel">Postcard</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Which way up it is printed, and which side it opens on.
+                </ThemedText>
+
+                <View style={styles.cardChoiceRow}>
+                  {(
+                    [
+                      ['Fit the photos', null],
+                      ['Landscape', 'horizontal'],
+                      ['Portrait', 'vertical'],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <Pressable key={label} onPress={() => setCardOrientation(value)}>
+                      <ThemedView
+                        type={
+                          cardOrientation === value ? 'backgroundSelected' : 'backgroundElement'
+                        }
+                        style={styles.cardChoice}
+                      >
+                        <ThemedText type="small">{label}</ThemedText>
+                      </ThemedView>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <View style={styles.cardChoiceRow}>
+                  {(
+                    [
+                      ['Opens on the picture', 'picture'],
+                      ['Opens on the message', 'message'],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <Pressable key={value} onPress={() => setCardSide(value)}>
+                      <ThemedView
+                        type={cardSide === value ? 'backgroundSelected' : 'backgroundElement'}
+                        style={styles.cardChoice}
+                      >
+                        <ThemedText type="small">{label}</ThemedText>
+                      </ThemedView>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.section}>
                 <ThemedText type="sectionLabel">Tag people (optional)</ThemedText>
                 {taggedUsers.length > 0 && (
                   <View style={styles.tagRow}>
@@ -887,7 +1037,7 @@ export default function ReviewFormScreen() {
                   value={peopleQuery}
                   onChangeText={setPeopleQuery}
                 />
-                {peopleSuggestions.map((user) => (
+                {visiblePeopleSuggestions.map((user) => (
                   <Pressable key={user.id} onPress={() => handleSelectPerson(user)}>
                     <ThemedView type="backgroundSelected" style={styles.peopleSuggestionRow}>
                       <Avatar uri={peopleAvatarUrls[user.id]} name={user.name ?? user.handle} size={36} />
@@ -909,26 +1059,25 @@ export default function ReviewFormScreen() {
                 <ThemedText type="small" themeColor="textSecondary">
                   How this will look on the feed.
                 </ThemedText>
-                <ThemedView type="backgroundElement" style={styles.previewCard}>
-                  <FeedCardHeaderText
-                    placeName={selectedPlace.name}
-                    placeId={selectedPlace.id}
-                    stateCountry={previewStateCountry}
-                    taggedPlaces={taggedPlaces}
-                    visitedLine={[rating == null ? 'Visited' : null, note || null].filter(Boolean).join(' · ')}
-                    rating={rating}
-                    stampSeed={currentDraftId ?? selectedPlace.id}
-                    stampCanSeep={previewPhotos.length > 0}
-                    tags={selectedTags}
-                    tagSeed={currentDraftId ?? selectedPlace.id}
-                  />
-                  {previewPhotos.length > 0 && (
-                    <PhotoGrid
-                      urls={previewPhotos.map((p) => p.url)}
-                      aspectRatios={previewPhotos.map((p) => p.aspectRatio)}
-                    />
-                  )}
-                </ThemedView>
+                {/* The real feed card, not a lookalike.
+                    This used to be a headline block and a photo grid
+                    assembled to resemble one, which stopped being true the
+                    moment the feed card became a postcard: the preview showed
+                    neither the card it is printed on, the way up it is
+                    printed, nor which side it opens on — and two of those are
+                    now the author's own choices, made on this screen. The
+                    only preview that can stay accurate is the component
+                    itself. */}
+                <VisitCard
+                  visit={previewVisit}
+                  photoUrls={previewPhotoUrls}
+                  avatarUrl={undefined}
+                  isOwner
+                  isCopied={false}
+                  onToggleLike={noop}
+                  onShare={noop}
+                  onDeleted={noop}
+                />
               </View>
 
               <Button
@@ -936,9 +1085,9 @@ export default function ReviewFormScreen() {
                 onPress={handleSaveVisit}
                 loading={isSavingVisit}
               />
-            </View>
+            </PaperPanel>
           ) : (
-            <View style={styles.box}>
+            <PaperPanel seed="form-2" accentIndex={2}>
               <ThemedText type="small">Visit saved.</ThemedText>
 
               {uploadedPhotoUris.length > 0 && (
@@ -978,7 +1127,7 @@ export default function ReviewFormScreen() {
                   started from instead, same as this screen's own header
                   back button already does. */}
               <Button label="Done" onPress={() => goBack()} />
-            </View>
+            </PaperPanel>
           ))}
 
         </KeyboardAwareScroll>
@@ -1060,21 +1209,15 @@ const styles = StyleSheet.create({
   // rounded container language used for "create prompt", so this screen
   // (review-form) reads as part of the same visual system instead of the
   // plain flat `backgroundElement` fills it used before.
-  box: {
-    borderWidth: 1,
-    borderColor: 'rgba(234,231,207,0.35)',
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    gap: Spacing.three,
-  },
   // A contained mockup, not a literal edge-to-edge reproduction of the real
   // feed card — the real card's photos deliberately bleed past its own
   // rounded corners to the screen edges (see (tabs)/index.tsx's
   // photoBreakout), which only makes sense as that screen's outermost
   // element, not a section nested inside this form's own bordered box.
-  // FeedCardHeaderText and PhotoGrid inside are the same components/props
-  // the real card uses, so content (place name, rating, tagged spots,
-  // photo crops/order) matches exactly — only this outer wrapping differs.
+  // The VisitCard inside IS the real card, so content (place name, rating,
+  // tagged spots, photo crops/order) matches exactly — only this outer
+  // wrapping differs. It named FeedCardHeaderText and PhotoGrid until those
+  // stopped being what a review is drawn with anywhere.
   previewCard: {
     position: 'relative',
     padding: Spacing.three,
@@ -1161,6 +1304,16 @@ const styles = StyleSheet.create({
   },
   tagChip: {
     paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.five,
+  },
+  cardChoiceRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.two,
+  },
+  cardChoice: {
+    paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
     borderRadius: Spacing.five,
   },

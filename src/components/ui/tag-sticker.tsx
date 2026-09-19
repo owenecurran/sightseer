@@ -3,12 +3,9 @@ import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { BrandColors, Spacing } from '@/constants/theme';
+import { BrandColors, Spacing, StickerAccents } from '@/constants/theme';
 import { randomFor } from '@/lib/seeded-random';
 
-// The same accents the arrow stickers draw from, so a tag stuck on a review
-// belongs to the same set of objects as the arrows and stamps around it.
-const ACCENTS = ['#a0bd91', '#e0a458', '#c96a5b', '#6b8fb5', '#b58bbd', '#7fae9e'];
 
 // Hand-applied stickers are never quite square to what they're stuck on.
 // Smaller than the arrows' jitter — these sit inline in a row of text, where
@@ -140,7 +137,7 @@ export function TagSticker({ slug, label, placementSeed, onPress }: TagStickerPr
         : null;
 
     return {
-      accent: ACCENTS[colourHash % ACCENTS.length],
+      accent: StickerAccents[colourHash % StickerAccents.length],
       // Mapped from the hash to [-1, 1] rather than a PRNG — one value is
       // needed, not a sequence.
       rotate: ((tiltHash % 1000) / 500 - 1) * JITTER_DEGREES,
@@ -240,12 +237,15 @@ export function TagSticker({ slug, label, placementSeed, onPress }: TagStickerPr
 
 const styles = StyleSheet.create({
   sticker: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.two,
-    borderRadius: Spacing.two,
+    // Tight. These were set at the padding a tappable chip wants, and on a
+    // card they read as buttons rather than as something stuck on — three of
+    // them took most of the written side. A sticker is small.
+    paddingVertical: 1,
+    paddingHorizontal: Spacing.one + 1,
+    borderRadius: Spacing.one,
     // The die-cut rim — the one feature that reads "sticker" rather than
     // "chip" at this size.
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: BrandColors.cream,
     // Clips the gloss and the wear marks to the rounded rim; nothing here
     // needs to overflow.
@@ -254,6 +254,10 @@ const styles = StyleSheet.create({
   label: {
     color: BrandColors.background,
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    // Down from sectionLabel's own 12, which is a heading size and was
+    // carrying the sticker's width with it.
+    fontSize: 9,
+    lineHeight: 13,
+    letterSpacing: 0.4,
   },
 });

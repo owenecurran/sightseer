@@ -4,6 +4,7 @@ import { BRAND_MARK_BOUNDS, HEAD_PATH_SVG, MARK_POLYLINE_POINTS } from '@/lib/br
 import { colorForRating, layerColorsForRating } from '@/lib/rating-gradient';
 import { type StampDesign } from '@/lib/stamp-designs';
 import { pickStampDesign } from '@/lib/stamp-matching';
+import { randomFor } from '@/lib/seeded-random';
 import { buildWearSvg } from '@/lib/stamp-wear';
 import {
   STAMP_FRAME_OUTER_SVG,
@@ -14,6 +15,33 @@ import {
 
 // Matches RatingGlassBadge's own fitBrandMarkPath call for the icon.
 const ICON_FILL_RATIO = 0.82;
+
+// What the perforated frame is printed on, per stamp.
+//
+// It used to be BrandColors.cream for every stamp in the app, which is the
+// one colour the card underneath is ALSO printed on — so the frame's deckle
+// and its perforations had almost nothing to separate them from the border
+// they sit on, and a stamp read as a coloured window floating on the card
+// rather than as a piece of paper stuck to it. Real sheets are not all one
+// white either; they run from a warm aged cream to a bright modern white
+// depending on the issue.
+//
+// So it is drawn anywhere in that range, and the top of the range is pure
+// white rather than a tinted near-white — a white stamp on a cream card is
+// the case with the most separation, and it is one worth actually getting.
+const STAMP_PAPER_WHITE = 255;
+
+// Its own seed prefix, so which paper a stamp is printed on moves
+// independently of how worn it is and of which design it draws. Sharing a
+// stream would tie the three together — every heavily worn stamp would also
+// be the creamiest, which is a pattern the eye picks up across a feed.
+function stampPaperFor(seed: string): string {
+  const t = randomFor(`stamp-paper:${seed}`)();
+  const base = parseInt(BrandColors.cream.slice(1), 16);
+  const mix = (channel: number) =>
+    Math.round(channel + (STAMP_PAPER_WHITE - channel) * t);
+  return `rgb(${mix((base >> 16) & 255)},${mix((base >> 8) & 255)},${mix(base & 255)})`;
+}
 
 // One design layer, fitted and centred inside the stamp's window. Each
 // design keeps its own viewBox, so the fit is computed per layer from that
@@ -36,10 +64,11 @@ function designLayer(design: StampDesign, paths: string[], fill: string): string
   return `<g transform="translate(${dx} ${dy}) scale(${scale})" fill="${fill}">${body}</g>`;
 }
 
-// The rating stamp as a self-contained SVG document: the perforated cream
-// frame, the rating-coloured window, and the artwork inside it — either one
-// of the registered two-layer designs, or the brand mark with its
-// brushed-metal gradient and white stroke when none are registered.
+// The rating stamp as a self-contained SVG document: the perforated frame in
+// its own paper colour (see stampPaperFor), the rating-coloured window, and
+// the artwork inside it — either one of the registered two-layer designs, or
+// the brand mark with its brushed-metal gradient and white stroke when none
+// are registered.
 //
 // Pure string building, no platform APIs, so the same markup serves web and
 // native. The rating NUMBER is deliberately not in here: it stays a real
@@ -119,7 +148,7 @@ export function buildStampSvg(rating: number, size: number, context?: StampConte
 <defs><linearGradient id="m" gradientUnits="userSpaceOnUse" x1="${w.x}" y1="${w.y}" x2="${w.x + w.width}" y2="${w.y + w.height}">
 <stop offset="0" stop-color="#e8eaec"/><stop offset="0.25" stop-color="#9aa0a6"/><stop offset="0.5" stop-color="#f2f3f4"/><stop offset="0.75" stop-color="#7d838a"/><stop offset="1" stop-color="#e8eaec"/>
 </linearGradient></defs>
-<path d="${STAMP_FRAME_OUTER_SVG}" fill="${BrandColors.cream}"/>
+<path d="${STAMP_FRAME_OUTER_SVG}" fill="${stampPaperFor(wearSeed)}"/>
 <rect x="${w.x}" y="${w.y}" width="${w.width}" height="${w.height}" fill="${colorForRating(rating)}"/>
 ${windowContent}
 ${buildWearSvg(wearSeed)}

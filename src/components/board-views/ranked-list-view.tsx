@@ -6,11 +6,12 @@ import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-nativ
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { InkBlot } from '@/components/ui/ink-blot';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
+import { TicketCard } from '@/components/ui/ticket-card';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
-import { Spacing } from '@/constants/theme';
+import { Spacing, StickerAccents } from '@/constants/theme';
 import type { BoardItem } from '@/lib/boards';
 
 type RankedListViewProps = {
@@ -68,15 +69,32 @@ export function RankedListView({
             onLongPress={isOwner ? drag : undefined}
             disabled={isActive}
             delayLongPress={150}>
-            <ThemedView type={isActive ? 'backgroundSelected' : 'backgroundElement'} style={styles.row}>
+            <TicketCard
+              seed={`ranked-item-${item.id}`}
+              // The rank decides the colour here rather than a hash of the id.
+              // A ranked list is an ORDER, and letting the spine run through
+              // the accent set in that order makes the order legible down the
+              // left edge — the one place in the app where a stable per-item
+              // colour would actively fight what the list is for.
+              accentIndex={getIndex() ?? 0}
+              selected={isActive}
+              compact
+              contentStyle={styles.rowBody}
+              stub={
+                isVisit && item.rating != null ? (
+                  <RatingGlassBadgeGated rating={item.rating} size={40} seed={item.id} />
+                ) : undefined
+              }>
               <ThemedText type="headline" style={styles.rank}>
                 {(getIndex() ?? 0) + 1}
               </ThemedText>
               {onToggleCheck && (
                 <Pressable onPress={() => onToggleCheck(item)} hitSlop={8}>
-                  <ThemedView type={isChecked ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                    {isChecked && <ThemedText type="smallBold">✓</ThemedText>}
-                  </ThemedView>
+                  <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+                    {isChecked && (
+                      <InkBlot size={13} seed={`ranked-check-${item.id}`} color={StickerAccents[0]} />
+                    )}
+                  </View>
                 </Pressable>
               )}
               {thumbnailUrl ? (
@@ -97,7 +115,6 @@ export function RankedListView({
                   <OwnRatingLine rating={ownRating} />
                 )}
               </View>
-              {isVisit && item.rating != null && <RatingGlassBadgeGated rating={item.rating} size={32} seed={item.id} />}
               {isOwner && (
                 <Pressable onPress={() => setConfirmingItemId(item.id)} hitSlop={8}>
                   <ThemedText type="small" themeColor="textSecondary">
@@ -105,7 +122,7 @@ export function RankedListView({
                   </ThemedText>
                 </Pressable>
               )}
-            </ThemedView>
+            </TicketCard>
           </Pressable>
         </ScaleDecorator>
       );
@@ -150,13 +167,12 @@ const styles = StyleSheet.create({
   hint: {
     marginBottom: Spacing.one,
   },
-  row: {
+  // The ticket's own body, laid out as a row. The ticket supplies the
+  // padding and the space the stub needs; this only decides the direction.
+  rowBody: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
   },
   rank: {
     minWidth: 32,
@@ -165,11 +181,16 @@ const styles = StyleSheet.create({
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: Spacing.one,
-    borderWidth: 1.5,
+    // Round and stamped, like every other "chosen" mark in the app.
+    borderRadius: 12,
+    borderWidth: 2,
     borderColor: 'rgba(234,231,207,0.35)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  checkboxChecked: {
+    borderColor: StickerAccents[0],
   },
   thumbnail: {
     width: 56,

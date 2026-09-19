@@ -7,12 +7,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
-import { FeedAuthorLine } from '@/components/feed-author-line';
-import { FeedCardHeaderText } from '@/components/feed-place-photo-block';
+import { VisitCard } from '@/components/visit-card';
+import { likeVisit, unlikeVisit } from '@/lib/feed';
+import { shareText } from '@/lib/share';
 import { LocationSearchModal } from '@/components/location-search-modal';
-import { PhotoGrid } from '@/components/photo-grid';
 import { SaveCollectionButton } from '@/components/save-collection-button';
 import { ThemedText } from '@/components/themed-text';
+import { InkBlot } from '@/components/ui/ink-blot';
+import { PaperPanel } from '@/components/ui/paper-panel';
+import { TicketCard } from '@/components/ui/ticket-card';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -22,11 +25,13 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { StretchText } from '@/components/ui/stretch-text';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, StickerAccents, TopTabInset } from '@/constants/theme';
+import { hashSeed } from '@/lib/seeded-random';
 import { useTheme } from '@/hooks/use-theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
+import { useCollectionViewMode, type CollectionViewMode } from '@/lib/view-mode';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getCoverViewUrls, uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
@@ -60,6 +65,36 @@ import type { TaggedVisit } from '@/lib/tagged-visits';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
+// The postcard is its own surface; a bare place is not.
+//
+// Every entry used to be wrapped in a PaperPanel, which meant a review came
+// out as a postcard inside a panel — paper on paper, with two sets of edges.
+// This draws the panel only where there is nothing else to stand on.
+function ItemSurface({
+  kind,
+  seed,
+  children,
+}: {
+  kind: 'visit' | 'place';
+  seed: string;
+  children: React.ReactNode;
+}) {
+  if (kind === 'visit') return <View style={styles.itemStack}>{children}</View>;
+  return (
+    <PaperPanel seed={seed} style={styles.itemRow}>
+      {children}
+    </PaperPanel>
+  );
+}
+
+// A travel book offers the list and the postcards. It has no map of its own
+// and no images grid yet, so a viewer who last chose one of those on a board
+// falls back to postcards here — see useCollectionViewMode.
+const VIEW_MODES: { key: CollectionViewMode; label: string }[] = [
+  { key: 'full', label: 'Postcards' },
+  { key: 'list', label: 'List' },
+];
+
 export default function TravelBookDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
@@ -68,6 +103,29 @@ export default function TravelBookDetailScreen() {
   const [locationName, setLocationName] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<TravelBookCollaborator[]>([]);
   const [items, setItems] = useState<TravelBookItem[]>([]);
+  const [viewMode, setViewMode] = useCollectionViewMode(VIEW_MODES.map((m) => m.key));
+
+  // Optimistic, reverted on failure — the same bargain the feed makes, so a
+  // like feels identical wherever it is pressed.
+  function handleToggleLike(visit: Extract<TravelBookItem, { kind: 'visit' }>) {
+    if (!session) return;
+    const nowLiked = !visit.isLikedByMe;
+    setItems((prev) =>
+      prev.map((i) =>
+        i.kind === 'visit' && i.itemId === visit.itemId
+          ? { ...i, isLikedByMe: nowLiked, likeCount: i.likeCount + (nowLiked ? 1 : -1) }
+          : i,
+      ),
+    );
+    const request = nowLiked
+      ? likeVisit(session.user.id, visit.id)
+      : unlikeVisit(session.user.id, visit.id);
+    void request.catch(() => {
+      setItems((prev) =>
+        prev.map((i) => (i.kind === 'visit' && i.itemId === visit.itemId ? visit : i)),
+      );
+    });
+  }
   const [recap, setRecap] = useState<TravelBookRecapRow | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
@@ -408,6 +466,24 @@ export default function TravelBookDetailScreen() {
             </ThemedText>
           )}
 
+          {items.length > 0 && (
+            <View style={styles.modeRow}>
+              {VIEW_MODES.map((mode) => (
+                <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
+                  <ThemedView
+                    type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'}
+                    style={styles.modeChip}>
+                    <ThemedText
+                      type="small"
+                      themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
+                      {mode.label}
+                    </ThemedText>
+                  </ThemedView>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
           <View style={styles.section}>
             {items.length === 0 && (
               <ThemedText type="small" themeColor="textSecondary">
@@ -419,38 +495,107 @@ export default function TravelBookDetailScreen() {
               const ownRating = ownRatings[item.placeId];
               const showOwnRating = ownRating != null && !(item.kind === 'visit' && item.user_id === session?.user.id);
               const canManage = Boolean(session && (item.addedBy === session.user.id || book?.user_id === session.user.id));
+              // The list mode: one ticket per entry, and pressing it opens
+              // the review in full. A book of thirty entries is something you
+              // scan for one of them, which a column of postcards is not.
+              if (viewMode === 'list') {
+                return (
+                  <TicketCard
+                    key={item.itemId}
+                    seed={`book-item-${item.itemId}`}
+                    accentIndex={
+                      hashSeed(`book-item-accent-${item.itemId}`) % StickerAccents.length
+                    }
+                    compact
+                    onPress={() =>
+                      item.kind === 'visit'
+                        ? router.push({ pathname: '/visit/[id]', params: { id: item.id } })
+                        : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+                    }
+                    contentStyle={styles.itemRowBody}
+                    stub={
+                      item.kind === 'visit' && item.rating != null ? (
+                        <RatingGlassBadgeGated
+                          rating={item.rating}
+                          size={44}
+                          seed={item.itemId}
+                        />
+                      ) : undefined
+                    }>
+                    {canCheck && (
+                      <Pressable onPress={() => handleToggleCheck(item)} hitSlop={8}>
+                        <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+                          {isChecked && (
+                            <InkBlot
+                              size={13}
+                              seed={`book-check-${item.itemId}`}
+                              color={StickerAccents[0]}
+                            />
+                          )}
+                        </View>
+                      </Pressable>
+                    )}
+                    <View style={styles.itemInfo}>
+                      <StretchText type="headline" fill>{item.placeName}</StretchText>
+                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                        {item.kind === 'visit'
+                          ? [item.stateCountry, item.visited_on].filter(Boolean).join(' · ')
+                          : (item.stateCountry ?? 'No review yet')}
+                      </ThemedText>
+                      {showOwnRating && <OwnRatingLine rating={ownRating} />}
+                    </View>
+                    {canManage && (
+                      <Pressable
+                        onPress={() => setConfirmingItem(item)}
+                        hitSlop={12}
+                        style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
+                        <Ionicons
+                          name="ellipsis-horizontal"
+                          size={20}
+                          color={theme.textSecondary}
+                        />
+                      </Pressable>
+                    )}
+                  </TicketCard>
+                );
+              }
+
               return (
               <Pressable
                 key={item.itemId}
-                onPress={() =>
-                  item.kind === 'visit'
-                    ? router.push({ pathname: '/visit/[id]', params: { id: item.id } })
-                    : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+                // A review is the card itself now, and the card's surface is
+                // spoken for — it turns over, its photograph zooms, two taps
+                // like it. Only a bare place, which has no card, still pushes
+                // through on a press.
+                onPress={
+                  item.kind === 'place'
+                    ? () => router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+                    : undefined
                 }>
-                <ThemedView type="backgroundElement" style={styles.itemRow}>
+                {/* A review's own postcard is already a surface — paper,
+                    deckle, printing and all — so it is NOT put inside a
+                    second one. It used to be, and a card sitting in a panel
+                    reads as a mistake rather than as two objects. A bare
+                    place has no card of its own and still gets the panel. */}
+                <ItemSurface kind={item.kind} seed={`book-item-${item.itemId}`}>
                   {canCheck && (
                     <Pressable onPress={() => handleToggleCheck(item)} hitSlop={8}>
-                      <ThemedView type={isChecked ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                        {isChecked && <ThemedText type="smallBold">✓</ThemedText>}
-                      </ThemedView>
+                      <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+                        {isChecked && (
+                          <InkBlot size={13} seed={`book-check-${item.itemId}`} color={StickerAccents[0]} />
+                        )}
+                      </View>
                     </Pressable>
                   )}
                   <View style={styles.itemInfo}>
                     {item.kind === 'visit' ? (
                       <>
+                        {/* The card carries the author, the place, the
+                            rating and the photographs. What stays beside it
+                            is what belongs to the BOOK rather than to the
+                            review: when it was visited, and the way to take
+                            it back out again. */}
                         <View style={styles.headerRow}>
-                          <View style={styles.headerAuthor}>
-                            <Pressable
-                              onPress={() => router.push({ pathname: '/user/[id]', params: { id: item.user_id } })}>
-                              <Avatar uri={avatarUrls[item.user_id]} name={item.authorName} size={28} />
-                            </Pressable>
-                            <FeedAuthorLine
-                              authorId={item.user_id}
-                              authorName={item.authorName}
-                              taggedUsers={item.taggedUsers}
-                              style={styles.headerText}
-                            />
-                          </View>
                           <ThemedText type="small" themeColor="textSecondary">
                             {item.visited_on}
                           </ThemedText>
@@ -463,22 +608,24 @@ export default function TravelBookDetailScreen() {
                             </Pressable>
                           )}
                         </View>
-                        <FeedCardHeaderText
-                          placeName={item.placeName}
-                          placeId={item.placeId}
-                          stateCountry={item.stateCountry}
-                          taggedPlaces={item.taggedPlaces}
-                          visitedLine={[item.rating == null ? 'Visited' : null, item.note || null]
-                            .filter(Boolean)
-                            .join(' · ')}
-                          rating={item.rating}
-                          stampSeed={item.itemId}
-                          stampCanSeep={item.photoIds.length > 0}
+                        <VisitCard
+                          visit={item}
+                          photoUrls={photoUrls}
+                          avatarUrl={avatarUrls[item.user_id]}
+                          isOwner={session?.user.id === item.user_id}
+                          isCopied={false}
+                          onToggleLike={() => handleToggleLike(item)}
+                          onShare={() => {
+                            void shareText(`${item.placeName}
+${item.note ?? ''}`.trim());
+                          }}
+                          onDeleted={() =>
+                            setItems((prev) => prev.filter((i) => i.itemId !== item.itemId))
+                          }
                         />
                         {showOwnRating && (
                           <OwnRatingLine rating={ownRating} />
                         )}
-                        <PhotoGrid urls={item.photoIds.map((pid) => photoUrls[pid]).filter((url): url is string => url != null)} />
                         {session && book?.user_id === session.user.id && item.photoIds[0] && (
                           <Pressable onPress={() => handleSetCover(item.photoIds[0])} hitSlop={8}>
                             <ThemedText type="small" themeColor="sage">
@@ -507,7 +654,7 @@ export default function TravelBookDetailScreen() {
                       <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
                     </Pressable>
                   )}
-                </ThemedView>
+                </ItemSurface>
               </Pressable>
               );
             })}
@@ -548,12 +695,12 @@ export default function TravelBookDetailScreen() {
           <View style={styles.section}>
             <ThemedText type="sectionLabel">Trip recap</ThemedText>
             {recap ? (
-              <ThemedView type="backgroundElement" style={styles.recapCard}>
-                <ThemedText type="headline">{recap.title}</ThemedText>
+              <PaperPanel seed="book-recap" accentIndex={2} style={styles.recapCard}>
+                <ThemedText type="headlineWrapped">{recap.title}</ThemedText>
                 <ThemedText type="small" themeColor="textSecondary">
                   {recap.is_published ? 'Published to your feed' : 'Draft — not published yet'}
                 </ThemedText>
-              </ThemedView>
+              </PaperPanel>
             ) : (
               <ThemedText type="small" themeColor="textSecondary">
                 No recap written yet.
@@ -631,6 +778,27 @@ const styles = StyleSheet.create({
   section: {
     gap: Spacing.two,
   },
+  // A postcard entry: no panel, just the card and whatever belongs to the
+  // BOOK rather than to the review stacked under it.
+  modeRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  modeChip: {
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.four,
+  },
+  itemStack: {
+    gap: Spacing.two,
+  },
+  // The ticket's own body, laid out as a row. The ticket supplies the padding
+  // and the space the stub needs; this only decides the direction.
+  itemRowBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -650,23 +818,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
   },
-  headerAuthor: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  headerText: {
-    flex: 1,
-  },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: Spacing.one,
-    borderWidth: 1.5,
+    // Round, matching every other "chosen" mark in the app.
+    borderRadius: 12,
+    borderWidth: 2,
     borderColor: 'rgba(234,231,207,0.35)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  checkboxChecked: {
+    borderColor: StickerAccents[0],
   },
   eligibleRow: {
     flexDirection: 'row',

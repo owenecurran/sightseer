@@ -27,6 +27,20 @@ export const BrandColors = {
 // out to look the same as not fixing anything — see ThemedView's own
 // comment for the real gradient-not-rendering bug that made *any* color
 // choice here look unchanging on mobile.
+// The accent set every hand-applied-looking object draws from — arrow
+// stickers, tag stickers, and the create chooser's cards. Kept here rather
+// than in any one of them because "belongs to the same set of objects" is
+// the entire point of sharing it, and it had already been copy-pasted into
+// two files before this.
+export const StickerAccents = [
+  '#a0bd91',
+  '#e0a458',
+  '#c96a5b',
+  '#6b8fb5',
+  '#b58bbd',
+  '#7fae9e',
+] as const;
+
 export const GradientColors = {
   screenStart: '#07120a',
   screenEnd: '#031009',
@@ -37,6 +51,24 @@ export const Colors = {
   background: BrandColors.background,
   backgroundElement: '#0f2318',
   backgroundSelected: '#1a3524',
+  // Text fields and the chips that behave like them.
+  //
+  // A well, not a raised surface: DARKER than the panel it sits in rather
+  // than lighter. Two reasons, both load-bearing.
+  //
+  // It cannot be reused from backgroundElement, which is the panel colour —
+  // a field drawn in that was the same shade as the card around it and had
+  // to be rescued by a hairline outline, the wireframe look the panels
+  // themselves just lost.
+  //
+  // And it cannot simply be lighter: the only room above the panel is under
+  // backgroundSelected, which left a step of ~6 against the panel (measured
+  // on device) while crowding the colour that has to keep meaning
+  // "selected". Going the other way there is a clear gap, so this sits
+  // halfway between the screen and the panel and gets a real step against
+  // both — visible inside a card, and still visible on the bare screen
+  // background where the auth fields live.
+  backgroundField: '#091a11',
   textSecondary: 'rgba(234,231,207,0.65)',
   sage: BrandColors.sage,
   // Links. A desaturated blue pulled up toward the cream's lightness, so a
@@ -62,6 +94,17 @@ export const BrandFonts = {
   condensedHeavy: 'MoonGetHeavy',
   roundedStat: 'HelveticaRoundedBold',
   wideMedium: 'ObviouslyWideMedium',
+  // Art-deco display, for the postcard lettering that is meant to read as a
+  // 1930s luggage label.
+  deco: 'PagAuto',
+  // The four faces the broader location line is set in — the state and
+  // country above or below a place's name. Display faces rather than UI
+  // ones, because that line is printing on a card, not a caption in an app.
+  regionRounded: 'AcidGreenPoster',
+  regionGrotesqueBold: 'AntarcticanBold',
+  regionGrotesqueLight: 'AntarcticanLight',
+  regionDidone: 'BohemianSoul',
+  regionDeco: 'BuenaparkJf',
 } as const;
 
 export const Fonts = Platform.select({

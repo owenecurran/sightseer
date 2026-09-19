@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,11 +8,13 @@ import { ProfileMap } from '@/components/profile-map';
 import { ProfilePromptsSection } from '@/components/profile-prompts-section';
 import { UserCollectionsSection } from '@/components/user-collections-section';
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TeaserCard } from '@/components/ui/teaser-card';
+import { VisitCard } from '@/components/visit-card';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -33,6 +35,8 @@ import { getPhotoViewUrls } from '@/lib/photo-view';
 import { parseSectionOrder, type ProfileSectionKey } from '@/lib/profile-sections';
 import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
+import { getVisitsByIds, likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
+import { shareText } from '@/lib/share';
 
 export default function ProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
@@ -43,6 +47,11 @@ export default function ProfileScreen() {
   const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
   const [latestTagged, setLatestTagged] = useState<TaggedVisit | null>(null);
   const [teaserPhotoUrls, setTeaserPhotoUrls] = useState<Record<string, string>>({});
+  // The latest review as the real card rather than a tile. Hydrated
+  // separately because a ShowcaseVisit is a name and a photo id — a postcard
+  // needs the likes, tags and card stock too.
+  const [latestCard, setLatestCard] = useState<FeedVisit | null>(null);
+  const [latestCardPhotos, setLatestCardPhotos] = useState<Record<string, string>>({});
   const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
   const [error, setError] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -50,6 +59,37 @@ export default function ProfileScreen() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
+
+  // The postcard for the reviews section, hydrated once the showcase knows
+  // which review it is.
+  //
+  // Its own effect rather than a few more lines inside loadProfile: a nested
+  // try/catch in there cost that callback its memoization outright (React
+  // Compiler: "Existing memoization could not be preserved"), and the two
+  // are separate concerns anyway — the profile can finish loading while its
+  // card is still on the way.
+  useEffect(() => {
+    const latestId = latestVisit?.id;
+    if (!session || !latestId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [hydrated] = await getVisitsByIds([latestId], session.user.id);
+        if (cancelled) return;
+        setLatestCard(hydrated ?? null);
+        if (hydrated && hydrated.photoIds.length > 0) {
+          const urls = await getPhotoViewUrls(hydrated.photoIds);
+          if (!cancelled) setLatestCardPhotos(urls);
+        }
+      } catch {
+        // The section falls back to its tile, which is what it always was.
+        if (!cancelled) setLatestCard(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, latestVisit?.id]);
 
   const loadProfile = useCallback(async () => {
     if (!session) return;
@@ -142,7 +182,48 @@ export default function ProfileScreen() {
   if (!hasLoadedOnce) return <PageLoader />;
 
   const sectionMap: Record<ProfileSectionKey, ReactNode> = {
-    latest_reviews: (
+    // The real postcard, not a tile of one — the same card the feed and a
+    // board draw. The tile is kept for the case where there is nothing to
+    // draw yet, or where hydrating it did not work.
+    latest_reviews: latestCard ? (
+      <View key="latest_reviews" style={styles.section}>
+        <ThemedText type="sectionLabel">Latest reviews</ThemedText>
+        <VisitCard
+          visit={latestCard}
+          photoUrls={latestCardPhotos}
+          isOwner={latestCard.user_id === session?.user.id}
+          isCopied={false}
+          onToggleLike={() => {
+            if (!session) return;
+            const nowLiked = !latestCard.isLikedByMe;
+            setLatestCard({
+              ...latestCard,
+              isLikedByMe: nowLiked,
+              likeCount: latestCard.likeCount + (nowLiked ? 1 : -1),
+            });
+            void (nowLiked
+              ? likeVisit(session.user.id, latestCard.id)
+              : unlikeVisit(session.user.id, latestCard.id));
+          }}
+          onShare={() => {
+            void shareText(`${latestCard.placeName}
+${latestCard.note ?? ''}`.trim());
+          }}
+          onDeleted={() => setLatestCard(null)}
+        />
+        {/* The way through to the rest of them.
+            The section used to BE the link — the whole tile pushed /reviews —
+            but the postcard's own surface is spoken for now: it flips, its
+            photograph zooms, and two taps like it. So the way on has to be
+            its own control, and a real button rather than the small "See all"
+            this first had beside the heading, which was easy to miss. */}
+        <Button
+          label="See all reviews"
+          variant="secondary"
+          onPress={() => router.push('/reviews')}
+        />
+      </View>
+    ) : (
       <TeaserCard
         key="latest_reviews"
         label="Latest reviews"
@@ -164,7 +245,7 @@ export default function ProfileScreen() {
     collections: session ? <UserCollectionsSection key="collections" userId={session.user.id} /> : null,
     map:
       session && profile?.show_map ? (
-        <ThemedView key="map" type="backgroundElement" style={styles.neutralCard}>
+        <PaperPanel key="map" seed="profile-map" style={styles.neutralCard}>
           <ProfileMap
             userId={session.user.id}
             defaultLayers={profile.map_default_layers}
@@ -172,7 +253,7 @@ export default function ProfileScreen() {
             isOwnProfile
             onCameraLocked={refreshProfile}
           />
-        </ThemedView>
+        </PaperPanel>
       ) : null,
   };
   const sectionOrder = parseSectionOrder(profile?.profile_section_order);
@@ -228,7 +309,7 @@ export default function ProfileScreen() {
               <View style={styles.section}>
                 <ThemedText type="sectionLabel">Follow requests</ThemedText>
                 {requests.map((request) => (
-                  <ThemedView key={request.follower_id} type="backgroundElement" style={styles.requestRow}>
+                  <PaperPanel key={request.follower_id} seed={`request-${request.follower_id}`} style={styles.requestRow}>
                     <ThemedText type="default">{request.users?.name ?? request.users?.handle ?? 'Someone'}</ThemedText>
                     <View style={styles.requestActions}>
                       <Pressable onPress={() => handleAccept(request.follower_id)}>
@@ -240,7 +321,7 @@ export default function ProfileScreen() {
                         <ThemedText type="small">Reject</ThemedText>
                       </Pressable>
                     </View>
-                  </ThemedView>
+                  </PaperPanel>
                 ))}
               </View>
             )}

@@ -14,6 +14,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
 import { PageLoader } from '@/components/ui/page-loader';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
@@ -173,10 +174,14 @@ export default function EditVisitScreen() {
 
           {visit && (
             <View style={styles.form}>
-              <ThemedText type="smallBold">{visit.placeName}</ThemedText>
+              {/* Same two-panel split as review-form: the score is its own
+                  decision, everything else is the write-up around it. */}
+              <PaperPanel seed="edit-rating" accentIndex={1}>
+                <ThemedText type="sectionLabel">{visit.placeName}</ThemedText>
+                <RatingSliderWithPreview value={rating} onChange={setRating} />
+              </PaperPanel>
 
-              <RatingSliderWithPreview value={rating} onChange={setRating} />
-
+              <PaperPanel seed="edit-details" accentIndex={0}>
               <View style={styles.photoSection}>
                 {photoSlots.length > 0 && (
                   <View style={styles.photoRow}>
@@ -210,6 +215,7 @@ export default function EditVisitScreen() {
 
               <TextField placeholder="Review (optional)" value={note} onChangeText={setNote} multiline />
               <DateCarousel value={visitedOn} onChange={setVisitedOn} />
+              </PaperPanel>
 
               <Button label="Save changes" onPress={handleSave} loading={isSaving} />
             </View>
@@ -245,7 +251,8 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   form: {
-    gap: Spacing.two,
+    // Panel-to-panel spacing now, not field-to-field.
+    gap: Spacing.three,
   },
   photoSection: {
     gap: Spacing.two,

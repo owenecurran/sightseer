@@ -1,17 +1,16 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import { CommentsTrigger } from "@/components/comments-section";
 import { SaveToBoard } from "@/components/save-to-board";
-import { ThemedText } from "@/components/themed-text";
+import { ActionSticker } from "@/components/ui/action-sticker";
 import { Spacing } from "@/constants/theme";
-import { useTheme } from "@/hooks/use-theme";
 
-// One size for every icon in the row (heart, comment, share, save) — per
-// direct feedback the previous mix (heart deliberately bigger at 30,
-// save at 26, comment/share at 24) didn't read as a considered hierarchy,
-// just inconsistent.
-const ICON_SIZE = 28;
+// Each action owns one accent for the life of the app, so the row is
+// learnable by colour as well as by glyph.
+const LIKE_ACCENT = 2;
+const COMMENT_ACCENT = 3;
+const SHARE_ACCENT = 1;
+const SAVE_ACCENT = 0;
 
 type VisitActionsRowProps = {
   visitId: string;
@@ -42,47 +41,38 @@ export function VisitActionsRow({
   isCommentsOpen,
   onToggleComments,
 }: VisitActionsRowProps) {
-  const theme = useTheme();
-
   return (
     <View style={styles.row}>
-      <Pressable onPress={onToggleLike} hitSlop={8} style={styles.actionButton}>
-        <Ionicons
-          name={isLiked ? "heart" : "heart-outline"}
-          size={ICON_SIZE}
-          color={isLiked ? theme.text : theme.textSecondary}
-        />
-        <ThemedText
-          type="small"
-          themeColor={isLiked ? "text" : "textSecondary"}
-        >
-          {likeCount}
-        </ThemedText>
-      </Pressable>
+      <ActionSticker
+        icon={isLiked ? "heart" : "heart-outline"}
+        accentIndex={LIKE_ACCENT}
+        active={isLiked}
+        count={likeCount}
+        onPress={onToggleLike}
+        accessibilityLabel={isLiked ? "Unlike" : "Like"}
+      />
 
       <CommentsTrigger
         count={commentCount}
         isOpen={isCommentsOpen}
         onPress={onToggleComments}
+        accentIndex={COMMENT_ACCENT}
       />
 
-      {/* Icon only, no "Share"/"Copied ✓" label — per direct feedback the
-          text made this one button visually heavier than its neighbors,
-          working against "all icons the same size, in line with each
-          other." isCopied still needs *some* feedback that the tap
-          registered; the icon itself swaps to a checkmark for that. */}
-      <Pressable onPress={onShare} hitSlop={8} style={styles.actionButton}>
-        <Ionicons
-          name={isCopied ? "checkmark-outline" : "arrow-redo-outline"}
-          size={ICON_SIZE}
-          color={theme.textSecondary}
-        />
-      </Pressable>
+      {/* The icon swaps to a tick on copy — the row carries no labels, so
+          the glyph is the only place the tap can be acknowledged. */}
+      <ActionSticker
+        icon={isCopied ? "checkmark-outline" : "arrow-redo-outline"}
+        accentIndex={SHARE_ACCENT}
+        active={isCopied}
+        onPress={onShare}
+        accessibilityLabel="Share"
+      />
 
       <SaveToBoard
         visitId={visitId}
         isOwnerOrTagged={isOwnerOrTagged}
-        size={ICON_SIZE}
+        accentIndex={SAVE_ACCENT}
       />
     </View>
   );

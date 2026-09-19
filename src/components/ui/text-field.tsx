@@ -39,7 +39,7 @@ export function TextField({ style, multiline, onContentSizeChange, secureTextEnt
       placeholderTextColor={theme.textSecondary}
       style={[
         styles.input,
-        { color: theme.text, backgroundColor: theme.backgroundElement },
+        { color: theme.text, backgroundColor: theme.backgroundField },
         multiline ? { height: contentHeight } : null,
         secureTextEntry ? styles.inputWithToggle : null,
         style,
@@ -69,15 +69,23 @@ const styles = StyleSheet.create({
   input: {
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+    // One step under the panel's own Spacing.three, so a field inside a card
+    // nests under it instead of reading as a second card floating on top.
+    borderRadius: Spacing.two,
     fontSize: 16,
-    // The fill is backgroundElement, which is also the colour of the cards
-    // these now sit inside on Settings — so on a card the field was
-    // invisible, reading as loose placeholder text rather than something
-    // you can type in. The outline is what makes it a field on any
-    // background; on the screen background it is nearly imperceptible.
+    // The fill used to be backgroundElement — the same colour as the cards
+    // these sit inside — so the field only existed because of a hairline
+    // outline doing all the work. backgroundField is recessed under the
+    // panel instead (measured: a 14-point step against a card, up from 6
+    // when it was lighter), so the surface is what makes it a field.
+    //
+    // The rim that remains is the lip of that well, not its definition, and
+    // is held low enough to disappear against a card. It earns its place on
+    // the standalone /sign-in and /sign-up routes, where a field sits on the
+    // screen gradient rather than in a panel and the recess alone is only a
+    // few points of contrast.
     borderWidth: 1,
-    borderColor: 'rgba(234,231,207,0.18)',
+    borderColor: 'rgba(234,231,207,0.10)',
   },
   wrap: {
     justifyContent: 'center',

@@ -5,7 +5,6 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
-import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -16,11 +15,13 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { StretchText } from '@/components/ui/stretch-text';
 import { TagSticker } from '@/components/ui/tag-sticker';
 import { FilterSortMenu, type MenuOption } from '@/components/ui/filter-sort-menu';
-import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
-import { getFollowedUserIds, getVisitsForPlace, type PlaceVisit } from '@/lib/feed';
+import { getFollowedUserIds, getVisitsForPlace, likeVisit, unlikeVisit, type PlaceVisit } from '@/lib/feed';
+import { shareText } from '@/lib/share';
+import { VisitCard } from '@/components/visit-card';
 import type { Database } from '@/lib/database.types';
 import { getPlaceAncestors, type PlaceAncestor } from '@/lib/places-cache';
 import { getPhotoViewUrls } from '@/lib/photo-view';
@@ -45,7 +46,6 @@ const RATING_SPLIT = 5;
 const HERO_HEIGHT = 180;
 const HERO_MAP_WIDTH = 440;
 
-const ROW_STAMP_SIZE = 44;
 const HEADER_STAMP_SIZE = 52;
 
 // How many tag filters to offer. A country page surfaces well over a dozen,
@@ -87,6 +87,26 @@ export default function PlaceDetailScreen() {
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [visits, setVisits] = useState<PlaceVisit[]>([]);
+
+  // Optimistic, reverted on failure — the same bargain the feed makes, so a
+  // like feels identical wherever it is pressed.
+  function handleToggleLike(visit: PlaceVisit) {
+    if (!session) return;
+    const nowLiked = !visit.isLikedByMe;
+    setVisits((prev) =>
+      prev.map((v) =>
+        v.id === visit.id
+          ? { ...v, isLikedByMe: nowLiked, likeCount: v.likeCount + (nowLiked ? 1 : -1) }
+          : v,
+      ),
+    );
+    const request = nowLiked
+      ? likeVisit(session.user.id, visit.id)
+      : unlikeVisit(session.user.id, visit.id);
+    void request.catch(() => {
+      setVisits((prev) => prev.map((v) => (v.id === visit.id ? visit : v)));
+    });
+  }
   // Specific-first by default: on a country or continent page essentially
   // every review belongs to somewhere inside it, and a review of an actual
   // venue says more than a review of the whole country.
@@ -414,59 +434,29 @@ export default function PlaceDetailScreen() {
               </ThemedText>
             </View>
           }
-          renderItem={({ item }: { item: PlaceVisit }) => {
-            const visitPhotoUrls = item.photoIds.map((photoId) => photoUrls[photoId]).filter((url) => url != null);
-            // On a state, country or continent page every row is somewhere
-            // else inside it, so the row has to lead with where it actually
-            // is — otherwise the list reads as unattributed reviews of the
-            // whole country. On a venue's own page that would just repeat
-            // the title above, so there the author leads instead.
-            const isNested = item.placeDepth > 0;
-            const metaLine = [
-              isNested ? item.authorName : null,
-              item.rating == null ? 'Visited' : null,
-              item.likeCount > 0
-                ? `${item.likeCount} like${item.likeCount === 1 ? '' : 's'}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ');
-            return (
-              <Pressable
-                onPress={() => router.push({ pathname: '/visit/[id]', params: { id: item.id } })}
-                style={styles.contentWrap}>
-                <ThemedView type="backgroundElement" style={styles.visitCard}>
-                  <PhotoGrid urls={visitPhotoUrls} aspectRatios={item.photoAspectRatios} />
-                  <View style={styles.visitInfo}>
-                    <View style={styles.visitText}>
-                      <ThemedText type="smallBold">
-                        {isNested ? item.placeName : item.authorName}
-                      </ThemedText>
-                      {/* The rating has moved to the stamp beside this, so
-                          the line carries only what the stamp can't say —
-                          and "Visited" only where there is no stamp to
-                          replace it. Joined rather than concatenated so it
-                          can't render a stray leading separator when the
-                          pieces before it happen to be absent. */}
-                      {metaLine.length > 0 && (
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {metaLine}
-                        </ThemedText>
-                      )}
-                      {item.note && (
-                        <ThemedText type="small" themeColor="textSecondary">
-                          {item.note}
-                        </ThemedText>
-                      )}
-                    </View>
-                    {item.rating != null && (
-                      <RatingGlassBadgeGated rating={item.rating} size={ROW_STAMP_SIZE} seed={item.id} />
-                    )}
-                  </View>
-                </ThemedView>
-              </Pressable>
-            );
-          }}
+          renderItem={({ item }: { item: PlaceVisit }) => (
+            // The same postcard the feed draws. What the hand-built row used
+            // to spell out — author, rating, note, like count — the card
+            // already carries: the name is its headline, the author its
+            // byline, the rating its stamp, and the note and likes are on its
+            // written side. The row no longer pushes /visit/[id] either,
+            // because the card's own surface is spoken for: it turns over,
+            // its photograph zooms, and two taps like it.
+            <View style={styles.contentWrap}>
+              <VisitCard
+                visit={item}
+                photoUrls={photoUrls}
+                isOwner={session?.user.id === item.user_id}
+                isCopied={false}
+                onToggleLike={() => handleToggleLike(item)}
+                onShare={() => {
+                  void shareText(`${item.placeName}
+${item.note ?? ''}`.trim());
+                }}
+                onDeleted={() => setVisits((prev) => prev.filter((v) => v.id !== item.id))}
+              />
+            </View>
+          )}
         />
       </SafeAreaView>
     </ThemedView>
@@ -521,10 +511,6 @@ const styles = StyleSheet.create({
   list: {
     gap: Spacing.two,
   },
-  visitCard: {
-    borderRadius: Spacing.three,
-    overflow: 'hidden',
-  },
   aggregateRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -532,15 +518,4 @@ const styles = StyleSheet.create({
   },
   // Row layout: text takes the slack, the stamp keeps its natural size at
   // the end of the row.
-  visitInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-  },
-  visitText: {
-    flex: 1,
-    gap: Spacing.half,
-  },
 });

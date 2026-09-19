@@ -9,6 +9,7 @@ import { BackLink } from '@/components/ui/back-link';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { PromptCard } from '@/components/prompt-card';
 import { ThemedText } from '@/components/themed-text';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -19,8 +20,14 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { listPrompts, reorderPrompts, type ProfilePrompt } from '@/lib/profile-prompts';
+import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
+import { getPhotoViewUrls } from '@/lib/photo-view';
+import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
+import { Image } from 'expo-image';
 import {
   parseSectionOrder,
+  PROFILE_SECTION_HINTS,
+  PROFILE_SECTION_ICONS,
   PROFILE_SECTION_LABELS,
   saveProfileSectionOrder,
   type ProfileSectionKey,
@@ -58,6 +65,66 @@ export default function EditProfileScreen() {
 
   const [order, setOrder] = useState<ProfileSectionKey[]>(() => parseSectionOrder(profile?.profile_section_order));
   const [layoutError, setLayoutError] = useState<string | null>(null);
+
+  // What each section currently HOLDS, for the previews below. The same two
+  // showcase queries the profile itself runs, so the row shows the same
+  // review the profile will.
+  const [latestVisit, setLatestVisit] = useState<ShowcaseVisit | null>(null);
+  const [latestTagged, setLatestTagged] = useState<TaggedVisit | null>(null);
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [showcase, tagged] = await Promise.all([
+          getProfileShowcase(session.user.id),
+          getTaggedInShowcase(session.user.id),
+        ]);
+        if (cancelled) return;
+        setLatestVisit(showcase.latestVisit);
+        setLatestTagged(tagged.latestTagged);
+        const ids = [firstPhotoId(showcase.latestVisit), tagged.latestTagged?.photoIds?.[0]].filter(
+          (id): id is string => id != null,
+        );
+        if (ids.length === 0) return;
+        const urls = await getPhotoViewUrls(ids);
+        if (!cancelled) setPreviewUrls(urls);
+      } catch {
+        // A preview that cannot load falls back to its glyph — the row still
+        // says what the section is, which is the part that matters here.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  // What the section is showing right now, under its name. Live where it can
+  // be known cheaply, and honest where it cannot.
+  function sectionSummary(key: ProfileSectionKey): string {
+    switch (key) {
+      case 'latest_reviews':
+        return latestVisit?.places?.name ?? 'No reviews yet';
+      case 'tagged_in':
+        return latestTagged?.placeName ?? 'Not tagged in anything yet';
+      case 'prompts':
+        return prompts.length === 0
+          ? 'None answered yet'
+          : `${prompts.length} of ${PROMPT_SLOT_COUNT} answered`;
+      case 'map':
+        return showMap ? 'Shown on your profile' : 'Hidden — turn it on above';
+      case 'collections':
+        return PROFILE_SECTION_HINTS.collections;
+    }
+  }
+
+  function sectionThumb(key: ProfileSectionKey): string | undefined {
+    if (key === 'latest_reviews') return previewUrls[firstPhotoId(latestVisit) ?? ''];
+    if (key === 'tagged_in') return previewUrls[latestTagged?.photoIds?.[0] ?? ''];
+    return undefined;
+  }
 
   const loadPrompts = useCallback(async () => {
     if (!session) return;
@@ -155,19 +222,53 @@ export default function EditProfileScreen() {
     [loadPrompts]
   );
 
-  const renderSectionItem = useCallback(
-    ({ item, drag, isActive }: RenderItemParams<ProfileSectionKey>) => (
-      <ScaleDecorator>
-        <Pressable onLongPress={drag} disabled={isActive} delayLongPress={150}>
-          <ThemedView type={isActive ? 'backgroundSelected' : 'backgroundElement'} style={styles.sectionRow}>
-            <ThemedText type="default">{PROFILE_SECTION_LABELS[item]}</ThemedText>
-            <Ionicons name="reorder-three-outline" size={22} color={theme.textSecondary} />
-          </ThemedView>
-        </Pressable>
-      </ScaleDecorator>
-    ),
-    [theme.textSecondary]
-  );
+  // Not memoised. It closes over the preview state and two helpers that are
+  // rebuilt every render, so a dependency array here would either be a lie or
+  // would have to list everything anyway — and there are five rows.
+  const renderSectionItem = ({ item, drag, isActive }: RenderItemParams<ProfileSectionKey>) => {
+      const thumb = sectionThumb(item);
+      return (
+        <ScaleDecorator>
+          {/* The whole row still takes a long press, because someone who does
+              not spot the handle should not be stuck. The handle below is the
+              quicker way in, not the only one. */}
+          <Pressable onLongPress={drag} disabled={isActive} delayLongPress={150}>
+            <ThemedView
+              type={isActive ? 'backgroundSelected' : 'backgroundElement'}
+              style={styles.sectionRow}>
+              {thumb ? (
+                <Image source={{ uri: thumb }} style={styles.sectionThumb} contentFit="cover" />
+              ) : (
+                <View style={[styles.sectionThumb, styles.sectionGlyph]}>
+                  <Ionicons
+                    name={PROFILE_SECTION_ICONS[item] as never}
+                    size={20}
+                    color={theme.textSecondary}
+                  />
+                </View>
+              )}
+              <View style={styles.sectionText}>
+                <ThemedText type="default">{PROFILE_SECTION_LABELS[item]}</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                  {sectionSummary(item)}
+                </ThemedText>
+              </View>
+              {/* Dragging starts the moment this is touched — no hold. A
+                  handle you have to press and WAIT on is the thing that made
+                  this feel impossible to grab. */}
+              <Pressable
+                onPressIn={drag}
+                disabled={isActive}
+                hitSlop={Spacing.two}
+                accessibilityLabel={`Reorder ${PROFILE_SECTION_LABELS[item]}`}
+                style={styles.sectionHandle}>
+                <Ionicons name="reorder-three-outline" size={24} color={theme.textSecondary} />
+              </Pressable>
+            </ThemedView>
+          </Pressable>
+        </ScaleDecorator>
+      );
+  };
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -203,12 +304,12 @@ export default function EditProfileScreen() {
             {bio.length}/{BIO_MAX_LENGTH}
           </ThemedText>
 
-          <Pressable onPress={() => setShowMap((prev) => !prev)} style={styles.mapToggleRow}>
-            <ThemedView type={showMap ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-              {showMap && <ThemedText type="smallBold">✓</ThemedText>}
-            </ThemedView>
-            <ThemedText type="small">Show a map of places I’ve visited on my profile</ThemedText>
-          </Pressable>
+          <CheckboxRow
+            accentIndex={5}
+            checked={showMap}
+            label="Show a map of places I’ve visited on my profile"
+            onPress={() => setShowMap((prev) => !prev)}
+          />
 
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -234,7 +335,7 @@ export default function EditProfileScreen() {
 
           <ThemedText type="sectionLabel">Layout</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            Press and hold a section to drag it into a new order.
+            The order these appear on your profile. Drag a handle to move one.
           </ThemedText>
           {layoutError && (
             <ThemedText type="small" themeColor="textSecondary">
@@ -288,18 +389,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
   },
-  mapToggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: Spacing.one,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   promptsList: {
     gap: Spacing.two,
   },
@@ -308,10 +397,33 @@ const styles = StyleSheet.create({
   },
   sectionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
+    gap: Spacing.three,
+    // Tighter than it was: the row carries its own thumbnail now, which
+    // gives it height without needing padding to look like a card.
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.two,
     borderRadius: Spacing.three,
+  },
+  sectionThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: Spacing.two,
+  },
+  // Where a section has no photograph of its own to show.
+  sectionGlyph: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  sectionText: {
+    flex: 1,
+    gap: 2,
+  },
+  // Padded rather than sized, so the grab area is thumb-sized while the
+  // glyph stays small.
+  sectionHandle: {
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.two,
   },
 });

@@ -2,6 +2,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { PromptPostcard } from '@/components/prompt-postcard';
 import { ReviewPromptCard } from '@/components/review-prompt-card';
 import { ThemedText } from '@/components/themed-text';
 import { GridPromptCard } from '@/components/ui/grid-prompt-card';
@@ -88,6 +89,12 @@ export function ProfilePromptsSection({ userId }: ProfilePromptsSectionProps) {
             }
 
             if (attachment.attachmentType === 'review' && attachment.visitId) {
+              // The default: the review as its own postcard. The bespoke
+              // layout below it is what an attachment gets only when
+              // show_postcard has been turned off.
+              if (attachment.showPostcard) {
+                return <PromptPostcard key={attachment.id} visitId={attachment.visitId} />;
+              }
               return (
                 <ReviewPromptCard
                   key={attachment.id}

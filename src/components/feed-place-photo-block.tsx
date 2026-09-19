@@ -17,11 +17,18 @@ import {
 import { StretchText } from "@/components/ui/stretch-text";
 import { TagSticker } from "@/components/ui/tag-sticker";
 import { Spacing } from "@/constants/theme";
+import { regionLabel } from "@/lib/place-region";
 import { useTheme } from "@/hooks/use-theme";
 
 // How much of the location line the stamp's top edge is allowed to cover,
 // at most — per direct feedback, effectively "basically none."
 const LOCATION_OVERLAP_ALLOWANCE = 30;
+
+// The same allowance against the place name, used when there is no location
+// line beneath it. Tighter, because the name is the one thing on the card
+// that has to stay readable: at 30 the stamp climbed far enough up a
+// single-line header to sit across the word itself.
+const NAME_OVERLAP_ALLOWANCE = 8;
 
 export type FeedTaggedPlace = { name: string; category: string | null };
 
@@ -96,6 +103,12 @@ export function FeedCardHeaderText({
   tagSeed,
 }: FeedCardHeaderTextProps) {
   const theme = useTheme();
+  // Null when the region line would only repeat the headline — a
+  // country-level place is its own stateCountry, so Madagascar set
+  // "Madagascar" directly under MADAGASCAR. Used everywhere stateCountry
+  // was, including the stamp ceiling below: with no line to protect there
+  // is nothing for the stamp to avoid.
+  const region = regionLabel(placeName, stateCountry);
   // The stamp anchors to *this* block's own bottom-right corner (see
   // FeedRatingStamp), not the outer card's — reserving space on the text
   // most likely to actually share that corner (the last couple of lines
@@ -129,6 +142,13 @@ export function FeedCardHeaderText({
   // name wrapping, tagged spots present or not, etc).
   const [wrapHeight, setWrapHeight] = useState(0);
   const [locationBottom, setLocationBottom] = useState<number | null>(null);
+  // The place name's own bottom edge, for the cards that have no location
+  // line under it to protect. Before this was measured those cards had no
+  // ceiling at all, and FeedRatingStamp fell back to its internal rise
+  // range — which on a short header put the stamp straight across the
+  // name. Rare while every card carried a location line; routine once
+  // regionLabel started dropping the ones that only repeated the name.
+  const [nameBottom, setNameBottom] = useState<number | null>(null);
 
   // Undefined (no ceiling) until measured, or when there's no location
   // line to protect in the first place — FeedRatingStamp falls back to its
@@ -136,12 +156,15 @@ export function FeedCardHeaderText({
   // how far the stamp may rise so its top edge — worst-case rotation
   // included (STAMP_EFFECTIVE_HEIGHT) — covers at most
   // LOCATION_OVERLAP_ALLOWANCE px of the location text.
+  // Whichever text actually sits lowest in the block is the one to protect:
+  // the location line when there is one, otherwise the name above it.
+  const protectedBottom = region && locationBottom != null ? locationBottom : nameBottom;
+  const protectedAllowance =
+    region && locationBottom != null ? LOCATION_OVERLAP_ALLOWANCE : NAME_OVERLAP_ALLOWANCE;
+
   const locationCeiling =
-    stateCountry && wrapHeight > 0 && locationBottom != null
-      ? wrapHeight -
-        locationBottom +
-        LOCATION_OVERLAP_ALLOWANCE -
-        STAMP_EFFECTIVE_HEIGHT
+    wrapHeight > 0 && protectedBottom != null
+      ? wrapHeight - protectedBottom + protectedAllowance - STAMP_EFFECTIVE_HEIGHT
       : undefined;
 
   // The caller's own absolute cap wins wherever it's tighter — and, unlike
@@ -184,12 +207,15 @@ export function FeedCardHeaderText({
         onPress={() =>
           placeId && router.push({ pathname: "/place/[id]", params: { id: placeId } })
         }
+        onLayout={(e: LayoutChangeEvent) =>
+          setNameBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)
+        }
       >
         <StretchText type="headline" fill truncateLongText={false}>
           {placeName || " "}
         </StretchText>
       </Pressable>
-      {stateCountry && (
+      {region && (
         <Pressable
           disabled={!placeId}
           onPress={() =>
@@ -204,7 +230,7 @@ export function FeedCardHeaderText({
           hitSlop={4}
         >
           <ThemedText type="roundedStat" themeColor="textSecondary" style={stampAlignStyle}>
-            {stateCountry}
+            {region}
           </ThemedText>
         </Pressable>
       )}

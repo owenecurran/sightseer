@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { ChoiceCard } from '@/components/ui/choice-card';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -55,7 +56,7 @@ export default function PrivacyChoiceScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title" style={styles.title}>
+        <ThemedText type="displaySerif" style={styles.title}>
           Choose your privacy
         </ThemedText>
         <ThemedText type="default" style={styles.title} themeColor="textSecondary">
@@ -63,23 +64,20 @@ export default function PrivacyChoiceScreen() {
           later in Settings.
         </ThemedText>
 
-        <ThemedView style={styles.options}>
-          {OPTIONS.map((option) => {
-            const active = choice === option.key;
-            return (
-              <Pressable key={option.key} onPress={() => setChoice(option.key)}>
-                <ThemedView
-                  type={active ? 'backgroundSelected' : 'backgroundElement'}
-                  style={styles.optionCard}>
-                  <ThemedText type="smallBold">{option.label}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {option.description}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
-            );
-          })}
-        </ThemedView>
+        <View style={styles.options}>
+          {OPTIONS.map((option, index) => (
+            <ChoiceCard
+              key={option.key}
+              seed={`privacy-${option.key}`}
+              accentIndex={index}
+              mode="select"
+              selected={choice === option.key}
+              title={option.label}
+              description={option.description}
+              onPress={() => setChoice(option.key)}
+            />
+          ))}
+        </View>
 
         {error && (
           <ThemedText type="small" themeColor="textSecondary">

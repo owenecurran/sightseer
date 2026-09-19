@@ -169,7 +169,7 @@ export default function DemographicsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="title" style={styles.title}>
+        <ThemedText type="displaySerif" style={styles.title}>
           Tell us about yourself
         </ThemedText>
         <ThemedText type="default" style={styles.title} themeColor="textSecondary">
@@ -184,7 +184,7 @@ export default function DemographicsScreen() {
             into a trip. You can add up to 5 places later in Settings.
           </ThemedText>
           <Pressable onPress={() => setIsPickerOpen(true)}>
-            <ThemedView type="backgroundElement" style={styles.chip}>
+            <ThemedView type="backgroundField" style={styles.chip}>
               <ThemedText type="default" themeColor={homePlace ? 'text' : 'textSecondary'}>
                 {homePlace ? homePlace.name : 'Add your home city'}
               </ThemedText>
@@ -216,7 +216,7 @@ export default function DemographicsScreen() {
             </>
           ) : (
             <Pressable onPress={() => setBirthdate(defaultBirthdateSeed())}>
-              <ThemedView type="backgroundElement" style={styles.chip}>
+              <ThemedView type="backgroundField" style={styles.chip}>
                 <ThemedText type="default" themeColor="textSecondary">
                   Add your birthdate
                 </ThemedText>
@@ -273,6 +273,6 @@ const styles = StyleSheet.create({
   chip: {
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Spacing.two,
   },
 });

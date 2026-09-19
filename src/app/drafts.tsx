@@ -109,7 +109,7 @@ export default function DraftsScreen() {
                       <View style={styles.thumbnailPlaceholder} />
                     )}
                     <View style={styles.rowLeading}>
-                      <ThemedText type="headline">{draft.placeName ?? 'Needs a location'}</ThemedText>
+                      <ThemedText type="headlineWrapped">{draft.placeName ?? 'Needs a location'}</ThemedText>
                       <ThemedText type="small" themeColor="textSecondary">
                         {relativeTime(draft.createdAt)}
                       </ThemedText>

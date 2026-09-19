@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -20,6 +20,7 @@ import type { FeedVisit, TripDay } from '@/lib/feed';
 import { colorForRating } from '@/lib/rating-gradient';
 import { ArrowSticker } from '@/components/ui/arrow-sticker';
 import { pickStickerVariants } from '@/lib/sticker-shapes';
+import { formatVisitedDate } from '@/lib/visited-date';
 
 type TripDayReviewsProps = {
   day: TripDay;
@@ -42,6 +43,11 @@ type TripDayReviewsProps = {
 
 // How far the incoming card slides from, and how far the cards behind peek
 // out. Small on purpose — this is a shuffle, not a page turn.
+// How many reviews ahead of the one on screen are warmed. Enough that
+// stepping lands on a photograph that is already there, few enough that
+// opening a feed does not download somebody's whole holiday.
+const PREFETCH_AHEAD = 2;
+
 const SHUFFLE_TRAVEL = 26;
 const BEHIND_OFFSET = 8;
 const BEHIND_TILT_DEGREES = 2;
@@ -50,16 +56,6 @@ const SHUFFLE_MS = 220;
 // stepping through never moves the control you're tapping.
 const ARROW_SIZE = 56;
 
-function formatDate(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
-  // Local noon — a bare 'YYYY-MM-DD' parsed directly is UTC midnight, which
-  // renders as the previous day west of Greenwich.
-  return new Date(year, month - 1, day, 12).toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 // One day of a trip as a stack of cards you step through with buttons.
 //
@@ -165,17 +161,6 @@ export function TripDayReviews({
   const reviewCount = day.visits.length;
   const stickerVariants = useMemo(() => pickStickerVariants(tripKey), [tripKey]);
 
-  // Warm every photo in the day up front. Stepping otherwise hits a cold
-  // image each time — the review is already on screen while its photo is
-  // still downloading, which is most of why shuffling felt slow.
-  useEffect(() => {
-    const urls = day.visits
-      .flatMap((visit) => visit.photoIds)
-      .map((id) => photoUrls[id])
-      .filter((url): url is string => url != null);
-    if (urls.length > 0) Image.prefetch(urls);
-  }, [day, photoUrls]);
-
   // Each arrow is tinted by the review it leads to. Unrated neighbours fall
   // back to the theme's own text colour rather than an arbitrary hue.
   function neighbourColor(offset: number): string {
@@ -186,6 +171,44 @@ export function TripDayReviews({
   // Clamped: a delete can shrink the day out from under the current index.
   const activeIndex = Math.min(index, reviewCount - 1);
   const activeVisit = day.visits[activeIndex];
+
+  // Warm the review on screen and the next few, and no further.
+  //
+  // This used to warm EVERY photo of EVERY review in the day the moment the
+  // card mounted. Stepping felt instant afterwards, but the cost landed on
+  // the feed: a seven-review day fired seven reviews' worth of originals at
+  // once, per trip, competing with the photographs the reader was actually
+  // looking at. It is the likeliest reason a trip took an age to appear and
+  // why other cards on the same screen sat blank behind it.
+  //
+  // Two things were wrong with what it fetched, as well as how much:
+  //
+  //  - It always reached for the FULL image (longest edge 2048), even for a
+  //    review whose card renders the small copy. A multi-photo review was
+  //    downloading originals that were never going to be displayed.
+  //  - It had no memory, so it re-issued the whole day whenever photoUrls
+  //    changed identity.
+  //
+  // Now it follows the reader: the current review plus PREFETCH_AHEAD, in
+  // whichever size that card will actually render, each URL at most once.
+  const warmed = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const urls: string[] = [];
+    for (let offset = 0; offset <= PREFETCH_AHEAD; offset++) {
+      const visit = day.visits[activeIndex + offset];
+      if (visit == null) continue;
+      // Mirrors PostcardPhotos, which only reaches for the small copy when
+      // the review has more than one photo.
+      const wantsThumb = visit.photoIds.length > 1;
+      for (const id of visit.photoIds) {
+        const url = (wantsThumb ? photoThumbUrls?.[id] : undefined) ?? photoUrls[id];
+        if (url == null || warmed.current.has(url)) continue;
+        warmed.current.add(url);
+        urls.push(url);
+      }
+    }
+    if (urls.length > 0) Image.prefetch(urls);
+  }, [activeIndex, day, photoUrls, photoThumbUrls]);
 
   function handlePhotoLayout(offsetY: number, height: number) {
     if (height <= 0) return;
@@ -225,7 +248,7 @@ export function TripDayReviews({
           Day {dayNumber}
         </ThemedText>
         <ThemedText type="sectionLabel" themeColor="textSecondary" style={styles.dayDate}>
-          {formatDate(day.date)}
+          {formatVisitedDate(day.date)}
         </ThemedText>
         <View style={styles.dayRule} />
         {reviewCount > 1 && (

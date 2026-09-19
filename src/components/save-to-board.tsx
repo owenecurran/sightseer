@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { ActionSticker } from '@/components/ui/action-sticker';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -35,11 +36,15 @@ type SaveToBoardProps = {
   isOwnerOrTagged: boolean;
   // Lets VisitActionsRow size this to match the row's other icons exactly
   // — standalone call sites (review-form.tsx, after saving a visit) keep
-  // the original default.
-  size?: number;
+  // Shared with the rest of the action row — see ActionSticker.
+  accentIndex?: number;
 };
 
-export function SaveToBoard({ visitId, isOwnerOrTagged, size = 26 }: SaveToBoardProps) {
+export function SaveToBoard({
+  visitId,
+  isOwnerOrTagged,
+  accentIndex = 0,
+}: SaveToBoardProps) {
   const theme = useTheme();
   const { session } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -134,12 +139,12 @@ export function SaveToBoard({ visitId, isOwnerOrTagged, size = 26 }: SaveToBoard
 
   return (
     <>
-      <Pressable
+      <ActionSticker
+        icon="bookmark-outline"
+        accentIndex={accentIndex}
         onPress={() => setIsOpen(true)}
-        hitSlop={12}
-        style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}>
-        <Ionicons name="add-circle-outline" size={size} color={theme.text} />
-      </Pressable>
+        accessibilityLabel="Save to a board"
+      />
 
       <Modal visible={isOpen} transparent animationType="fade" onRequestClose={() => setIsOpen(false)}>
         <View style={styles.overlay}>

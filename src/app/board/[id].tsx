@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +20,7 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
+import { useCollectionViewMode, type CollectionViewMode } from '@/lib/view-mode';
 import {
   checkBoardItem,
   getBoardItems,
@@ -45,9 +46,7 @@ import { supabase } from '@/lib/supabase';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
-type ViewMode = 'list' | 'ranked' | 'full' | 'images' | 'map';
-
-const VIEW_MODES: { key: ViewMode; label: string }[] = [
+const VIEW_MODES: { key: CollectionViewMode; label: string }[] = [
   { key: 'list', label: 'List' },
   { key: 'ranked', label: 'Ranked' },
   { key: 'full', label: 'Full reviews' },
@@ -64,7 +63,21 @@ export default function BoardDetailScreen() {
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
   const [customCoverUrl, setCustomCoverUrl] = useState<string | undefined>();
   const [isUploadingCover, setIsUploadingCover] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // Whatever was last chosen on any collection, defaulting to postcards —
+  // see view-mode.ts. It used to open on 'list' always, which made the app's
+  // own object the mode you had to go looking for.
+  //
+  // `available` is computed rather than fixed because a board that is not
+  // ranked has no Ranked chip, and landing on a mode with no way back to it
+  // is how a board got stuck showing a view its own chips could not reach.
+  const available = useMemo<CollectionViewMode[]>(
+    () =>
+      VIEW_MODES.filter((mode) => mode.key !== 'ranked' || board?.list_style === 'ranked').map(
+        (mode) => mode.key,
+      ),
+    [board?.list_style],
+  );
+  const [viewMode, setViewMode] = useCollectionViewMode(available);
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [savedState, setSavedState] = useState<{ notifyOnNewItems: boolean } | null>(null);
@@ -93,10 +106,12 @@ export default function BoardDetailScreen() {
         // off of it regardless of hasLoadedOnce, so a board switched back to
         // 'collection' from settings never gets stuck showing a view with no
         // way to reach via the now-hidden chip.
-        if (!hasLoadedOnce) {
-          setViewMode(boardData.list_style === 'ranked' ? 'ranked' : 'list');
-        } else {
-          setViewMode((prev) => (prev === 'ranked' && boardData.list_style !== 'ranked' ? 'list' : prev));
+        // A ranked board is a ranking first and a collection second, so it
+        // still opens on its own ordering the first time it is seen. Every
+        // other board now opens on the REMEMBERED mode (see
+        // useCollectionViewMode above) rather than being forced to 'list'.
+        if (!hasLoadedOnce && boardData.list_style === 'ranked') {
+          setViewMode('ranked');
         }
 
         const photoIds = boardItems.flatMap((item) => (item.kind === 'visit' ? item.photoIds : []));

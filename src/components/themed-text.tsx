@@ -15,6 +15,7 @@ export type ThemedTextProps = TextProps & {
     | 'code'
     | 'displaySerif'
     | 'headline'
+    | 'headlineWrapped'
     | 'statLine'
     | 'roundedStat'
     | 'sectionLabel'
@@ -42,6 +43,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'code' && styles.code,
         type === 'displaySerif' && styles.displaySerif,
         type === 'headline' && styles.headline,
+        type === 'headlineWrapped' && styles.headlineWrapped,
         type === 'statLine' && styles.statLine,
         type === 'roundedStat' && styles.roundedStat,
         type === 'sectionLabel' && styles.sectionLabel,
@@ -107,6 +109,28 @@ const styles = StyleSheet.create({
     fontFamily: BrandFonts.condensedHeavy,
     fontSize: 34,
     textTransform: 'uppercase',
+  },
+  // `headline` for anything that can run to a second line.
+  //
+  // headline sets no lineHeight, and the platform default works out at about
+  // the font size (34dp, measured on device) — BELOW the ink the glyphs
+  // need, so two lines collide. "New travel book", "Based on photo(s)" and
+  // "Search the map" all did.
+  //
+  // 48 is measured, not guessed: at this size MOON_GET-HEAVY needs 35.5dp
+  // for plain caps and 47.2 for parentheses, which titles do contain.
+  // Accented capitals want 55.2, loose enough to look broken on a two-line
+  // title, so this covers punctuation and stops there.
+  //
+  // A separate type rather than a lineHeight on `headline` itself, because
+  // 17 of headline's call sites go through StretchText, which MEASURES the
+  // rendered line to compute its scale — changing the shared metric would
+  // silently re-tune all of them. This is for the plain ThemedText callers.
+  headlineWrapped: {
+    fontFamily: BrandFonts.condensedHeavy,
+    fontSize: 34,
+    textTransform: 'uppercase',
+    lineHeight: 48,
   },
   statLine: {
     fontFamily: BrandFonts.condensedHeavy,

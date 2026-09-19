@@ -1,11 +1,12 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
@@ -142,12 +143,12 @@ export default function ArticleComposeScreen() {
           />
 
           {id && (
-            <Pressable onPress={handleTogglePublished} style={styles.checkboxRow}>
-              <ThemedView type={published ? 'backgroundSelected' : 'backgroundElement'} style={styles.checkbox}>
-                {published && <ThemedText type="smallBold">✓</ThemedText>}
-              </ThemedView>
-              <ThemedText type="small">Published — visible to everyone</ThemedText>
-            </Pressable>
+            <CheckboxRow
+              accentIndex={2}
+              checked={published}
+              label="Published — visible to everyone"
+              onPress={handleTogglePublished}
+            />
           )}
 
           {error && (
@@ -191,17 +192,5 @@ const styles = StyleSheet.create({
   },
   bodyField: {
     minHeight: 200,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: Spacing.one,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

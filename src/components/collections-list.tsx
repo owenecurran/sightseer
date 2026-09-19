@@ -1,17 +1,18 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import type { ReactNode } from 'react';
 import Animated from 'react-native-reanimated';
 
 import { CollectionsSwitcher, type CollectionMode } from '@/components/collections-switcher';
 import { CollectionsSortControl, type CollectionSortMode } from '@/components/collections-sort-control';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { FeedRatingStamp, getStampTextReserve } from '@/components/ui/feed-rating-stamp';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
+import { TicketCard } from '@/components/ui/ticket-card';
 import { TripCollectionRow } from '@/components/trip-collection-row';
-import { Spacing } from '@/constants/theme';
+import { Spacing, StickerAccents } from '@/constants/theme';
+import { hashSeed } from '@/lib/seeded-random';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import type { CollectionStats } from '@/lib/collection-stats';
@@ -154,33 +155,37 @@ export function CollectionsList({
           scrollEventThrottle={16}
           renderItem={({ item }: { item: BoardRow }) => {
             const stats = boardStats[item.id];
-            const stampTextReserve = stats?.avgRating != null ? getStampTextReserve(item.id, ROW_STAMP_SIZE) : 0;
             return (
-              <Pressable
+              <TicketCard
+                seed={`board-${item.id}`}
+                accentIndex={hashSeed(`board-accent-${item.id}`) % StickerAccents.length}
+                compact
                 onPress={() => router.push({ pathname: '/board/[id]', params: { id: item.id } })}
-                style={({ pressed }) => pressed && styles.pressed}>
-                <ThemedView type="backgroundElement" style={styles.row}>
-                  {boardThumbnailUrls[item.id] ? (
-                    <Image source={{ uri: boardThumbnailUrls[item.id] }} style={styles.thumbnail} />
-                  ) : (
-                    <View style={styles.thumbnailPlaceholder} />
-                  )}
-                  <View style={styles.rowLeading}>
-                    <View style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}>
-                      <StretchText type="headline" fill>
-                        {item.name}
-                      </StretchText>
-                    </View>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
-                      {item.is_private ? ' · Private' : ''}
-                    </ThemedText>
-                  </View>
-                  {stats?.avgRating != null && (
-                    <FeedRatingStamp rating={stats.avgRating} seed={item.id} canSeep={false} size={ROW_STAMP_SIZE} />
-                  )}
-                </ThemedView>
-              </Pressable>
+                contentStyle={styles.rowBody}
+                stub={
+                  stats?.avgRating != null ? (
+                    <RatingGlassBadgeGated
+                      rating={stats.avgRating}
+                      size={ROW_STAMP_SIZE}
+                      seed={item.id}
+                    />
+                  ) : undefined
+                }>
+                {boardThumbnailUrls[item.id] ? (
+                  <Image source={{ uri: boardThumbnailUrls[item.id] }} style={styles.thumbnail} />
+                ) : (
+                  <View style={styles.thumbnailPlaceholder} />
+                )}
+                <View style={styles.rowLeading}>
+                  <StretchText type="headline" fill>
+                    {item.name}
+                  </StretchText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
+                    {item.is_private ? ' · Private' : ''}
+                  </ThemedText>
+                </View>
+              </TicketCard>
             );
           }}
         />
@@ -194,34 +199,38 @@ export function CollectionsList({
           scrollEventThrottle={16}
           renderItem={({ item }: { item: TravelBookListItem }) => {
             const stats = travelBookStats[item.id];
-            const stampTextReserve = item.rating != null ? getStampTextReserve(item.id, ROW_STAMP_SIZE) : 0;
             return (
-              <Pressable
+              <TicketCard
+                seed={`book-${item.id}`}
+                accentIndex={hashSeed(`book-accent-${item.id}`) % StickerAccents.length}
+                compact
                 onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: item.id } })}
-                style={({ pressed }) => pressed && styles.pressed}>
-                <ThemedView type="backgroundElement" style={styles.row}>
-                  {travelBookThumbnailUrls[item.id] ? (
-                    <Image source={{ uri: travelBookThumbnailUrls[item.id] }} style={styles.thumbnail} />
-                  ) : (
-                    <View style={styles.thumbnailPlaceholder} />
-                  )}
-                  <View style={styles.rowLeading}>
-                    <View style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}>
-                      <StretchText type="headline" fill>
-                        {item.title}
-                      </StretchText>
-                    </View>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
-                      {item.locationName ? ` · ${item.locationName}` : ''}
-                      {item.is_private ? ' · Private' : ''}
-                    </ThemedText>
-                  </View>
-                  {item.rating != null && (
-                    <FeedRatingStamp rating={item.rating} seed={item.id} canSeep={false} size={ROW_STAMP_SIZE} />
-                  )}
-                </ThemedView>
-              </Pressable>
+                contentStyle={styles.rowBody}
+                stub={
+                  item.rating != null ? (
+                    <RatingGlassBadgeGated
+                      rating={item.rating}
+                      size={ROW_STAMP_SIZE}
+                      seed={item.id}
+                    />
+                  ) : undefined
+                }>
+                {travelBookThumbnailUrls[item.id] ? (
+                  <Image source={{ uri: travelBookThumbnailUrls[item.id] }} style={styles.thumbnail} />
+                ) : (
+                  <View style={styles.thumbnailPlaceholder} />
+                )}
+                <View style={styles.rowLeading}>
+                  <StretchText type="headline" fill>
+                    {item.title}
+                  </StretchText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
+                    {item.locationName ? ` · ${item.locationName}` : ''}
+                    {item.is_private ? ' · Private' : ''}
+                  </ThemedText>
+                </View>
+              </TicketCard>
             );
           }}
         />
@@ -261,14 +270,12 @@ const styles = StyleSheet.create({
   // (removed per direct feedback, freeing more width for the title/save
   // line — the stamp's own corner placement plus the row itself being
   // tappable already make it clear these rows lead somewhere).
-  row: {
-    position: 'relative',
+  // The ticket's own body, laid out as a row. The ticket supplies the
+  // padding and the space the stub needs; this only decides the direction.
+  rowBody: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
   },
   rowLeading: {
     flex: 1,

@@ -4,9 +4,27 @@ import { supabase } from '@/lib/supabase';
 // rule — this constant only drives the picker's affordances.
 export const MAX_VISIT_TAGS = 3;
 
-export type Tag = { slug: string; label: string };
+export type Tag = { slug: string; label: string; category: string };
 
-// The vocabulary barely changes and is tiny (17 rows), but every review form
+// The vocabulary in the order the picker shows it, split into its category
+// sections. Built by walking the already-sorted rows and starting a new
+// section whenever the category changes — which is why sort_order is laid out
+// in per-category blocks (see 20260914120000_tag_categories.sql). No second
+// ordering column, and no list of category names duplicated on the client
+// that a new category would have to be remembered in.
+export type TagSection = { category: string; tags: Tag[] };
+
+export function groupTags(tags: Tag[]): TagSection[] {
+  const sections: TagSection[] = [];
+  for (const tag of tags) {
+    const current = sections[sections.length - 1];
+    if (current?.category === tag.category) current.tags.push(tag);
+    else sections.push({ category: tag.category, tags: [tag] });
+  }
+  return sections;
+}
+
+// The vocabulary barely changes and is small (43 rows), but every review form
 // and every place page wants it. Cached for the session so opening the
 // picker twice isn't two round trips.
 let vocabularyPromise: Promise<Tag[]> | null = null;
@@ -15,7 +33,7 @@ export function listTags(): Promise<Tag[]> {
   vocabularyPromise ??= (async () => {
     const { data, error } = await supabase
       .from('tags')
-      .select('slug, label')
+      .select('slug, label, category')
       .order('sort_order');
     if (error) {
       // Not cached on failure — a cached rejection would keep the picker

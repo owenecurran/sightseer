@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Platform,
   StyleSheet,
@@ -36,6 +36,18 @@ type StretchTextProps = ThemedTextProps & {
   // TRUNCATE_THRESHOLD). Opt out where the full string genuinely matters
   // more than its legibility at a glance.
   truncateLongText?: boolean;
+  // How wide the text actually came out, once scaled.
+  //
+  // Not the same as the box it was given. `fill` is capped (FILL_MAX_SCALE),
+  // so a SHORT string stops short of the container rather than stretching to
+  // it — which means anything that wants to line up with the text, rather
+  // than with the box around it, cannot use the box. The postcard's broader
+  // location line is exactly that: it has to stay within the range of the
+  // place name, and a short name leaves most of its box empty.
+  //
+  // Must be stable across renders (a setState function is), or this reports
+  // in a loop.
+  onRenderedWidth?: (width: number) => void;
 };
 
 // Past this many characters a name is truncated rather than stretched to
@@ -115,6 +127,7 @@ export function StretchText({
   fillHeight,
   fillHeightExact,
   truncateLongText = true,
+  onRenderedWidth,
   style,
   ...rest
 }: StretchTextProps) {
@@ -208,7 +221,54 @@ export function StretchText({
   // letterforms.
   const outlineStrokeRadius =
     OUTLINE_STROKE_RADIUS / Math.max(scaleX, scaleY, 1);
+  // The same correction, for a blurred text shadow.
+  //
+  // A transform scales everything the text paints, the shadow's blur
+  // included — and this component's scale is deliberately ANISOTROPIC, so a
+  // round blur comes out as an ellipse. Measured on a real card: a 9pt shadow
+  // under scaleX 1.1 / scaleY 2.89 rendered as 26pt of blur vertically and 10
+  // horizontally. On a line of condensed caps, whose gaps are narrower than
+  // that, every letter's smear merged into its neighbour's and the shadow
+  // stopped reading as a shadow — it became a dark slab with straight edges
+  // tracing the text's own box, which is far more obvious than the type it
+  // was meant to support.
+  //
+  // It was not reproducible either: scaleY is set by the name's length and
+  // the card's shape, so the identical effect rendered at a different blur on
+  // every post.
+  //
+  // Dividing by the LARGER scale pins the worst axis to the radius that was
+  // asked for and leaves the other smaller, which is the same trade the
+  // outline above already makes — and it is the vertical smear that makes the
+  // slab, so that is the axis worth pinning. The offset is deliberately left
+  // alone: a throw that grows with the letters is proportionate, it is only
+  // the blur that has to stay put.
+  //
+  // The whole shadow is restated, not just the radius. `text-shadow` is a
+  // single CSS shorthand, and react-native-web collapses the three
+  // textShadow* props into one declaration per style object — so a later
+  // object carrying the radius alone does not override the earlier complete
+  // one, it is simply dropped. Confirmed in the browser: the computed value
+  // stayed at the uncompensated 9px until the colour and offset came with it.
+  const flatStyle = StyleSheet.flatten(style) as TextStyle | undefined;
+  const shadowRadius = flatStyle?.textShadowRadius;
+  const compensatedShadow =
+    shadowRadius != null && shadowRadius > 0
+      ? {
+          textShadowColor: flatStyle?.textShadowColor,
+          textShadowOffset: flatStyle?.textShadowOffset,
+          textShadowRadius: shadowRadius / Math.max(scaleX, scaleY, 1),
+        }
+      : null;
   const Text = outline ? OutlinedText : ThemedText;
+
+  // contentWidth is the string's natural width and scaleX is what it is drawn
+  // at, so their product is the ink's real extent. Reported from an effect
+  // rather than during render, and only once it is knowable.
+  const renderedWidth = contentWidth > 0 ? contentWidth * scaleX : 0;
+  useEffect(() => {
+    if (onRenderedWidth && renderedWidth > 0) onRenderedWidth(renderedWidth);
+  }, [onRenderedWidth, renderedWidth]);
 
   function handleMeasureTextLayout(
     e: NativeSyntheticEvent<TextLayoutEventData>,
@@ -329,6 +389,8 @@ export function StretchText({
           !withinRange && contentHeight > 0
             ? { lineHeight: contentHeight * WRAP_LINE_HEIGHT_RATIO }
             : null,
+
+          compensatedShadow,
 
           {
             transform:

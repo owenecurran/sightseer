@@ -13,6 +13,7 @@ import { Spacing } from '@/constants/theme';
 import type { FeedTrip, FeedVisit } from '@/lib/feed';
 import { createTravelBookFromTrip } from '@/lib/travel-books';
 import { getAreaOptions, setTripDisplayPlace, type AreaOption } from '@/lib/trips';
+import { formatVisitedRange } from '@/lib/visited-date';
 
 type TripGroupCardProps = {
   feedTrip: FeedTrip;
@@ -29,18 +30,6 @@ type TripGroupCardProps = {
   onConverted: (tripKey: string, travelBookId: string) => void;
 };
 
-// "Aug 3 – Aug 11" / "Aug 3" when a trip somehow spans one calendar day.
-// Deliberately parsed as local-noon rather than passed straight to Date():
-// `visited_on` is a bare date (no time or zone), and `new Date('2026-08-03')`
-// parses as UTC midnight, which renders as the *previous* day for anyone
-// west of Greenwich.
-function formatDate(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
-  return new Date(year, month - 1, day, 12).toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 // A trip shows every one of its days inline until it reaches this many —
 // at that point it previews just the latest day and sends you to its own
@@ -49,9 +38,6 @@ const INLINE_DAY_LIMIT = 3;
 // How many days a trip past that limit still previews in the feed.
 const PREVIEW_DAY_COUNT = 1;
 
-function formatRange(startDate: string, endDate: string): string {
-  return startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} – ${formatDate(endDate)}`;
-}
 
 // A finished trip, collapsed into one block that still separates its days.
 // Only ever rendered for trips the feed has already decided are over — an
@@ -182,7 +168,7 @@ export function TripGroupCard({
               </StretchText>
             </Pressable>
             <ThemedText type="small" themeColor="textSecondary">
-              {formatRange(trip.startDate, trip.endDate)} · {visitCount} review
+              {formatVisitedRange(trip.startDate, trip.endDate)} · {visitCount} review
               {visitCount === 1 ? '' : 's'}
               {isOuting ? '' : ` · ${days.length} day${days.length === 1 ? '' : 's'}`}
             </ThemedText>

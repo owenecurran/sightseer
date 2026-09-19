@@ -3,13 +3,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { BrandColors } from '@/constants/theme';
+import { BrandColors, StickerAccents } from '@/constants/theme';
 import { pickStickerVariants } from '@/lib/sticker-shapes';
 import { buildStickerArrowDataUri } from '@/lib/sticker-svg';
 
-// Tints the inner layer. Brand colours plus tones from the rating gradient,
-// so a sticker never looks foreign beside a stamp.
-const ACCENTS = ['#a0bd91', '#e0a458', '#c96a5b', '#6b8fb5', '#b58bbd', '#7fae9e'];
 
 export type StickerArrowDirection = 'left' | 'right';
 
@@ -69,7 +66,7 @@ export function StickerArrow({
     const next = mulberry32(h);
     return {
       variants: pickStickerVariants(seed),
-      accent: ACCENTS[Math.floor(h / 7) % ACCENTS.length],
+      accent: StickerAccents[Math.floor(h / 7) % StickerAccents.length],
       jitter: {
         dx: (next() * 2 - 1) * JITTER_PX,
         dy: (next() * 2 - 1) * JITTER_PX,

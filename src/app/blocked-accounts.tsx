@@ -5,6 +5,7 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { BackLink } from '@/components/ui/back-link';
 import { Button } from '@/components/ui/button';
@@ -85,7 +86,7 @@ export default function BlockedAccountsScreen() {
           ) : (
             <View style={styles.list}>
               {blockedUsers.map((user) => (
-                <ThemedView key={user.id} type="backgroundElement" style={styles.card}>
+                <PaperPanel key={user.id} seed={`blocked-${user.id}`} style={styles.card}>
                   <View style={styles.identity}>
                     <ThemedText type="smallBold">
                       {user.name ?? user.handle ?? 'Someone'}
@@ -105,7 +106,7 @@ export default function BlockedAccountsScreen() {
                     loading={unblockingId === user.id}
                     style={styles.unblock}
                   />
-                </ThemedView>
+                </PaperPanel>
               ))}
             </View>
           )}

@@ -36,8 +36,30 @@ const MIN_SPAN_DEGREES = 0.02;
 // 72px anyway.
 const MAX_PINS = 5;
 
+// Exactly the fields this component reads, rather than a whole FeedVisit.
+// VisitCard passes its own slightly looser VisitCardVisit (visitNumber is
+// optional there), and narrowing to what is actually used lets both callers
+// satisfy it without a cast that would hide a real mismatch later.
+export type MappableVisit = Pick<
+  FeedVisit,
+  | 'id'
+  | 'created_at'
+  | 'rating'
+  | 'note'
+  | 'visited_on'
+  | 'user_id'
+  | 'authorName'
+  | 'placeId'
+  | 'placeName'
+  | 'stateCountry'
+  | 'placeLat'
+  | 'placeLng'
+  | 'photoIds'
+  | 'photoAspectRatios'
+>;
+
 type TripMapSquareProps = {
-  visits: FeedVisit[];
+  visits: MappableVisit[];
   // The trip's destination. Centring here rather than on the midpoint of
   // the pins is what stops a single layover dragging the frame off into
   // empty country — see the migration that added these coordinates.
@@ -48,9 +70,9 @@ type TripMapSquareProps = {
 // review it stands for, rather than the whole trip sharing one colour.
 type Coord = { lat: number; lng: number; rating: number | null };
 
-function coordsOf(visits: FeedVisit[]): Coord[] {
+function coordsOf(visits: MappableVisit[]): Coord[] {
   return visits
-    .filter((v): v is FeedVisit & { placeLat: number; placeLng: number } =>
+    .filter((v): v is MappableVisit & { placeLat: number; placeLng: number } =>
       v.placeLat != null && v.placeLng != null
     )
     .map((v) => ({ lat: v.placeLat, lng: v.placeLng, rating: v.rating }));
@@ -108,7 +130,7 @@ function frameFor(
 // fields that view actually reads are meaningful; the rest exist to satisfy
 // the type, which is why this is a local adapter rather than something
 // exported for reuse.
-function toBoardItems(visits: FeedVisit[]): BoardVisitItem[] {
+function toBoardItems(visits: MappableVisit[]): BoardVisitItem[] {
   return visits.map((v) => ({
     kind: 'visit',
     id: v.id,

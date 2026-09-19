@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { ThemedText } from '@/components/themed-text';
+import { ActionSticker } from '@/components/ui/action-sticker';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { TextField } from '@/components/ui/text-field';
@@ -38,22 +39,28 @@ type CommentsTriggerProps = {
   count: number;
   isOpen: boolean;
   onPress: () => void;
+  // Shared with the rest of the action row — see ActionSticker.
+  accentIndex?: number;
 };
 
 // The dumb, always-inline half — icon + count, sits directly in
 // visit-actions-row.tsx alongside heart/share/save. The expanded thread
 // (CommentsThread below) renders separately, below the whole icon row.
-export function CommentsTrigger({ count, isOpen, onPress }: CommentsTriggerProps) {
-  const theme = useTheme();
+export function CommentsTrigger({
+  count,
+  isOpen,
+  onPress,
+  accentIndex = 3,
+}: CommentsTriggerProps) {
   return (
-    <Pressable onPress={onPress} hitSlop={8} style={styles.entryRow}>
-      <Ionicons name={isOpen ? 'chatbubble' : 'chatbubble-outline'} size={24} color={theme.textSecondary} />
-      {count > 0 && (
-        <ThemedText type="small" themeColor="textSecondary">
-          {count}
-        </ThemedText>
-      )}
-    </Pressable>
+    <ActionSticker
+      icon={isOpen ? 'chatbubble' : 'chatbubble-outline'}
+      accentIndex={accentIndex}
+      active={isOpen}
+      count={count}
+      onPress={onPress}
+      accessibilityLabel={isOpen ? 'Hide comments' : 'Show comments'}
+    />
   );
 }
 

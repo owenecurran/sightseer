@@ -11,6 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { DiscoverView } from "@/components/discover-view";
 import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
+import { PaperPanel } from "@/components/ui/paper-panel";
 import { ThemedView } from "@/components/themed-view";
 import { HomeLocationPrompt } from "@/components/home-location-prompt";
 import { TripSuggestionPrompt } from "@/components/trip-suggestion-prompt";
@@ -41,6 +42,7 @@ import {
 } from "@/lib/feed";
 import { listHomeLocations } from "@/lib/home-locations";
 import { getUnreadNotificationCount } from "@/lib/notifications";
+import { prefetchThumbnails } from "@/lib/image-prefetch";
 import { getPhotoThumbUrls, getPhotoViewUrls } from "@/lib/photo-view";
 import { shareText } from "@/lib/share";
 import { supabase } from "@/lib/supabase";
@@ -120,14 +122,17 @@ export default function HomeScreen() {
       const feedRecaps = feedItems.flatMap((item) =>
         item.type === "recap" ? [item.recap] : [],
       );
+      // Every photo, and the thumbnails for every photo — one list now, where
+      // there used to be two.
+      //
+      // Thumbnails used to be asked for only on multi-photo reviews, on the
+      // reasoning that a lone photo renders large enough to want the real one.
+      // It does — but it now wants the small one FIRST, as something to put on
+      // screen while the real one is still coming (see PostcardPhotos'
+      // placeholder). The single-photo card is the common shape and it was the
+      // one with nothing behind it, so the case that skipped this call was the
+      // case that needed it most.
       const photoIds = feedVisits.flatMap((v) => v.photoIds);
-      // Only multi-photo reviews render as a grid, and only grids benefit
-      // from the smaller copy — a lone photo renders large enough to want
-      // the real one. Requesting thumbs just for these keeps the extra call
-      // proportional to what actually uses them.
-      const gridPhotoIds = feedVisits.flatMap((v) =>
-        v.photoIds.length > 1 ? v.photoIds : [],
-      );
       const authorIds = [
         ...new Set([
           ...feedVisits.map((v) => v.user_id),
@@ -136,8 +141,8 @@ export default function HomeScreen() {
       ];
       const [photos, thumbs, avatars, recapCovers] = await Promise.all([
         photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
-        gridPhotoIds.length > 0
-          ? getPhotoThumbUrls(gridPhotoIds)
+        photoIds.length > 0
+          ? getPhotoThumbUrls(photoIds)
           : Promise.resolve({}),
         authorIds.length > 0
           ? getAvatarViewUrls(authorIds)
@@ -150,6 +155,24 @@ export default function HomeScreen() {
       setPhotoThumbUrls(thumbs);
       setAvatarUrls(avatars);
       setRecapCoverUrls(recapCovers);
+
+      // Warm the cache with the small copies for the cards further down.
+      //
+      // The feed is not virtualized (see the note on the list below), so every
+      // card mounts and starts its own requests at once, and what lands first
+      // is whatever the network happened to finish. Queueing the thumbnails
+      // deliberately means the thing a card needs in order to show itself is
+      // the thing that arrives soonest.
+      //
+      // Thumbnails only, and for a reason that is not obvious — see
+      // prefetchThumbnails. Prefetching the originals would download the
+      // whole feed a second time rather than save anything.
+      //
+      // Not awaited, and its failure ignored: this is a head start, and a
+      // head start that throws must not take the feed down with it. The cards
+      // ask for all of it again themselves, so the worst case is that this
+      // did nothing.
+      void prefetchThumbnails(Object.values(thumbs));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not load your feed.",
@@ -448,50 +471,78 @@ export default function HomeScreen() {
                   }}
                 />
               )}
-              {displayItems.map((item: FeedItem) =>
-                item.type === "divider" ? (
-                  <ThemedText
-                    key="divider"
-                    type="sectionLabel"
-                    style={styles.dividerText}
-                  >
-                    Already seen
-                  </ThemedText>
-                ) : item.type === "recap" ? (
-                  <RecapCard
-                    key={`recap-${item.recap.id}`}
-                    recap={item.recap}
-                    avatarUrl={avatarUrls[item.recap.authorId]}
-                    coverUrl={recapCoverUrls[item.recap.id]}
-                  />
-                ) : item.type === "trip" ? (
-                  <TripGroupCard
-                    key={`trip-${item.feedTrip.trip.key}`}
-                    feedTrip={item.feedTrip}
-                    photoUrls={photoUrls}
-                    photoThumbUrls={photoThumbUrls}
-                    avatarUrls={avatarUrls}
-                    viewerId={session?.user.id}
-                    copiedVisitId={copiedVisitId}
-                    onToggleLike={handleToggleLike}
-                    onShare={handleShareVisit}
-                    onVisitDeleted={handleVisitDeleted}
-                    onConverted={handleTripConverted}
-                  />
-                ) : (
-                  <VisitCard
-                    key={`visit-${item.visit.id}`}
-                    visit={item.visit}
-                    photoUrls={photoUrls}
-                    avatarUrl={avatarUrls[item.visit.user_id]}
-                    isOwner={session?.user.id === item.visit.user_id}
-                    isCopied={copiedVisitId === item.visit.id}
-                    onToggleLike={() => handleToggleLike(item.visit)}
-                    onShare={() => handleShareVisit(item.visit)}
-                    onDeleted={() => handleVisitDeleted(item.visit.id)}
-                  />
-                ),
-              )}
+              {displayItems.map((item: FeedItem, index: number) => (
+                // Descending zIndex, one wrapper per card. The rating stamp
+                // hangs below its card by design (canSeep lets bottomOffset
+                // go to -size*0.45), and on a short post that overhang clears
+                // the card's own bottom entirely and lands over the NEXT
+                // card. Neither the stamp's own zIndex nor cardTop's could
+                // ever fix that: both are scoped inside one card, and zIndex
+                // only resolves stacking among elements sharing an immediate
+                // parent. Cards are siblings HERE, so here is the only place
+                // the order between them can be decided.
+                //
+                // Descending rather than a flat value because siblings paint
+                // in document order by default — every card must outrank the
+                // one after it, not merely tie with it.
+                //
+                // collapsable={false} is load-bearing, not defensive: on
+                // Android a View whose only job is a style like this is
+                // exactly what the view-flattening pass removes, and it was
+                // flattening that broke the stamp's seep before (see
+                // visit-card.tsx's cardWrap). A removed wrapper takes the
+                // zIndex with it and the bug returns, silently and only on
+                // Android.
+                <View
+                  key={
+                    item.type === "divider"
+                      ? "divider"
+                      : item.type === "recap"
+                        ? `recap-${item.recap.id}`
+                        : item.type === "trip"
+                          ? `trip-${item.feedTrip.trip.key}`
+                          : `visit-${item.visit.id}`
+                  }
+                  style={{ zIndex: displayItems.length - index }}
+                  collapsable={false}
+                >
+                  {item.type === "divider" ? (
+                    <ThemedText type="sectionLabel" style={styles.dividerText}>
+                      Already seen
+                    </ThemedText>
+                  ) : item.type === "recap" ? (
+                    <RecapCard
+                      recap={item.recap}
+                      avatarUrl={avatarUrls[item.recap.authorId]}
+                      coverUrl={recapCoverUrls[item.recap.id]}
+                    />
+                  ) : item.type === "trip" ? (
+                    <TripGroupCard
+                      feedTrip={item.feedTrip}
+                      photoUrls={photoUrls}
+                      photoThumbUrls={photoThumbUrls}
+                      avatarUrls={avatarUrls}
+                      viewerId={session?.user.id}
+                      copiedVisitId={copiedVisitId}
+                      onToggleLike={handleToggleLike}
+                      onShare={handleShareVisit}
+                      onVisitDeleted={handleVisitDeleted}
+                      onConverted={handleTripConverted}
+                    />
+                  ) : (
+                    <VisitCard
+                      visit={item.visit}
+                      photoUrls={photoUrls}
+                      avatarUrl={avatarUrls[item.visit.user_id]}
+                      isOwner={session?.user.id === item.visit.user_id}
+                      isCopied={copiedVisitId === item.visit.id}
+                      onToggleLike={() => handleToggleLike(item.visit)}
+                      onShare={() => handleShareVisit(item.visit)}
+                      onDeleted={() => handleVisitDeleted(item.visit.id)}
+                    />
+                  )}
+                </View>
+              ))}
             </Animated.ScrollView>
           </>
         )}
@@ -518,7 +569,7 @@ function RecapCard({
         })
       }
     >
-      <ThemedView type="backgroundElement" style={styles.card}>
+      <PaperPanel seed={`recap-${recap.travelBookId}`} accentIndex={2} allowOverflow style={styles.card}>
         {recap.rating != null && (
           <FeedRatingStamp
             rating={recap.rating}
@@ -537,13 +588,13 @@ function RecapCard({
         {coverUrl && (
           <LoadableImage source={{ uri: coverUrl }} style={styles.recapCover} />
         )}
-        <ThemedText type="headline">{recap.title}</ThemedText>
+        <ThemedText type="headlineWrapped">{recap.title}</ThemedText>
         {recap.body && (
           <ThemedText type="small" numberOfLines={3}>
             {recap.body}
           </ThemedText>
         )}
-      </ThemedView>
+      </PaperPanel>
     </Pressable>
   );
 }
