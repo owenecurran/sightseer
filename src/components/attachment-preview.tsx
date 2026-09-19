@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { StyleSheet, View } from 'react-native';
 
+import { PromptPostcard } from '@/components/prompt-postcard';
 import { ReviewPromptCard } from '@/components/review-prompt-card';
 import { ThemedText } from '@/components/themed-text';
 import { GridPromptCard } from '@/components/ui/grid-prompt-card';
@@ -28,6 +29,10 @@ export type PreviewData =
       photoUrl?: string;
       showNote: boolean;
       showRatingStamp: boolean;
+      // Draw it as the review's own postcard. The default, and the reason
+      // showNote/showRatingStamp below it are only consulted when it is off —
+      // those two are options on the bespoke layout, not on the card.
+      showPostcard: boolean;
     }
   | { kind: 'cover'; title: string; thumbnailUrl?: string }
   | { kind: 'grid'; title: string; photoIds: string[]; photoUrls: Record<string, string> };
@@ -80,6 +85,12 @@ export function AttachmentPreview({ label, data }: AttachmentPreviewProps) {
   }
 
   if (data.kind === 'review') {
+    // The preview has to be the real thing, not a likeness of it — that is
+    // the whole point of this component. So the postcard branch renders the
+    // same PromptPostcard the profile does, just barred from acting on taps.
+    if (data.showPostcard) {
+      return <PromptPostcard visitId={data.visitId} disabled />;
+    }
     return (
       <ReviewPromptCard
         label={label}

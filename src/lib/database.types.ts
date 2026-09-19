@@ -902,6 +902,7 @@ export type Database = {
           position: number
           prompt_id: string
           show_note: boolean
+          show_postcard: boolean
           show_rating_stamp: boolean
           text_value: string | null
           travel_book_id: string | null
@@ -921,6 +922,7 @@ export type Database = {
           position?: number
           prompt_id: string
           show_note?: boolean
+          show_postcard?: boolean
           show_rating_stamp?: boolean
           text_value?: string | null
           travel_book_id?: string | null
@@ -940,6 +942,7 @@ export type Database = {
           position?: number
           prompt_id?: string
           show_note?: boolean
+          show_postcard?: boolean
           show_rating_stamp?: boolean
           text_value?: string | null
           travel_book_id?: string | null
@@ -1893,6 +1896,8 @@ export type Database = {
         Returns: boolean
       }
       deepest_common_area: { Args: { p_ids: string[] }; Returns: string }
+      discover_half_life_days: { Args: never; Returns: number }
+      discover_prior_weight: { Args: never; Returns: number }
       drain_harmony_refresh_queue: {
         Args: { batch_limit?: number }
         Returns: number
@@ -1907,6 +1912,31 @@ export type Database = {
           collection_id: string
           collection_type: string
           save_count: number
+        }[]
+      }
+      get_discover_places: {
+        Args: {
+          result_limit?: number
+          viewer_lat?: number
+          viewer_lng?: number
+        }
+        Returns: {
+          avg_rating: number
+          distance_km: number
+          lat: number
+          lng: number
+          name: string
+          place_id: string
+          recent_activity: number
+          review_count: number
+          score: number
+        }[]
+      }
+      get_discover_reviews: {
+        Args: { result_limit?: number }
+        Returns: {
+          score: number
+          visit_id: string
         }[]
       }
       get_harmony: {

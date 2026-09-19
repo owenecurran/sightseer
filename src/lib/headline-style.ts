@@ -1,4 +1,4 @@
-import type { TextStyle } from 'react-native';
+import type { ColorValue, TextStyle } from 'react-native';
 
 import { BrandFonts } from '@/constants/theme';
 import { hashSeed, pickOneOfTwo } from '@/lib/seeded-random';
@@ -39,6 +39,12 @@ export type RegionTreatment = {
   // twice and only two of these four arrangements could ever appear.
   above: boolean;
   alignRight: boolean;
+  // How many points of the line box are empty on the side the name is on, over
+  // and above the gap that is wanted there. The caller pulls the line toward
+  // the name by this much, so that every face ends up the same distance off it
+  // rather than however far its own metrics happened to leave it. See
+  // regionBoxFor.
+  tuck: number;
 };
 
 type RegionFace = {
@@ -46,6 +52,28 @@ type RegionFace = {
   fontSize: number;
   letterSpacing?: number;
   textTransform?: TextStyle['textTransform'];
+  // Where this face's letters actually sit inside the line box, in em.
+  //
+  // Two different boxes, and the gap between them is the whole problem this
+  // solves. `box` is what the platform reserves for a line: the widest of the
+  // font's hhea, OS/2 win and glyf bounding-box extents, which is what Android
+  // and the browser both lay out from. `ink` is where the letters of THIS line
+  // really reach — measured over the characters a region label can contain
+  // (A-Z, a-z, digits, comma, the mid-dot separator, and the accented
+  // capitals a place name brings with it), with the uppercase faces measured
+  // on uppercase only.
+  //
+  // The two come apart badly on the all-caps faces. AntarcticanLight reserves
+  // 0.209em of descent and its capitals use 0.107em of it, so a third of a
+  // line's worth of empty space was printing between it and the name for a
+  // descender that cannot occur. Read straight out of the font files with
+  // fontTools; see regionBoxFor for what is done with them.
+  metrics: {
+    boxAscent: number;
+    boxDescent: number;
+    inkAscent: number;
+    inkDescent: number;
+  };
 };
 
 // The four faces dropped in for this line. Antarctican carries two weights,
@@ -55,21 +83,37 @@ type RegionFace = {
 // and one point size across all of them made the didone tiny beside the
 // grotesques.
 const REGION_FACES: RegionFace[] = [
-  { family: BrandFonts.regionRounded, fontSize: 12, letterSpacing: 0.4 },
+  {
+    family: BrandFonts.regionRounded,
+    fontSize: 12,
+    letterSpacing: 0.4,
+    metrics: { boxAscent: 0.918, boxDescent: 0.213, inkAscent: 0.918, inkDescent: 0.213 },
+  },
   {
     family: BrandFonts.regionGrotesqueBold,
     fontSize: 12,
     letterSpacing: 1.3,
     textTransform: 'uppercase',
+    metrics: { boxAscent: 1.061, boxDescent: 0.235, inkAscent: 0.86, inkDescent: 0.161 },
   },
   {
     family: BrandFonts.regionGrotesqueLight,
     fontSize: 13,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
+    metrics: { boxAscent: 1.004, boxDescent: 0.209, inkAscent: 0.864, inkDescent: 0.107 },
   },
-  { family: BrandFonts.regionDidone, fontSize: 14 },
-  { family: BrandFonts.regionDeco, fontSize: 13, letterSpacing: 0.6 },
+  {
+    family: BrandFonts.regionDidone,
+    fontSize: 14,
+    metrics: { boxAscent: 1.259, boxDescent: 0.609, inkAscent: 1.03, inkDescent: 0.265 },
+  },
+  {
+    family: BrandFonts.regionDeco,
+    fontSize: 13,
+    letterSpacing: 0.6,
+    metrics: { boxAscent: 1.084, boxDescent: 0.301, inkAscent: 1.081, inkDescent: 0.25 },
+  },
 ];
 
 // The vocabulary. Each is a way of putting a second colour behind the letters;
@@ -236,10 +280,20 @@ const EXTRUDE_STEP = 0.8;
 // same thickness on both.
 const BORDER_SHARE = 0.07;
 
-// The broader location line's leading, as a multiple of its own size. See
-// regionTreatmentFor — deliberately roomy, because a short line box clips
-// these faces rather than scrolling them.
-const REGION_LINE_HEIGHT_RATIO = 1.75;
+// How far the region line's own outline reaches — see the textShadowRadius in
+// regionTreatmentFor. The line box has to carry it on both sides or the
+// outline is what gets clipped instead of the letters.
+const REGION_OUTLINE_RADIUS = 2;
+
+// The gap left between the name and the region line's letters, in points.
+//
+// One number for all five faces, which is the point of the whole exercise:
+// the line used to be given one LEADING (1.75 of its own size) and each face
+// then sat wherever its own metrics put it inside that box — between 2.1 and
+// 5.4 points off the name depending on which face and which side it drew.
+// Matching the leading does not match the gap, because the leading is measured
+// to the box and the eye measures to the ink.
+const REGION_INK_GAP = 2;
 // A fallback for the first frame, before the card has been measured.
 const BORDER_FALLBACK_BOX = 60;
 // An angular resolution, not a thickness, and the entire cost of the effect
@@ -324,6 +378,25 @@ function isLightLetter(color: string): boolean {
   return color !== BLACK;
 }
 
+// The three darks anything behind the letters can be struck in.
+//
+// A membership test rather than a luminance one, and it is exhaustive rather
+// than approximate: a plate or shadow here only ever takes one of five
+// colours. Three are the constants below. The other two are the pair read off
+// the photograph, and those cannot be dark by construction — image-accent
+// emits every one of them at a FIXED lightness (hsl at 78%, or 82% for the
+// neutral it falls back to on a picture with no usable hue), so a colour
+// sampled from a night sky comes back as pale a wash as one from a beach.
+//
+// Written this way because parsing an arbitrary CSS colour to measure it
+// would be more code and less certain than naming the five that can occur.
+// If a sixth is ever added, or image-accent's lightness stops being fixed,
+// this has to be revisited — a light plate that this calls dark would put the
+// name back to having no edge at all.
+function isDarkBacking(color: ColorValue | undefined): boolean {
+  return color === INK || color === SOFT_INK || color === BLACK;
+}
+
 function pick<T>(seed: string, items: readonly T[]): T {
   return items[hashSeed(seed) % items.length];
 }
@@ -399,23 +472,39 @@ export function headlineTreatmentFor(
   const back = platesFor(effect, plateColor, scale, options.boxHeight ?? BORDER_FALLBACK_BOX);
   const shadow = shadowFor(effect, plateColor, scale);
 
-  // Light type on a light photograph disappears whatever is behind it, so on
-  // those the name always gets something dark — even the treatments whose
-  // whole point is that they have nothing behind them.
+  // Light letters ALWAYS get something dark behind them. No exceptions.
   //
-  // Where the shadow slot is already spoken for (softShadow has its own;
-  // outlineCentred's halo is a COLOUR and would be lost if overwritten) the
-  // dark goes in as a plate instead. There is only one shadow per Text, so
-  // the two cannot both use it.
-  if (options.accent?.isLight && isLightLetter(color)) {
-    if (shadow.textShadowColor == null) {
-      Object.assign(shadow, {
-        textShadowColor: SOFT_INK,
-        textShadowOffset: { width: 0, height: 2 },
-        textShadowRadius: 8,
-      });
-    } else if (effect === 'outlineCentred') {
-      back.push({ color: SOFT_INK, dx: 0, dy: 2 * scale });
+  // This used to fire only on a light photograph, on the reasoning that light
+  // type on a dark picture already has all the contrast it needs. It does, for
+  // as long as it stays on the picture — and it does not. The name is fitted
+  // to the CARD's width, not the photograph's, so on most cards it runs off
+  // the picture and onto the cream border at one end or both, and a cream
+  // letter crossing that border has nothing to separate it from the card no
+  // matter how dark the photograph it started on was. Every card does this;
+  // it is the normal case, not the edge case.
+  //
+  // Whether a dark edge is already there is asked of the COLOURS rather than
+  // of the effect, because the effects do not agree about it: a plate is
+  // struck in INK on some draws and in a colour read off the picture on
+  // others, and the colours are always light (see isDarkBacking). Testing the
+  // effect name got that wrong in both directions.
+  if (isLightLetter(color)) {
+    const hasDarkEdge =
+      isDarkBacking(shadow.textShadowColor) || back.some((plate) => isDarkBacking(plate.color));
+
+    if (!hasDarkEdge) {
+      // One shadow per Text, so where the slot is already spoken for — an
+      // outlineCentred halo is a COLOUR and would be lost if overwritten —
+      // the dark goes in as a plate instead.
+      if (shadow.textShadowColor == null) {
+        Object.assign(shadow, {
+          textShadowColor: SOFT_INK,
+          textShadowOffset: { width: 0, height: 2 },
+          textShadowRadius: 8,
+        });
+      } else {
+        back.push({ color: SOFT_INK, dx: 0, dy: 2 * scale });
+      }
     }
   }
 
@@ -428,25 +517,58 @@ export function headlineTreatmentFor(
   };
 }
 
+// The line box a region face needs, and how much of it the letters do not
+// reach on each side.
+//
+// The line box is cut to the INK rather than to the font's declared extents,
+// plus the outline's reach on both sides. That alone cannot close the gap to
+// the name, though: a line box is centred on the font's box, not on the ink,
+// so whatever the font over-declares stays as empty space wherever the letters
+// fall short of it. `deadTop`/`deadBottom` are exactly that space, in points,
+// and the caller cancels whichever of the two faces the name.
+function regionBoxFor(face: RegionFace) {
+  const { boxAscent, boxDescent, inkAscent, inkDescent } = face.metrics;
+  const size = face.fontSize;
+
+  const lineHeight = Math.ceil((inkAscent + inkDescent) * size) + 2 * REGION_OUTLINE_RADIUS;
+  // A line taller than the font's own box has the difference split evenly
+  // above and below it — the same rule in Android's line-height span and in
+  // CSS half-leading, which is why one calculation serves both.
+  const halfLeading = (lineHeight - (boxAscent + boxDescent) * size) / 2;
+
+  return {
+    lineHeight,
+    deadTop: halfLeading + (boxAscent - inkAscent) * size,
+    deadBottom: halfLeading + (boxDescent - inkDescent) * size,
+  };
+}
+
 // The broader location's own face, colour and position. See RegionTreatment.
 function regionTreatmentFor(seed: string, color: string, isLight: boolean): RegionTreatment {
   const face = pick(`region-face:${seed}`, REGION_FACES);
+  const above = pickOneOfTwo(`region-side:${seed}`, true, false);
+  const box = regionBoxFor(face);
+
   return {
-    above: pickOneOfTwo(`region-side:${seed}`, true, false),
+    above,
     alignRight: pickOneOfTwo(`region-margin:${seed}`, true, false),
+    // The empty space between this face's letters and the edge of its line
+    // box on the side the name is on, less the gap we actually want. The
+    // caller pulls the line back by this much.
+    tuck: (above ? box.deadBottom : box.deadTop) - REGION_INK_GAP,
     style: {
       fontFamily: face.family,
       fontSize: face.fontSize,
-      // Roomy on purpose, and per face.
+      // Cut to this face's own letters — see regionBoxFor.
       //
-      // ThemedText's own types carry a line height built for the UI sans —
-      // 20pt at 14 — and these are display faces with far deeper descenders
-      // than that was cut for. A line box shorter than the glyphs need does
-      // not scroll or wrap, it CLIPS, which is why the bottoms of the commas
-      // and the tails were being shaved off. REGION_LINE_HEIGHT_RATIO is
-      // generous rather than exact: it costs a few points of height and it
-      // cannot cut anything off.
-      lineHeight: Math.round(face.fontSize * REGION_LINE_HEIGHT_RATIO),
+      // ThemedText's own types carry a line height built for the UI sans (20pt
+      // at 14) and these are display faces, so the type's own leading clipped
+      // them: a line box shorter than the glyphs need does not scroll or wrap,
+      // it CUTS, which is what shaved the bottoms off the commas and tails.
+      // The first fix for that was one generous ratio across all five faces,
+      // which stopped the clipping and bought the opposite problem — the faces
+      // that needed the least room got the most, and floated off the name.
+      lineHeight: box.lineHeight,
       letterSpacing: face.letterSpacing,
       textTransform: face.textTransform,
       color,
@@ -465,7 +587,8 @@ function regionTreatmentFor(seed: string, color: string, isLight: boolean): Regi
       // at this size — the blur is what made it disappear.
       textShadowColor: isLight ? INK : CREAM,
       textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 2,
+      // The line box above is cut to fit this, so the two have to agree.
+      textShadowRadius: REGION_OUTLINE_RADIUS,
     },
   };
 }

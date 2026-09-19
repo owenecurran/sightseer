@@ -143,6 +143,23 @@ const CASES: Case[] = [
     stateCountry: 'Patagonia, Paraguay',
   },
   {
+    key: 'lighthalo',
+    // Cream letters with a halo struck in a colour read off the picture —
+    // and every one of those colours is light (image-accent emits them at a
+    // fixed 78% lightness). So this draw has nothing dark anywhere, which is
+    // the case that used to leave the name with no edge at all wherever it
+    // crossed the card's cream border.
+    //
+    // It is also the only draw that cannot take the fix in the shadow slot:
+    // outlineCentred's halo is already in it, and a halo is a COLOUR, so
+    // overwriting it would lose the effect. This one gets a plate instead —
+    // the other branch of that fix, and the one no other fixture here covers.
+    label: 'Cream letters, light halo — the only draw whose edge is a plate',
+    photos: [{ url: WIDE, ratio: 1.5 }],
+    rating: 8.2,
+    id: 'fx-114',
+  },
+  {
     key: 'nameinband',
     // Two labels WOULD fit the band, but this card's name is set along the
     // foot — the same strip — so they belong on the back instead.

@@ -1,33 +1,19 @@
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
-import { BoardMapView } from '@/components/board-views/map-view';
-import { FullReviewsView } from '@/components/board-views/full-reviews-view';
-import { ImagesGridView } from '@/components/board-views/images-grid-view';
-import { ListView } from '@/components/board-views/list-view';
+import { ReviewBrowser } from '@/components/review-browser';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
-import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getMyVisitItems, type BoardVisitItem } from '@/lib/boards';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
-
-type ViewMode = 'list' | 'full' | 'images' | 'map';
-
-const VIEW_MODES: { key: ViewMode; label: string }[] = [
-  { key: 'list', label: 'List' },
-  { key: 'full', label: 'Full reviews' },
-  { key: 'images', label: 'Images' },
-  { key: 'map', label: 'Map' },
-];
 
 // `userId` optional (not a required route param the way collections/[userId]
 // needs one) — plain `/reviews` from profile.tsx's own "Latest reviews"
@@ -41,10 +27,8 @@ export default function AllReviewsScreen() {
   const [targetUserName, setTargetUserName] = useState<string | null>(null);
   const [items, setItems] = useState<BoardVisitItem[]>([]);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
-  const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const scrollHandler = useHideOnScrollHandler();
 
   const targetUserId = routeUserId ?? session?.user.id;
   const isSelf = Boolean(session && targetUserId === session.user.id);
@@ -109,48 +93,19 @@ export default function AllReviewsScreen() {
             </ThemedText>
           )}
 
-          <View style={styles.modeRow}>
-            {VIEW_MODES.map((mode) => (
-              <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
-                <ThemedView type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.modeChip}>
-                  <ThemedText type="small" themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
-                    {mode.label}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
-            ))}
-          </View>
         </View>
 
-        {items.length === 0 ? (
-          <View style={styles.emptyState}>
-            <ThemedText type="small" themeColor="textSecondary">
-              No reviews yet.
-            </ThemedText>
-          </View>
-        ) : viewMode === 'full' ? (
-          <FullReviewsView items={items} photoUrls={photoUrls} viewerId={session?.user.id} />
-        ) : viewMode === 'map' ? (
-          <BoardMapView items={items} />
-        ) : (
-          <Animated.ScrollView
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
-            showsVerticalScrollIndicator={false}
-            onScroll={scrollHandler}
-            scrollEventThrottle={16}>
-            {viewMode === 'images' ? (
-              <ImagesGridView items={items} photoUrls={photoUrls} />
-            ) : (
-              <ListView
-                items={items}
-                photoUrls={photoUrls}
-                isOwner={isSelf}
-                onRemove={handleRemove}
-                removeMessage="Delete this review? This can't be undone."
-              />
-            )}
-          </Animated.ScrollView>
-        )}
+        <View style={styles.browser}>
+          <ReviewBrowser
+            items={items}
+            photoUrls={photoUrls}
+            viewerId={session?.user.id}
+            isOwner={isSelf}
+            onRemove={handleRemove}
+            removeMessage="Delete this review? This can't be undone."
+            contentPaddingBottom={bottomInset}
+          />
+        </View>
       </SafeAreaView>
     </ThemedView>
   );
@@ -164,6 +119,15 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     paddingTop: Spacing.four + TopTabInset,
+  },
+  // The browser owns its own scrolling, so it takes the rest of the screen
+  // and keeps the same reading column the header sits in.
+  browser: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.four,
   },
   header: {
     width: '100%',

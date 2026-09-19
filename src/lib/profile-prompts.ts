@@ -43,6 +43,12 @@ export type PromptAttachment = {
   // every attachment saved before these existed keeps its current look.
   showNote: boolean;
   showRatingStamp: boolean;
+  // 'review' only — draw it as its own postcard rather than as the bespoke
+  // note-beside-photo layout. Defaults true at the DB column level, so every
+  // review featured before this existed becomes a postcard, which is the
+  // point: the card is what a review looks like everywhere else in the app.
+  // showNote and showRatingStamp only apply when this is false.
+  showPostcard: boolean;
 };
 
 export type ProfilePrompt = {
@@ -68,6 +74,7 @@ type RawAttachment = {
   grid_photo_ids: string[] | null;
   show_note: boolean;
   show_rating_stamp: boolean;
+  show_postcard: boolean;
   visits: {
     rating: number | null;
     note: string | null;
@@ -87,7 +94,7 @@ type RawPrompt = {
 };
 
 const PROMPT_SELECT =
-  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visit_photo_id, cover_photo_id, display_mode, grid_photo_ids, show_note, show_rating_stamp, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
+  'id, prompt_slug, position, profile_prompt_attachments(id, position, attachment_type, text_value, photo_r2_key, visit_id, board_id, place_id, travel_book_id, visit_photo_id, cover_photo_id, display_mode, grid_photo_ids, show_note, show_rating_stamp, show_postcard, visits(rating, note, places!place_id(name), photos(id, position)), boards(name), places!place_id(name), travel_books(title))';
 
 function mapAttachment(r: RawAttachment): PromptAttachment {
   const photos = [...(r.visits?.photos ?? [])].sort((a, b) => a.position - b.position);
@@ -113,6 +120,7 @@ function mapAttachment(r: RawAttachment): PromptAttachment {
     gridPhotoIds: r.grid_photo_ids ?? [],
     showNote: r.show_note,
     showRatingStamp: r.show_rating_stamp,
+    showPostcard: r.show_postcard,
   };
 }
 
@@ -155,6 +163,7 @@ export type AttachmentInput = {
   // (true) via `?? true` below, not a hand-written default here.
   showNote?: boolean;
   showRatingStamp?: boolean;
+  showPostcard?: boolean;
 };
 
 type SavePromptParams = {
@@ -211,6 +220,7 @@ export async function savePrompt(params: SavePromptParams): Promise<void> {
         grid_photo_ids: a.gridPhotoIds && a.gridPhotoIds.length > 0 ? a.gridPhotoIds : null,
         show_note: a.showNote ?? true,
         show_rating_stamp: a.showRatingStamp ?? true,
+        show_postcard: a.showPostcard ?? true,
       }))
     );
     if (insertError) throw insertError;

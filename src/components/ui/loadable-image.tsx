@@ -14,9 +14,13 @@ type LoadableImageProps = Omit<ImageProps, 'style'> & {
 // available yet — e.g. a presigned view URL that hasn't resolved). Covers
 // both "no URL yet" and "URL resolved, bytes still downloading" under one
 // consistent loading treatment instead of the previous silent blank gap.
-export function LoadableImage({ source, style, onLoad, ...rest }: LoadableImageProps) {
+export function LoadableImage({ source, style, onLoad, placeholder, ...rest }: LoadableImageProps) {
   const [isLoaded, setIsLoaded] = useState(false);
   const hasSource = source != null;
+  // A placeholder is already something to look at, so the spinner would only
+  // be a spinner ON TOP of the picture. The icon exists for the case where
+  // the alternative is a blank hole, which is no longer this one.
+  const hasPlaceholder = placeholder != null;
 
   function handleLoad(event: ImageLoadEventData) {
     setIsLoaded(true);
@@ -39,6 +43,7 @@ export function LoadableImage({ source, style, onLoad, ...rest }: LoadableImageP
           // Overridable per call site: it comes before {...rest}, so a caller
           // that wants something else still wins.
           cachePolicy="memory-disk"
+          placeholder={placeholder}
           {...rest}
           // Stable disk-cache identity across presigned-URL rotation — see
           // stableImageSource. Non-string sources pass through untouched.
@@ -47,7 +52,7 @@ export function LoadableImage({ source, style, onLoad, ...rest }: LoadableImageP
           onLoad={handleLoad}
         />
       )}
-      {!isLoaded && <ImageLoadingIcon />}
+      {!isLoaded && !hasPlaceholder && <ImageLoadingIcon />}
     </View>
   );
 }

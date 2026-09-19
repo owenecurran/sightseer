@@ -42,6 +42,7 @@ import {
 } from "@/lib/feed";
 import { listHomeLocations } from "@/lib/home-locations";
 import { getUnreadNotificationCount } from "@/lib/notifications";
+import { prefetchThumbnails } from "@/lib/image-prefetch";
 import { getPhotoThumbUrls, getPhotoViewUrls } from "@/lib/photo-view";
 import { shareText } from "@/lib/share";
 import { supabase } from "@/lib/supabase";
@@ -121,14 +122,17 @@ export default function HomeScreen() {
       const feedRecaps = feedItems.flatMap((item) =>
         item.type === "recap" ? [item.recap] : [],
       );
+      // Every photo, and the thumbnails for every photo — one list now, where
+      // there used to be two.
+      //
+      // Thumbnails used to be asked for only on multi-photo reviews, on the
+      // reasoning that a lone photo renders large enough to want the real one.
+      // It does — but it now wants the small one FIRST, as something to put on
+      // screen while the real one is still coming (see PostcardPhotos'
+      // placeholder). The single-photo card is the common shape and it was the
+      // one with nothing behind it, so the case that skipped this call was the
+      // case that needed it most.
       const photoIds = feedVisits.flatMap((v) => v.photoIds);
-      // Only multi-photo reviews render as a grid, and only grids benefit
-      // from the smaller copy — a lone photo renders large enough to want
-      // the real one. Requesting thumbs just for these keeps the extra call
-      // proportional to what actually uses them.
-      const gridPhotoIds = feedVisits.flatMap((v) =>
-        v.photoIds.length > 1 ? v.photoIds : [],
-      );
       const authorIds = [
         ...new Set([
           ...feedVisits.map((v) => v.user_id),
@@ -137,8 +141,8 @@ export default function HomeScreen() {
       ];
       const [photos, thumbs, avatars, recapCovers] = await Promise.all([
         photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
-        gridPhotoIds.length > 0
-          ? getPhotoThumbUrls(gridPhotoIds)
+        photoIds.length > 0
+          ? getPhotoThumbUrls(photoIds)
           : Promise.resolve({}),
         authorIds.length > 0
           ? getAvatarViewUrls(authorIds)
@@ -151,6 +155,24 @@ export default function HomeScreen() {
       setPhotoThumbUrls(thumbs);
       setAvatarUrls(avatars);
       setRecapCoverUrls(recapCovers);
+
+      // Warm the cache with the small copies for the cards further down.
+      //
+      // The feed is not virtualized (see the note on the list below), so every
+      // card mounts and starts its own requests at once, and what lands first
+      // is whatever the network happened to finish. Queueing the thumbnails
+      // deliberately means the thing a card needs in order to show itself is
+      // the thing that arrives soonest.
+      //
+      // Thumbnails only, and for a reason that is not obvious — see
+      // prefetchThumbnails. Prefetching the originals would download the
+      // whole feed a second time rather than save anything.
+      //
+      // Not awaited, and its failure ignored: this is a head start, and a
+      // head start that throws must not take the feed down with it. The cards
+      // ask for all of it again themselves, so the worst case is that this
+      // did nothing.
+      void prefetchThumbnails(Object.values(thumbs));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not load your feed.",

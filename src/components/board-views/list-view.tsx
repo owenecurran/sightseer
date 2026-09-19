@@ -5,20 +5,24 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
-import { FeedRatingStamp, getStampTextReserve } from '@/components/ui/feed-rating-stamp';
+import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
 import { ThemedText } from '@/components/themed-text';
 import { InkBlot } from '@/components/ui/ink-blot';
-import { ThemedView } from '@/components/themed-view';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
+import { TicketCard } from '@/components/ui/ticket-card';
 import { Spacing, StickerAccents } from '@/constants/theme';
+import { hashSeed } from '@/lib/seeded-random';
 import type { BoardItem } from '@/lib/boards';
 
-// Same compact corner-stamp size collections-list.tsx's board/travel-book
-// rows use — this row is the same kind of compact list item, so it gets the
-// same "postage stamp on a corner" treatment instead of the plain inline
-// badge every other board-view component here used to share.
-const ROW_STAMP_SIZE = 40;
+// The rating, printed in the ticket's torn-off stub.
+//
+// It used to hang off the row's bottom-right corner as a loose stamp, which
+// needed the row to reserve text width for it (getStampTextReserve) and
+// needed the stamp to escape the Swipeable that was clipping it. A ticket
+// already has a place for exactly this: the stub behind the perforation is
+// the part of a real ticket that carries the printed value.
+const ROW_STAMP_SIZE = 44;
 
 type ListViewProps = {
   items: BoardItem[];
@@ -34,6 +38,10 @@ type ListViewProps = {
   // "Your rating: X" read-only overlay for places the viewer has
   // independently reviewed — see src/lib/own-ratings.ts.
   ownRatings?: Record<string, number>;
+  // Selection mode, for a picker. When set, pressing a row CHOOSES it rather
+  // than navigating to it — the same rows, doing the other obvious thing.
+  onSelectItem?: (item: BoardItem) => void;
+  selectedItemId?: string | null;
 };
 
 // Today's only-ever-shipped board-detail layout, restyled from a full-width
@@ -53,6 +61,8 @@ export function ListView({
   checkedItemIds,
   onToggleCheck,
   ownRatings,
+  onSelectItem,
+  selectedItemId,
 }: ListViewProps) {
   const [confirmingItemId, setConfirmingItemId] = useState<string | null>(null);
 
@@ -65,61 +75,75 @@ export function ListView({
         const ownRating = ownRatings?.[item.placeId];
         const showOwnRating = ownRating != null && !(isVisit && item.authorId === viewerId);
         const hasStamp = isVisit && item.rating != null;
-        const stampTextReserve = hasStamp ? getStampTextReserve(item.id, ROW_STAMP_SIZE) : 0;
         const row = (
-          <Pressable
-            onPress={() =>
-              isVisit
-                ? router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })
-                : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+          <TicketCard
+            seed={`board-item-${item.id}`}
+            // Spread over the accent set by the item's own id, so a board is
+            // a mixed stack of tickets rather than a column of one colour.
+            // Hashed here — unlike the creation flow's four fixed cards,
+            // which are a short list where a collision is visible — because
+            // a board holds an arbitrary number of these and no hand-picked
+            // order would survive the next thing added to it.
+            accentIndex={hashSeed(`board-accent-${item.id}`) % StickerAccents.length}
+            compact
+            selected={selectedItemId != null && selectedItemId === item.id}
+            onPress={
+              onSelectItem
+                ? () => onSelectItem(item)
+                : () =>
+                    isVisit
+                      ? router.push({ pathname: '/visit/[id]', params: { id: item.visitId } })
+                      : router.push({ pathname: '/place/[id]', params: { id: item.placeId } })
+            }
+            contentStyle={styles.rowBody}
+            stub={
+              hasStamp ? (
+                <RatingGlassBadgeGated
+                  rating={item.rating!}
+                  size={ROW_STAMP_SIZE}
+                  seed={item.id}
+                />
+              ) : undefined
             }>
-            <ThemedView type="backgroundElement" style={styles.row}>
-              {onToggleCheck && (
-                <Pressable onPress={() => onToggleCheck(item)} hitSlop={8}>
-                  <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
-                    {isChecked && (
-                      <InkBlot size={13} seed={`list-check-${item.id}`} color={StickerAccents[0]} />
-                    )}
-                  </View>
-                </Pressable>
-              )}
-              {thumbnailUrl ? (
-                <Image source={{ uri: thumbnailUrl }} style={styles.thumbnail} />
-              ) : (
-                <View style={styles.thumbnailPlaceholder} />
-              )}
-              <View style={styles.info}>
-                <View style={stampTextReserve > 0 && { paddingRight: stampTextReserve }}>
-                  <StretchText type="headline" fill>{item.placeName}</StretchText>
+            {onToggleCheck && (
+              <Pressable onPress={() => onToggleCheck(item)} hitSlop={8}>
+                <View style={[styles.checkbox, isChecked && styles.checkboxChecked]}>
+                  {isChecked && (
+                    <InkBlot size={13} seed={`list-check-${item.id}`} color={StickerAccents[0]} />
+                  )}
                 </View>
-                {isVisit ? (
-                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                    {[item.stateCountry, item.rating == null ? 'Visited' : null, item.note].filter(Boolean).join(' · ')}
-                  </ThemedText>
-                ) : (
-                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-                    {item.stateCountry ?? 'No review yet'}
-                  </ThemedText>
-                )}
-                {showOwnRating && (
-                  <OwnRatingLine rating={ownRating} />
-                )}
-              </View>
-            </ThemedView>
-          </Pressable>
+              </Pressable>
+            )}
+            {thumbnailUrl ? (
+              <Image source={{ uri: thumbnailUrl }} style={styles.thumbnail} />
+            ) : (
+              <View style={styles.thumbnailPlaceholder} />
+            )}
+            <View style={styles.info}>
+              <StretchText type="headline" fill>{item.placeName}</StretchText>
+              {isVisit ? (
+                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                  {[item.stateCountry, item.rating == null ? 'Visited' : null, item.note].filter(Boolean).join(' · ')}
+                </ThemedText>
+              ) : (
+                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                  {item.stateCountry ?? 'No review yet'}
+                </ThemedText>
+              )}
+              {showOwnRating && (
+                <OwnRatingLine rating={ownRating} />
+              )}
+            </View>
+          </TicketCard>
         );
 
         return (
-          // The stamp lives here, as a sibling of the swipeable/plain row —
-          // not nested inside it — specifically because Swipeable (only
-          // wrapped around owner rows, for the reveal-to-remove action)
-          // clips its children to hide that action offscreen until swiped,
-          // which was also silently clipping the stamp's own deliberate
-          // overflow past the row's right edge. Confirmed live: non-owner
-          // rows (no Swipeable) never had this problem, only "Your reviews"
-          // did. position:'relative' here (not on `row` itself anymore) is
-          // what the stamp now anchors against.
-          <View key={item.id} style={styles.rowWrap}>
+          // The stamp used to live out here, as a sibling of the row, because
+          // Swipeable (wrapped around owner rows for the reveal-to-remove
+          // action) clips its children — and it was clipping the stamp's
+          // deliberate overflow past the row's right edge. Inside the ticket's
+          // stub there is nothing to clip: the stub is part of the ticket.
+          <View key={item.id}>
             {isOwner ? (
               <Swipeable
                 renderRightActions={() => (
@@ -135,7 +159,6 @@ export function ListView({
             ) : (
               row
             )}
-            {hasStamp && <FeedRatingStamp rating={item.rating!} seed={item.id} canSeep={false} size={ROW_STAMP_SIZE} />}
           </View>
         );
       })}
@@ -158,20 +181,12 @@ const styles = StyleSheet.create({
   list: {
     gap: Spacing.two,
   },
-  // position:'relative' — FeedRatingStamp positions itself absolutely
-  // against this wrapper's own bottom-right corner (see the map() callback's
-  // own comment for why it lives out here, one level above `row`/Swipeable,
-  // instead of inside `row` like collections-list.tsx's simpler rows can).
-  rowWrap: {
-    position: 'relative',
-  },
-  row: {
+  // The ticket's own body, laid out as a row. The ticket supplies the
+  // padding and the space the stub needs; this only decides the direction.
+  rowBody: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
   },
   checkbox: {
     width: 24,

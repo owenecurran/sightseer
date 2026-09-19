@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
 import { VisitCard } from '@/components/visit-card';
 import { Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -19,6 +21,13 @@ type FullReviewsViewProps = {
   // "Your rating: X" read-only overlay for places the viewer has
   // independently reviewed — see src/lib/own-ratings.ts.
   ownRatings?: Record<string, number>;
+  // Selection mode, for a picker. The postcard's own surface is spoken for —
+  // it turns over, its photograph zooms, two taps like it — so choosing one
+  // cannot be a tap on the card. It gets an explicit button underneath
+  // instead, which is the only affordance here that does not collide with
+  // something the card already does.
+  onSelectVisit?: (visitId: string) => void;
+  selectedVisitId?: string | null;
 };
 
 // One full review per row, as the same postcard the feed draws.
@@ -35,7 +44,14 @@ type FullReviewsViewProps = {
 // for that when someone actually switches to this mode, which is the right
 // trade for a view that is one of five and not the default. It also means
 // both screens got the new card without either of them changing.
-export function FullReviewsView({ items, photoUrls, viewerId, ownRatings }: FullReviewsViewProps) {
+export function FullReviewsView({
+  items,
+  photoUrls,
+  viewerId,
+  ownRatings,
+  onSelectVisit,
+  selectedVisitId,
+}: FullReviewsViewProps) {
   const bottomInset = useBottomTabInset();
   const scrollHandler = useHideOnScrollHandler();
 
@@ -155,6 +171,19 @@ export function FullReviewsView({ items, photoUrls, viewerId, ownRatings }: Full
                 <OwnRatingLine rating={ownRating} />
               </View>
             )}
+            {onSelectVisit && visit && (
+              <Pressable onPress={() => onSelectVisit(visit.id)}>
+                <ThemedView
+                  type={selectedVisitId === visit.id ? 'backgroundSelected' : 'backgroundElement'}
+                  style={styles.selectButton}>
+                  <ThemedText
+                    type="small"
+                    themeColor={selectedVisitId === visit.id ? 'text' : 'textSecondary'}>
+                    {selectedVisitId === visit.id ? 'Featured ✓' : 'Feature this one'}
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
+            )}
           </View>
         );
       }}
@@ -176,6 +205,12 @@ const styles = StyleSheet.create({
   },
   ownRating: {
     paddingHorizontal: Spacing.one,
+  },
+  selectButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: Spacing.one,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Spacing.four,
   },
   // Two thirds of the card's width, which is about what a landscape postcard
   // stands at — near enough that a row settling into place does not shove

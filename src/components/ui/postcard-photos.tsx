@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { PhotoLightbox } from '@/components/photo-lightbox';
@@ -19,6 +19,12 @@ type PostcardPhotosProps = {
   // face, so it keeps its own proportions instead of the postcard's.
   frameRatio?: number;
   onDoubleTap?: () => void;
+  // Fired once, when every tile this actually draws has its picture — or has
+  // given up on it. The card above holds itself back until then, so it
+  // appears whole rather than assembling a photograph at a time. Errors count
+  // as ready on purpose: a picture that will never arrive must not be able to
+  // keep a card off the screen.
+  onReady?: () => void;
 };
 
 // The picture side of a postcard.
@@ -47,10 +53,23 @@ export function PostcardPhotos({
   orientation,
   frameRatio,
   onDoubleTap,
+  onReady,
 }: PostcardPhotosProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const openAt = useCallback((index: number) => setSelectedIndex(index), []);
   const handleTilePress = usePhotoTaps(openAt, onDoubleTap);
+
+  // Which tiles have their picture. A ref rather than state because nothing
+  // here re-renders on it — the card above is the only thing that cares, and
+  // it is told once, when the last one lands.
+  const loaded = useRef<Set<number>>(new Set());
+  const announced = useRef(false);
+  const key = urls.join(',');
+  useEffect(() => {
+    // A different review reusing this component starts over.
+    loaded.current = new Set();
+    announced.current = false;
+  }, [key]);
 
   if (urls.length === 0) return null;
 
@@ -59,11 +78,46 @@ export function PostcardPhotos({
 
   const fit = urls.length === 1 ? 'contain' : 'cover';
 
-  const tile = (index: number) => (
-    <Pressable style={styles.tile} onPress={() => handleTilePress(index)}>
-      <LoadableImage source={{ uri: displayUrls[index] }} style={styles.fill} contentFit={fit} />
-    </Pressable>
-  );
+  // What the layouts below actually draw. Five photographs still make a
+  // four-tile grid, and the card must not wait on a fifth that is never
+  // rendered.
+  const tileCount = Math.min(urls.length, 4);
+
+  const reportLoaded = (index: number) => {
+    loaded.current.add(index);
+    if (announced.current || loaded.current.size < tileCount) return;
+    announced.current = true;
+    onReady?.();
+  };
+
+  const tile = (index: number) => {
+    // The small copy, shown while the big one is still coming.
+    //
+    // Only where the two differ, which in practice means the SINGLE-photo
+    // card. A grid already draws the thumbnail as its picture, and handing
+    // the same url in as its own placeholder would just be a second cache
+    // lookup for a byte-identical image.
+    //
+    // This is where the wait actually was: a one-photo review — the common
+    // shape — loaded the full 2048px original with nothing on screen behind
+    // it, while its 800px derivative sat unused in the bucket.
+    const placeholderUrl = thumbUrls?.[index];
+    const placeholder =
+      placeholderUrl && placeholderUrl !== displayUrls[index] ? { uri: placeholderUrl } : undefined;
+
+    return (
+      <Pressable style={styles.tile} onPress={() => handleTilePress(index)}>
+        <LoadableImage
+          source={{ uri: displayUrls[index] }}
+          placeholder={placeholder}
+          style={styles.fill}
+          contentFit={fit}
+          onLoad={() => reportLoaded(index)}
+          onError={() => reportLoaded(index)}
+        />
+      </Pressable>
+    );
+  };
 
   let content;
   if (urls.length === 1) {

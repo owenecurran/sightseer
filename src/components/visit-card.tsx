@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -105,6 +105,12 @@ const CAPTION_EDGE_INSET = 14;
 const CAPTION_EDGE_SHARE = CAPTION_EDGE_INSET / 400;
 // How long after one double tap another is ignored — see handleDoubleTap.
 const DOUBLE_TAP_GUARD_MS = 500;
+// How long a card will wait for its photographs before showing itself anyway.
+// Long enough to cover a slow connection, short enough that a wedged request
+// does not read as the feed being broken.
+const REVEAL_TIMEOUT_MS = 4000;
+// The fade in, once it is ready.
+const REVEAL_FADE_MS = 180;
 // How much of the name's band the region line is pulled back into, to sit
 // against the lettering rather than off it. See the call site.
 const REGION_TUCK_SHARE = 0.16;
@@ -264,6 +270,33 @@ export function VisitCard({
   const photos = visit.photoIds
     .map((id, i) => ({ id, url: photoUrls[id], ratio: visit.photoAspectRatios[i] }))
     .filter((p): p is { id: string; url: string; ratio: number | null } => p.url != null);
+
+  // Whether this card is still waiting to be worth looking at.
+  //
+  // Keyed on photoIds rather than on `photos`, which is the resolved list and
+  // is EMPTY until the presigned urls arrive. Reading readiness off that
+  // would call a card with four photographs ready a moment before it had any
+  // of them, which is the exact flicker this exists to remove.
+  const expectsPhotos = visit.photoIds.length > 0;
+  const [photosReady, setPhotosReady] = useState(false);
+  const revealed = !expectsPhotos || photosReady;
+
+  useEffect(() => {
+    if (!expectsPhotos || photosReady) return;
+    // A picture that never arrives must not be able to keep a card off the
+    // screen for good. PostcardPhotos already counts an error as ready, but
+    // that only covers a request that FAILS — one that hangs, on a flaky
+    // connection or behind a url that has quietly expired, reports nothing at
+    // all. After this the card shows regardless, photographs or not.
+    const timer = setTimeout(() => setPhotosReady(true), REVEAL_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [expectsPhotos, photosReady]);
+
+  const revealStyle = useAnimatedStyle(() => ({
+    // Faded rather than switched on: a card snapping from invisible to solid
+    // reads as a glitch, where a short fade reads as it arriving.
+    opacity: withTiming(revealed ? 1 : 0, { duration: REVEAL_FADE_MS }),
+  }));
 
   // The author's choice wins; otherwise the photos decide, which is what
   // every review written before the choice existed still does.
@@ -431,6 +464,7 @@ export function VisitCard({
           captionBelow && singlePictureRatio != null ? singlePictureRatio : undefined
         }
         onDoubleTap={handleDoubleTap}
+        onReady={() => setPhotosReady(true)}
       />
     ) : hasCoordinates ? (
       // A review with no photos gets the place itself as its picture. The
@@ -682,8 +716,19 @@ export function VisitCard({
                       //
                       // On this box rather than the text inside it, so it
                       // acts on the caption's own column directly.
+                      //
+                      // Two pull-backs, because there are two different pieces
+                      // of empty space between the name and this line and they
+                      // scale differently. The first is the name's: a share of
+                      // the band, because the name is fitted to the band and
+                      // grows with the card. The second is this line's own —
+                      // the part of its line box its letters do not reach,
+                      // which is a fixed number of points because the type is
+                      // a fixed size, and which differs per FACE. See
+                      // region.tuck.
                       [headline.region.above ? "marginBottom" : "marginTop"]:
-                        -frame.height * CAPTION_HEIGHT_SHARE * REGION_TUCK_SHARE,
+                        -frame.height * CAPTION_HEIGHT_SHARE * REGION_TUCK_SHARE -
+                        headline.region.tuck,
                     },
                   ]}
                   pointerEvents="none"
@@ -909,7 +954,13 @@ export function VisitCard({
       onLayout={(e) => setCardWidth(e.nativeEvent.layout.width)}
     >
       {byline}
-      <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
+      {/* Held back until the picture side has its pictures, then faded in.
+          OPACITY rather than not rendering it: the card has to be mounted to
+          load anything at all, and it has to occupy its height the whole time
+          or the feed shoves itself around as each one arrives. */}
+      <Animated.View style={revealStyle}>
+        <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
+      </Animated.View>
     </View>
   );
 }

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { AttachmentPreview, type PreviewData } from '@/components/attachment-preview';
+import { ReviewPickerModal } from '@/components/review-picker-modal';
 import { AttachmentTypePicker } from '@/components/attachment-type-picker';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { LocationSearchModal } from '@/components/location-search-modal';
@@ -16,11 +17,12 @@ import { Button } from '@/components/ui/button';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
-import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { PROFILE_PROMPT_CATEGORY_LABELS, PROFILE_PROMPTS, type ProfilePromptCategory } from '@/constants/profile-prompts';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useAuth } from '@/lib/auth-context';
+import { getMyVisitItems, type BoardVisitItem } from '@/lib/boards';
+import { getPhotoViewUrls } from '@/lib/photo-view';
 import { listMyBoards } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
 import { pickImageFromLibrary } from '@/lib/image-picker';
@@ -83,6 +85,7 @@ type LocalAttachment = {
   // 'review' only — whether the note text/rating stamp show at all (see
   // review-prompt-card.tsx).
   showNote: boolean;
+  showPostcard: boolean;
   showRatingStamp: boolean;
 };
 
@@ -107,6 +110,7 @@ function emptyAttachment(): LocalAttachment {
     displayMode: 'cover',
     gridPhotoIds: [],
     showNote: true,
+    showPostcard: true,
     showRatingStamp: true,
   };
 }
@@ -115,17 +119,6 @@ type OwnVisitOption = { id: string; placeName: string; rating: number | null; no
 type OwnBoardOption = { id: string; name: string };
 type OwnTravelBookOption = { id: string; title: string };
 
-// Full-page prompt editor, pushed from PromptCard (edit-profile.tsx) for
-// both "+ Add a prompt" (no promptId param) and "Edit" on an existing one
-// (promptId param) — see prompt-card.tsx's own comment for why this moved
-// off the inline expanding card it used to be. Loads everything itself
-// (the existing prompt if any, the user's own visits/boards/travel books,
-// and every other prompt's slug to grey out already-used ones) rather than
-// receiving it via route params, since expo-router params are string-only
-// and this is little more than what edit-profile.tsx already fetched.
-// Sized to sit inside a chip without setting its height — small enough that
-// the chip still reads as a chip.
-const VISIT_CHIP_STAMP_SIZE = 22;
 
 export default function PromptEditorScreen() {
   const { promptId } = useLocalSearchParams<{ promptId?: string }>();
@@ -137,6 +130,15 @@ export default function PromptEditorScreen() {
   const [position, setPosition] = useState(0);
   const [usedSlugs, setUsedSlugs] = useState<string[]>([]);
   const [ownVisits, setOwnVisits] = useState<OwnVisitOption[]>([]);
+  // The same shape the Latest reviews screen browses, so the picker below can
+  // BE that screen rather than a row of name chips. ownVisits above is still
+  // what the live preview reads a chosen review's name and rating out of.
+  const [visitItems, setVisitItems] = useState<BoardVisitItem[]>([]);
+  const [visitItemPhotoUrls, setVisitItemPhotoUrls] = useState<Record<string, string>>({});
+  // Which attachment the review sheet is open for, or null when it is shut.
+  // An index rather than a boolean because a prompt can carry several
+  // attachments and the sheet has to hand its answer back to the right one.
+  const [pickingForIndex, setPickingForIndex] = useState<number | null>(null);
   const [ownBoards, setOwnBoards] = useState<OwnBoardOption[]>([]);
   const [ownTravelBooks, setOwnTravelBooks] = useState<OwnTravelBookOption[]>([]);
 
@@ -183,6 +185,21 @@ export default function PromptEditorScreen() {
       setPosition(existing?.position ?? (prompts.length > 0 ? Math.max(...prompts.map((p) => p.position)) + 1 : 0));
       setOwnBoards(boards.map((b) => ({ id: b.id, name: b.name })));
       setOwnTravelBooks(travelBooks.map((b) => ({ id: b.id, title: b.title })));
+      // Browsable copies of the same reviews. Fetched separately from the
+      // lightweight visitsRes above because a browser needs what a chip did
+      // not: photographs, regions, and a shape the board views understand.
+      void (async () => {
+        try {
+          const items = await getMyVisitItems(session.user.id);
+          setVisitItems(items);
+          const photoIds = items.flatMap((item) => item.photoIds);
+          if (photoIds.length > 0) setVisitItemPhotoUrls(await getPhotoViewUrls(photoIds));
+        } catch {
+          // The picker falls back to showing nothing to browse; the editor
+          // itself still works.
+        }
+      })();
+
       setOwnVisits(
         (visitsRes.data ?? []).map((v) => ({
           id: v.id,
@@ -214,6 +231,7 @@ export default function PromptEditorScreen() {
               displayMode: a.displayMode ?? 'cover',
               gridPhotoIds: a.gridPhotoIds,
               showNote: a.showNote,
+              showPostcard: a.showPostcard,
               showRatingStamp: a.showRatingStamp,
             }))
           : [emptyAttachment()]
@@ -418,6 +436,7 @@ export default function PromptEditorScreen() {
         note: visit.note,
         photoUrl,
         showNote: a.showNote,
+        showPostcard: a.showPostcard,
         showRatingStamp: a.showRatingStamp,
       };
     }
@@ -527,6 +546,7 @@ export default function PromptEditorScreen() {
           displayMode: a.attachmentType === 'board' || a.attachmentType === 'travel_book' ? a.displayMode : null,
           gridPhotoIds: usesGrid ? a.gridPhotoIds : null,
           showNote: a.attachmentType === 'review' ? a.showNote : undefined,
+          showPostcard: a.attachmentType === 'review' ? a.showPostcard : undefined,
           showRatingStamp: a.attachmentType === 'review' ? a.showRatingStamp : undefined,
         });
       }
@@ -632,25 +652,25 @@ export default function PromptEditorScreen() {
 
               {!attachment.formatExpanded && attachment.attachmentType === 'review' && (
                 <>
-                  <View style={styles.chipRow}>
-                    {ownVisits.length === 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        No reviews yet.
-                      </ThemedText>
-                    )}
-                    {ownVisits.map((v) => (
-                      <Pressable key={v.id} onPress={() => handleSelectVisit(index, v.id)}>
-                        <ThemedView
-                          type={attachment.visitId === v.id ? 'backgroundSelected' : 'background'}
-                          style={[styles.chip, styles.visitChip]}>
-                          <ThemedText type="small">{v.placeName}</ThemedText>
-                          {v.rating != null && (
-                            <RatingGlassBadgeGated rating={v.rating} size={VISIT_CHIP_STAMP_SIZE} seed={v.id} />
-                          )}
-                        </ThemedView>
-                      </Pressable>
-                    ))}
-                  </View>
+                  {/* Opens the Latest reviews screen in a sheet. It was a
+                      row of name chips before — no ordering, no photographs,
+                      no way to see what you were about to put on your
+                      profile — and then briefly the browser inline, which put
+                      one scroll view inside another and needed an arbitrary
+                      fixed height to stop it swallowing the editor. The sheet
+                      has nothing above or below it to argue with. */}
+                  <Button
+                    label={
+                      attachment.visitId
+                        ? `Featuring: ${
+                            ownVisits.find((v) => v.id === attachment.visitId)?.placeName ??
+                            'a review'
+                          }`
+                        : 'Choose a review'
+                    }
+                    variant="secondary"
+                    onPress={() => setPickingForIndex(index)}
+                  />
 
                   {/* Only worth showing a choice once there's actually more
                       than one photo to choose between. */}
@@ -681,7 +701,29 @@ export default function PromptEditorScreen() {
                       review-prompt-card.tsx's useSidebarLayout. Rating off
                       just hides the floating corner stamp. Independent of
                       each other. */}
+                  {/* The postcard is the default, and it is the whole card —
+                      so the two options below it, which are options on the
+                      BESPOKE layout, only appear once it is turned off.
+                      Showing all three together invited the obvious
+                      question of why hiding the review text did nothing. */}
                   {attachment.visitId && (
+                    <View style={styles.chipRow}>
+                      <Pressable
+                        onPress={() =>
+                          updateAttachment(index, { showPostcard: !attachment.showPostcard })
+                        }>
+                        <ThemedView
+                          type={attachment.showPostcard ? 'backgroundSelected' : 'background'}
+                          style={styles.chip}>
+                          <ThemedText type="small">
+                            {attachment.showPostcard ? 'Postcard ✓' : 'Show as postcard'}
+                          </ThemedText>
+                        </ThemedView>
+                      </Pressable>
+                    </View>
+                  )}
+
+                  {attachment.visitId && !attachment.showPostcard && (
                     <View style={styles.chipRow}>
                       <Pressable onPress={() => updateAttachment(index, { showNote: !attachment.showNote })}>
                         <ThemedView type={attachment.showNote ? 'backgroundSelected' : 'background'} style={styles.chip}>
@@ -817,6 +859,19 @@ export default function PromptEditorScreen() {
           }}
         />
       </SafeAreaView>
+      <ReviewPickerModal
+        visible={pickingForIndex != null}
+        onClose={() => setPickingForIndex(null)}
+        items={visitItems}
+        photoUrls={visitItemPhotoUrls}
+        viewerId={session?.user.id}
+        selectedVisitId={
+          pickingForIndex != null ? attachments[pickingForIndex]?.visitId : null
+        }
+        onSelectVisit={(visitId) => {
+          if (pickingForIndex != null) handleSelectVisit(pickingForIndex, visitId);
+        }}
+      />
     </ThemedView>
   );
 }
