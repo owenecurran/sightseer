@@ -1,0 +1,21 @@
+-- The two digest jobs are not an API.
+--
+-- run_friend_review_digest() and run_nearby_review_digest() walk every user
+-- and insert notifications, which notify_push() then turns into real push
+-- notifications. Neither checks who is calling, and both were callable by
+-- anon — so anyone holding the public anon key could have invoked either on
+-- a loop and pushed to the entire user base, repeatedly, for free.
+--
+-- Nothing legitimate loses access. They are invoked by cron.schedule (see
+-- 20260805090300 and 20260829140000), which runs as the job owner rather
+-- than as a client role, and grepping src/ finds no call sites — only the
+-- generated entries in database.types.ts, which are types, not calls.
+--
+-- Deliberately NOT extended to the predicate helpers that sit alongside
+-- these in the "callable by anon" list — is_blocked, is_banned,
+-- can_view_user_content and friends. Those are used inside 24 RLS policies,
+-- and a policy's expression is evaluated with the querying user's own
+-- permissions: revoking EXECUTE would make every ordinary query against
+-- those tables fail. They expose a boolean apiece, and they are load-bearing.
+revoke all on function public.run_friend_review_digest() from public, anon, authenticated;
+revoke all on function public.run_nearby_review_digest() from public, anon, authenticated;

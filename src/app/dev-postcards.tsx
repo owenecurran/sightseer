@@ -1,3 +1,4 @@
+import { Redirect } from 'expo-router';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -12,9 +13,10 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 // browser was doing the checking. This renders the card directly, from
 // fixtures, so `node scripts/web-shot.mjs dev-postcards` is the whole loop.
 //
-// DEV ONLY. The route is exempted from the signed-out redirect in
-// _layout.tsx under the same __DEV__ check, so it does not exist in a release
-// build at all — see that file. Fixtures rather than a real review on purpose:
+// DEV ONLY, and enforced in the component below rather than by the router —
+// the __DEV__ check in _layout.tsx only exempts this path from the signed-out
+// redirect, which is a different thing entirely and used to leave the gallery
+// reachable in production. Fixtures rather than a real review on purpose:
 // the cases worth looking at are the LAYOUTS (a square picture, a wide one, a
 // grid, none at all), and waiting for a feed to happen to contain all four is
 // not a test.
@@ -247,6 +249,23 @@ function fixture({ key, photos, rating, id, tags, placeName, stateCountry }: Cas
 function noop() {}
 
 export default function DevPostcards() {
+  // Unreachable in a release build.
+  //
+  // This is NOT belt-and-braces over something _layout.tsx already does.
+  // Found while auditing before beta: the only thing that file does with
+  // this path is EXEMPT it from the signed-out redirect, which means a
+  // signed-IN user in production could open /dev-postcards and get the
+  // fixture gallery. It was in the production web export. No real data is
+  // exposed — every card here is made up — but a dev surface in a public
+  // build is a dev surface in a public build.
+  //
+  // The guard lives here rather than in the layout because the route is not
+  // registered as a Stack.Screen at all: expo-router picks it up from the
+  // file, so there is no Stack.Protected to hang a condition on. `__DEV__`
+  // is a compile-time constant, so in a release bundle this is `if (true)`
+  // and the minifier drops everything below it.
+  if (!__DEV__) return <Redirect href="/" />;
+
   return (
     <ThemedView type="screen" style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>

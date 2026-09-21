@@ -12,6 +12,7 @@ import { FloatingNavBar } from '@/components/floating-nav-bar';
 import { WebLanding } from '@/components/web-landing';
 import { KeyboardProviderWrapper } from '@/components/keyboard-provider-wrapper';
 import { PushPrimingModal } from '@/components/push-priming-modal';
+import { SiteMeta } from '@/components/site-meta';
 import { TAB_ROUTES } from '@/constants/tab-routes';
 import { NavBarVisibilityProvider } from '@/hooks/use-hide-on-scroll';
 import { TabPagerProvider } from '@/hooks/use-tab-pager';
@@ -52,8 +53,10 @@ const INVITE_PATH_PREFIX = '/i/';
 // screen that shows a card is behind auth, which made checking the WEB build
 // need a signed-in browser — this is the way around that.
 //
-// __DEV__ only, so a release build redirects it away like any other unknown
-// path and the gallery is unreachable.
+// __DEV__ only. Note what this does and does not do: it exempts the path
+// from the SIGNED-OUT redirect, nothing more. It does not keep the gallery
+// out of a release build — a signed-in user reached it in production until
+// the screen itself started redirecting. See dev-postcards.tsx.
 const DEV_PREVIEW_PATH = '/dev-postcards';
 
 function isDevPreviewPath(pathname: string): boolean {
@@ -212,13 +215,26 @@ function RootNavigator() {
   // same landing and React has nothing to reconcile. Rendering the component
   // directly rather than routing to it keeps that guarantee — the router's
   // own state is not settled this early.
+  // SiteMeta rides along on BOTH arms rather than sitting inside the tree
+  // below, because for every path that is not a landing path this branch is
+  // the entire prerendered document — returning bare null here is what left
+  // the bare domain, /visit/*, /user/* and /place/* with an empty <title>
+  // and no card at all.
   if (isLoading) {
-    if (Platform.OS === 'web' && isLandingPath(pathname)) return <WebLanding />;
-    return null;
+    if (Platform.OS === 'web' && isLandingPath(pathname)) {
+      return (
+        <>
+          <SiteMeta />
+          <WebLanding />
+        </>
+      );
+    }
+    return <SiteMeta />;
   }
 
   return (
     <NavBarVisibilityProvider>
+      <SiteMeta />
       <TabPagerProvider
         value={{ pagerRef, activeIndex, setActiveIndexInternal: setActiveIndex, setActivePage }}
       >

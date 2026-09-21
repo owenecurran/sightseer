@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { Image } from 'expo-image';
-import Head from 'expo-router/head';
 import { router } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
@@ -10,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { BrandColors, Colors, Spacing } from '@/constants/theme';
 import { buildLogoDataUri, LOGO_ASPECT } from '@/lib/brand-logo';
 import { getLandingImageUrls } from '@/lib/landing-images';
-import { SITE_ORIGIN } from '@/lib/site';
 import { hasSupportEmail, SUPPORT_EMAIL, hasPrivacyPolicy, PRIVACY_POLICY_URL } from '@/lib/legal';
 import { detectDevicePlatform, storeUrlFor, type DevicePlatform } from '@/lib/stores';
 
@@ -71,32 +69,19 @@ export function WebLanding({ inviter = null }: WebLandingProps) {
 
   const inviterName = inviter?.name ?? (inviter?.handle ? `@${inviter.handle}` : null);
 
-  // What a link preview shows when this page is pasted into a message —
-  // which, for an invite, is the normal way it is first seen. The inviter's
-  // name is deliberately not in the title: the code is only resolvable
-  // client-side after a round trip, so a title promising a name would be
-  // wrong in exactly the place it matters, the crawler's copy.
-  const title = 'Sightseer — keep the places you have been';
-  const description =
-    'Record where you have been, rate it, and share that with people you choose.';
+  // The link-preview tags this page used to carry itself now come from
+  // SiteMeta in the root navigator, so that every OTHER route gets them too
+  // — this component only ever covered `/` and `/i/[code]`, and the bare
+  // domain was previewing as a naked link because of it. The copy that was
+  // here is unchanged, just moved; see src/components/site-meta.tsx.
+  //
+  // The inviter's name is still deliberately absent from the title. The
+  // code is only resolvable client-side after a round trip, so a title
+  // promising a name would be wrong in exactly the place it matters — the
+  // crawler's copy, which never runs the effect that resolves it.
 
   return (
     <>
-      <Head>
-        <title>{title}</title>
-        <meta name="description" content={description} />
-        <meta property="og:title" content={title} />
-        <meta property="og:description" content={description} />
-        <meta property="og:type" content="website" />
-        {/* Absolute, and pointed at the site's own origin rather than a
-            signed URL: the landing photos are signed and expire, so a
-            crawler that fetched one later would get a 403 and show a broken
-            card. This file is served from public/ at the site root, which is
-            as stable as the domain itself. */}
-        <meta property="og:image" content={`${SITE_ORIGIN}/sightseer-logo.png`} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:image" content={`${SITE_ORIGIN}/sightseer-logo.png`} />
-      </Head>
       <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.scrollContent}
