@@ -1,3 +1,4 @@
+import { authErrorMessage } from '@/lib/auth-errors';
 import { supabase } from '@/lib/supabase';
 
 // Phone numbers, proved by SMS.
@@ -41,9 +42,15 @@ export function toE164(raw: string): string {
   return `+${digits}`;
 }
 
+// Through authErrorMessage, never raw.
+//
+// GoTrue passes the SMS provider's own text straight through, and Twilio
+// writes for whoever administers the account — a person holding a phone got
+// "Primary compliance profile is not approved... complete the KYC process in
+// Trust Hub", which is true and useless to them. The same helper also catches
+// a serialised Response, so raw JSON cannot reach a text field either.
 function failure(error: unknown, fallback: string): OtpResult {
-  const message = error instanceof Error ? error.message : fallback;
-  return { ok: false, message };
+  return { ok: false, message: authErrorMessage(error, fallback) };
 }
 
 // ---------------------------------------------------------------------

@@ -13,6 +13,7 @@ import {
   isInlineContactAccessAvailable,
 } from "@/components/inline-contact-access";
 import { PhoneVerify } from "@/components/phone-verify";
+import { syncVerifiedContactKeys } from "@/lib/phone-auth";
 import { useAuth } from "@/lib/auth-context";
 import {
   getDeviceContactsHashed,
@@ -80,6 +81,35 @@ export function FindFriendsPanel({ compact = false }: FindFriendsPanelProps) {
   // hashed it, so anybody could claim anybody's — harmless while nobody had
   // one, and not something to hand a beta.
   const isFindable = profile?.hashed_phone != null;
+
+  // Somebody who signed up WITH a phone number arrives already verified, but
+  // the hash is only derived where the verification happens — and for that
+  // route it happens before this screen exists, with no profile row to write
+  // to yet. Without this they would reach the sign-up step, be told to verify
+  // a number they had just verified, and be charged a second time for it.
+  //
+  // Deliberately conditional on a confirmed phone rather than run for
+  // everybody: the same call also derives the email hash and flips
+  // discoverable_by_contacts on, and doing that unprompted would enrol every
+  // existing account into contact discovery without anyone agreeing to it.
+  // Proving a phone number IS the agreement.
+  const hasVerifiedPhone = session?.user.phone_confirmed_at != null;
+  useEffect(() => {
+    if (!hasVerifiedPhone || isFindable) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await syncVerifiedContactKeys();
+        if (!cancelled) await refreshProfile();
+      } catch {
+        // The number is still verified; the screen simply offers the
+        // verify panel again, which lands in the same place.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasVerifiedPhone, isFindable, refreshProfile]);
 
   async function handleSync() {
     setStatus("loading");

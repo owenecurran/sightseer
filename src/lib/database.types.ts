@@ -299,6 +299,50 @@ export type Database = {
           },
         ]
       }
+      client_errors: {
+        Row: {
+          app_version: string | null
+          component_stack: string | null
+          context: string
+          created_at: string
+          id: string
+          message: string
+          platform: string | null
+          stack: string | null
+          user_id: string
+        }
+        Insert: {
+          app_version?: string | null
+          component_stack?: string | null
+          context: string
+          created_at?: string
+          id?: string
+          message: string
+          platform?: string | null
+          stack?: string | null
+          user_id: string
+        }
+        Update: {
+          app_version?: string | null
+          component_stack?: string | null
+          context?: string
+          created_at?: string
+          id?: string
+          message?: string
+          platform?: string | null
+          stack?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_errors_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       comments: {
         Row: {
           body: string
@@ -2136,6 +2180,17 @@ export type Database = {
       }
       redeem_invite: { Args: { p_code: string }; Returns: boolean }
       refresh_harmony_for_user: { Args: { uid: string }; Returns: number }
+      report_client_error: {
+        Args: {
+          p_app_version?: string
+          p_component_stack?: string
+          p_context: string
+          p_message: string
+          p_platform?: string
+          p_stack?: string
+        }
+        Returns: undefined
+      }
       resolve_invite: {
         Args: { p_code: string }
         Returns: {

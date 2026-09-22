@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BackLink } from '@/components/ui/back-link';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { PaperPanel } from '@/components/ui/paper-panel';
+import { EmailLink } from '@/components/email-link';
 import { PhoneVerify } from '@/components/phone-verify';
 import { SettingsRow } from '@/components/ui/settings-row';
 import { ThemedText } from '@/components/themed-text';
@@ -245,6 +246,20 @@ export default function SettingsScreen() {
               privacy toggle it has nothing to do with. */}
           <PaperPanel seed="settings-account" accentIndex={3}>
             <ThemedText type="sectionLabel">Account</ThemedText>
+
+            {/* An account made with a phone number has no address, and
+                everything that reaches somebody through an inbox then has
+                nowhere to go — password recovery first among them. Until one
+                is added, losing the phone number loses the account, so this
+                sits at the top of the card rather than under the providers. */}
+            {/* Falsy rather than == null: GoTrue has been seen to return an
+                empty string for an absent address as well as omitting it. */}
+            {!session?.user.email && (
+              <EmailLink
+                caption="This account has no email address. Add one so you can recover it if you ever lose access to your phone number."
+                onLinked={() => void refreshProfile()}
+              />
+            )}
 
             {Platform.OS === 'ios' && (
               <Button
