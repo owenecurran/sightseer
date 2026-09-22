@@ -64,6 +64,7 @@ export default function OnboardingScreen() {
         <ThemedView style={styles.form}>
           <TextField placeholder="Username" value={handle} onChangeText={setHandle} />
           <TextField placeholder="Name" value={name} onChangeText={setName} autoCapitalize="words" />
+
           {error && (
             <ThemedText type="small" themeColor="textSecondary">
               {error}

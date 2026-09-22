@@ -9,6 +9,7 @@
  *   node scripts/web-shot.mjs <path> [outfile] [--url=http://host:port]
  *
  *   node scripts/web-shot.mjs /sign-in
+ *   node scripts/web-shot.mjs i/ABC123 --device=ios
  *   node scripts/web-shot.mjs / feed.png --url=http://localhost:8081
  *
  * Point it at whatever is serving the app: `npx expo start --web` for the dev
@@ -45,8 +46,30 @@ const height = Number(flags.height ?? 932);
 // Generous, because a cold Metro dev server bundles on first request.
 const timeout = Number(flags.timeout ?? 120_000);
 
+// The app branches on the user agent, not on the viewport — detectDevicePlatform
+// in src/lib/stores.ts sniffs it to decide which store to offer, and the invite
+// landing shows a completely different screen to a phone. A narrow viewport
+// alone therefore does NOT exercise the phone path: Playwright still reports
+// desktop Chrome and you screenshot the desktop page at phone width.
+//
+//   --device=ios | --device=android   pick a stock phone UA
+//   --ua="..."                        supply one verbatim
+const DEVICE_AGENTS = {
+  ios: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+  android:
+    'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36',
+};
+const userAgent = flags.ua ?? (flags.device ? DEVICE_AGENTS[flags.device] : undefined);
+if (flags.device && !userAgent) {
+  console.log(`unknown --device=${flags.device}; expected one of ${Object.keys(DEVICE_AGENTS).join(', ')}`);
+  process.exit(1);
+}
+
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width, height } });
+const page = await browser.newPage({
+  viewport: { width, height },
+  ...(userAgent ? { userAgent, isMobile: true, hasTouch: true } : {}),
+});
 
 const logs = [];
 page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));

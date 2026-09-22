@@ -49,3 +49,7 @@ example
 *-firebase-adminsdk-*.json
 service-account*.json
 firebase-service-account*.json
+
+# Python bytecode from scripts/
+__pycache__/
+*.pyc

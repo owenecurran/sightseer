@@ -338,6 +338,32 @@ export type Database = {
           },
         ]
       }
+      contact_hashes: {
+        Row: {
+          created_at: string
+          owner_id: string
+          peppered_hash: string
+        }
+        Insert: {
+          created_at?: string
+          owner_id: string
+          peppered_hash: string
+        }
+        Update: {
+          created_at?: string
+          owner_id?: string
+          peppered_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_hashes_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       country_continents: {
         Row: {
           continent_name: string
@@ -1589,9 +1615,11 @@ export type Database = {
           discoverable_by_contacts: boolean
           feed_last_viewed_at: string | null
           handle: string | null
+          has_seen_find_friends: boolean
           has_set_demographics: boolean
           has_set_privacy: boolean
           has_shared_invite: boolean
+          hashed_email: string | null
           hashed_phone: string | null
           home_place_id: string | null
           id: string
@@ -1609,6 +1637,7 @@ export type Database = {
           map_default_zoom: number | null
           name: string | null
           notify_comments: boolean
+          notify_contact_joins: boolean
           notify_follows: boolean
           notify_friend_activity: boolean
           notify_friend_digest: boolean
@@ -1631,9 +1660,11 @@ export type Database = {
           discoverable_by_contacts?: boolean
           feed_last_viewed_at?: string | null
           handle?: string | null
+          has_seen_find_friends?: boolean
           has_set_demographics?: boolean
           has_set_privacy?: boolean
           has_shared_invite?: boolean
+          hashed_email?: string | null
           hashed_phone?: string | null
           home_place_id?: string | null
           id: string
@@ -1651,6 +1682,7 @@ export type Database = {
           map_default_zoom?: number | null
           name?: string | null
           notify_comments?: boolean
+          notify_contact_joins?: boolean
           notify_follows?: boolean
           notify_friend_activity?: boolean
           notify_friend_digest?: boolean
@@ -1673,9 +1705,11 @@ export type Database = {
           discoverable_by_contacts?: boolean
           feed_last_viewed_at?: string | null
           handle?: string | null
+          has_seen_find_friends?: boolean
           has_set_demographics?: boolean
           has_set_privacy?: boolean
           has_shared_invite?: boolean
+          hashed_email?: string | null
           hashed_phone?: string | null
           home_place_id?: string | null
           id?: string
@@ -1693,6 +1727,7 @@ export type Database = {
           map_default_zoom?: number | null
           name?: string | null
           notify_comments?: boolean
+          notify_contact_joins?: boolean
           notify_follows?: boolean
           notify_friend_activity?: boolean
           notify_friend_digest?: boolean
@@ -1895,6 +1930,7 @@ export type Database = {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
       }
+      clear_contact_hashes: { Args: never; Returns: undefined }
       deepest_common_area: { Args: { p_ids: string[] }; Returns: string }
       discover_half_life_days: { Args: never; Returns: number }
       discover_prior_weight: { Args: never; Returns: number }
@@ -2126,6 +2162,23 @@ export type Database = {
       store_place_boundary: {
         Args: { geojson: Json; place_id: string }
         Returns: undefined
+      }
+      sync_contact_hashes: {
+        Args: { p_hashes: string[] }
+        Returns: {
+          handle: string
+          hashed_phone: string
+          id: string
+          is_private: boolean
+          name: string
+        }[]
+      }
+      sync_verified_contact_keys: {
+        Args: never
+        Returns: {
+          has_email: boolean
+          has_phone: boolean
+        }[]
       }
       upgrade_place_details: {
         Args: {

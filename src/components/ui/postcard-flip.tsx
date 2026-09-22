@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { StyleSheet, View } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
 import { hapticFlip } from '@/lib/haptics';
+import { markCardDragEnded, markCardDragStarted } from '@/lib/card-drag-guard';
 import { usePagerSwipeLock } from '@/hooks/use-tab-pager';
 import Animated, {
   interpolate,
@@ -138,6 +139,14 @@ export function useFlipGesture(
         // a postcard's bounds cannot page across to Search.
         runOnJS(setPagerLocked)(true);
       })
+      .onStart(() => {
+        // Activation, not contact: this fires only once the finger has gone
+        // ACTIVATE_X sideways, which is exactly the point at which the
+        // interaction stops being a possible tap. On web the Pressable
+        // underneath will still get its pointerup, so this is what tells it
+        // to ignore it. See src/lib/card-drag-guard.ts.
+        runOnJS(markCardDragStarted)();
+      })
       .onUpdate((e) => {
         move(e.translationX);
       })
@@ -155,6 +164,11 @@ export function useFlipGesture(
       })
       .onFinalize(() => {
         release(0, 0);
+        // Paired with onStart above, and on onFinalize for the same reason
+        // the pager unlock is: it is the one callback that fires for every
+        // outcome. A drag that never cleared its offsets leaves the flag
+        // untouched, so an ordinary tap is unaffected.
+        runOnJS(markCardDragEnded)();
         // onFinalize rather than onEnd, because it is the one that fires for
         // every outcome — the drag completing, the drag failing its offsets
         // and handing the touch back, the gesture being cancelled. A lock

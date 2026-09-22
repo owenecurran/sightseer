@@ -6,6 +6,7 @@ import { LoadableImage } from '@/components/ui/loadable-image';
 import { Spacing } from '@/constants/theme';
 import { usePhotoTaps } from '@/hooks/use-photo-taps';
 import { POSTCARD_FRAME_RATIO, type PostcardOrientation } from '@/lib/postcard-orientation';
+import { guardCardPress } from '@/lib/card-drag-guard';
 
 type PostcardPhotosProps = {
   urls: string[];
@@ -106,7 +107,7 @@ export function PostcardPhotos({
       placeholderUrl && placeholderUrl !== displayUrls[index] ? { uri: placeholderUrl } : undefined;
 
     return (
-      <Pressable style={styles.tile} onPress={() => handleTilePress(index)}>
+      <Pressable style={styles.tile} onPress={guardCardPress(() => handleTilePress(index))}>
         <LoadableImage
           source={{ uri: displayUrls[index] }}
           placeholder={placeholder}

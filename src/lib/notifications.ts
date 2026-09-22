@@ -11,7 +11,12 @@ export type NotificationType =
   | 'friend_visit'
   | 'nearby_review_digest'
   | 'tagged'
-  | 'friend_review_digest';
+  | 'friend_review_digest'
+  // Somebody whose number is in your contacts has joined. See
+  // 20260922120000_contact_joined.sql — the trigger fires when they first
+  // make their number matchable, not when the account was created, because
+  // that is the only moment the two can be connected.
+  | 'contact_joined';
 
 export type AppNotification = {
   id: string;

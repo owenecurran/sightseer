@@ -17,6 +17,31 @@ export const hasAppStoreLink = APP_STORE_URL.length > 0;
 export const hasPlayStoreLink = PLAY_STORE_URL.length > 0;
 export const hasStoreLinks = hasAppStoreLink || hasPlayStoreLink;
 
+// ---------------------------------------------------------------------
+// TestFlight — the interim iOS route, until there is a listing
+// ---------------------------------------------------------------------
+//
+// ⚠️ PLACEHOLDERS, same contract as the two above: guarded everywhere, so
+// filling either one in is the whole change and leaving them empty degrades
+// to "continue in the browser" rather than to a broken button.
+//
+// Both exist because they fail in different places. The public join link is
+// the one-tap path, but it only works on a device that already has
+// TestFlight installed — on anything else it opens a web page that asks the
+// visitor to go and get TestFlight first, and people bounce off that. The
+// redeem code is the manual fallback for exactly that case, and is also the
+// only thing that works if Apple ever caps the public link's tester slots.
+//
+// TESTFLIGHT_URL is the full https://testflight.apple.com/join/XXXXXXXX URL.
+// TESTFLIGHT_CODE is the bare code — the XXXXXXXX part — shown as text to
+// be typed into TestFlight's "Redeem" box by hand.
+export const TESTFLIGHT_URL = '';
+export const TESTFLIGHT_CODE = '';
+
+export const hasTestFlightLink = TESTFLIGHT_URL.length > 0;
+export const hasTestFlightCode = TESTFLIGHT_CODE.length > 0;
+export const hasTestFlight = hasTestFlightLink || hasTestFlightCode;
+
 export type DevicePlatform = 'ios' | 'android' | 'desktop';
 
 // Which store, if any, to offer this visitor.
@@ -53,4 +78,36 @@ export function storeUrlFor(platform: DevicePlatform): string | null {
   if (platform === 'ios') return hasAppStoreLink ? APP_STORE_URL : null;
   if (platform === 'android') return hasPlayStoreLink ? PLAY_STORE_URL : null;
   return null;
+}
+
+// What a phone can actually install from right now, as one value rather than
+// as three booleans every caller has to recombine.
+//
+// Ordered by preference, not by platform: a real listing beats TestFlight,
+// TestFlight beats nothing, and "nothing" is a first-class answer rather
+// than a null that each screen has to invent copy for. Android has no
+// interim path at all — there is no Play equivalent of a public TestFlight
+// link that works without a Console opt-in URL — so it goes straight from
+// `store` to `none`, and the browser is what it is offered instead.
+export type InstallTarget =
+  | { kind: 'store'; url: string }
+  | { kind: 'testflight'; url: string | null; code: string | null }
+  | { kind: 'none' };
+
+export function installTargetFor(platform: DevicePlatform): InstallTarget {
+  if (platform === 'ios') {
+    if (hasAppStoreLink) return { kind: 'store', url: APP_STORE_URL };
+    if (hasTestFlight) {
+      return {
+        kind: 'testflight',
+        url: hasTestFlightLink ? TESTFLIGHT_URL : null,
+        code: hasTestFlightCode ? TESTFLIGHT_CODE : null,
+      };
+    }
+    return { kind: 'none' };
+  }
+  if (platform === 'android') {
+    return hasPlayStoreLink ? { kind: 'store', url: PLAY_STORE_URL } : { kind: 'none' };
+  }
+  return { kind: 'none' };
 }

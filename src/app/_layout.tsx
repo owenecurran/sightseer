@@ -85,6 +85,7 @@ function RootNavigator() {
   // Null until storage answers — see the guard below for why that matters.
   const { seen: tutorialSeen } = useTutorialSeen();
   const hasSetPrivacy = profile?.has_set_privacy === true;
+  const hasSeenFindFriends = profile?.has_seen_find_friends === true;
   const hasPassedInviteGate =
     profile?.has_shared_invite === true || profile?.invite_exempt === true;
   // Supersedes every other gate below, including terms and onboarding: an
@@ -324,6 +325,25 @@ function RootNavigator() {
               }
             >
               <Stack.Screen name="invite-gate" />
+            </Stack.Protected>
+
+            {/* Both halves of contact matching, as one step. Placed after
+                the invite gate because the two are the same conversation
+                from opposite ends — that one is about the people you bring,
+                this one about the people already here. */}
+            <Stack.Protected
+              guard={
+                isAuthenticated &&
+                !isBanned &&
+                hasAcceptedTerms &&
+                hasCompletedOnboarding &&
+                hasSetDemographics &&
+                hasSetPrivacy &&
+                hasPassedInviteGate &&
+                !hasSeenFindFriends
+              }
+            >
+              <Stack.Screen name="find-friends" />
             </Stack.Protected>
 
             {/* How the app works, once per install — see lib/tutorial.ts.

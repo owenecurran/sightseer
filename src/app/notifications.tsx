@@ -77,6 +77,11 @@ function describe(notification: AppNotification, actors: { name: string }[]): st
       return `${notification.actorName} tagged you in a review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
     case 'follow':
       return `${notification.actorName} started following you`;
+    // Named from their own profile, never from whatever you saved them as —
+    // the server stores a peppered hash of the number and nothing else, so
+    // your label for them never left your phone.
+    case 'contact_joined':
+      return `${notification.actorName} is on Sightseer — they're in your contacts`;
     case 'friend_review_digest': {
       const missed = notification.digestReviewCount ?? 0;
       return `You missed ${missed} review${missed === 1 ? '' : 's'} from people you follow`;
@@ -134,7 +139,11 @@ export default function NotificationsScreen() {
             setFollowBack(
               Object.fromEntries(
                 list
-                  .filter((n) => n.type === 'follow' && n.actorUserId)
+                  // contact_joined earns a button for the same reason
+                  // follow does: the whole point of being told is that you
+                  // might want to follow them, and making that a trip to
+                  // their profile loses most of the people who would.
+                  .filter((n) => (n.type === 'follow' || n.type === 'contact_joined') && n.actorUserId)
                   .map((n) => [n.actorUserId!, followed.has(n.actorUserId!) ? 'following' : 'none']),
               ),
             );
@@ -202,6 +211,7 @@ export default function NotificationsScreen() {
         }
         break;
       case 'follow':
+      case 'contact_joined':
         if (notification.actorUserId) {
           router.push({ pathname: '/user/[id]', params: { id: notification.actorUserId } });
         }
@@ -298,7 +308,15 @@ export default function NotificationsScreen() {
                         disabled={state === 'working'}>
                         <ThemedView type="backgroundSelected" style={styles.followButton}>
                           <ThemedText type="smallBold">
-                            {state === 'working' ? '…' : 'Follow back'}
+                            {/* "Follow back" only when there is something to
+                                follow back. Someone who simply joined has not
+                                followed you, and telling them they have is a
+                                small lie the button does not need. */}
+                            {state === 'working'
+                              ? '…'
+                              : item.latest.type === 'follow'
+                                ? 'Follow back'
+                                : 'Follow'}
                           </ThemedText>
                         </ThemedView>
                       </Pressable>

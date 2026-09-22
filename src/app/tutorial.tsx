@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -9,10 +9,15 @@ import { Button } from '@/components/ui/button';
 import { ChoiceCard } from '@/components/ui/choice-card';
 import { PostcardFlip } from '@/components/ui/postcard-flip';
 import { PostcardPaper } from '@/components/ui/postcard-paper';
+import { VisitCard } from '@/components/visit-card';
 import { TicketCard } from '@/components/ui/ticket-card';
 import { BrandColors, MaxContentWidth, Spacing } from '@/constants/theme';
 import { headlineTreatmentFor } from '@/lib/headline-style';
 import { POSTCARD_FRAME_RATIO } from '@/lib/postcard-orientation';
+import { useAuth } from '@/lib/auth-context';
+import { getVisitsByIds, type FeedVisit } from '@/lib/feed';
+import { getAvatarViewUrls } from '@/lib/avatar';
+import { getPhotoViewUrls } from '@/lib/photo-view';
 import { useTutorialSeen } from '@/lib/tutorial';
 import { sheetFor } from '@/lib/postcard-stock';
 
@@ -36,8 +41,27 @@ import { sheetFor } from '@/lib/postcard-stock';
 // still gets to see the back and still gets into the app.
 const HINT_AFTER_MS = 6000;
 
-// Fixed, so the demo card looks the same on every install.
+// Fixed, so the fallback card looks the same on every install.
 const DEMO_SEED = 'tutorial-card';
+
+// The review the first page teaches on.
+//
+// A REAL one, fetched by id, rather than a replica assembled here. The page
+// is trying to say "this is what every review in the app is", and a mock-up
+// that drifts from the real card teaches the wrong thing the moment the real
+// one changes. Fetching it also means the back carries a real note, a real
+// rating and real tags, which is exactly the thing people were not finding.
+//
+// This one is @owen's Pike Place Market review. It has to be a review every
+// viewer is allowed to see, because the people meeting it have had an
+// account for about a minute: RLS decides, and a private or blocked author
+// returns nothing at all. That account is public, so the visits_select
+// policy's `is_private = false` branch lets a brand-new user read it
+// without following anybody.
+//
+// Empty falls back to the printed demo card below, so changing or clearing
+// this is safe — the tutorial keeps working either way.
+const TUTORIAL_VISIT_ID = '9433a6cd-4d06-4299-9461-2af1914b0419';
 
 type Page = 'flip' | 'review' | 'collect';
 const PAGES: Page[] = ['flip', 'review', 'collect'];
@@ -48,6 +72,56 @@ export default function TutorialScreen() {
   const [isFlipped, setIsFlipped] = useState(false);
   const [hasFlipped, setHasFlipped] = useState(false);
   const [showFlipHelp, setShowFlipHelp] = useState(false);
+
+  // The real review, when there is one to fetch. `undefined` means still
+  // loading, `null` means there is nothing usable — no id configured, not
+  // visible to this viewer, or the request failed — and either way the
+  // printed demo card below takes over.
+  const { session } = useAuth();
+  const [realVisit, setRealVisit] = useState<FeedVisit | null | undefined>(
+    TUTORIAL_VISIT_ID ? undefined : null
+  );
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!TUTORIAL_VISIT_ID || !session) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [found] = await getVisitsByIds([TUTORIAL_VISIT_ID], session.user.id);
+        if (cancelled) return;
+        if (!found) {
+          setRealVisit(null);
+          return;
+        }
+        const [photos, avatars] = await Promise.all([
+          found.photoIds.length > 0 ? getPhotoViewUrls(found.photoIds) : Promise.resolve({}),
+          getAvatarViewUrls([found.user_id]),
+        ]);
+        if (cancelled) return;
+        setPhotoUrls(photos);
+        setAvatarUrl(avatars[found.user_id]);
+        setRealVisit(found);
+      } catch {
+        // A tutorial that fails to load must still be a tutorial. The demo
+        // card is a complete lesson on its own, so this degrades rather
+        // than showing an error on the first screen of the app.
+        if (!cancelled) setRealVisit(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
+  // VisitCard owns its own flip; this is how the page hears about it, so the
+  // hint and the confirmation below work identically for the real card and
+  // for the demo one.
+  const handleRealFlip = useCallback((flipped: boolean) => {
+    setIsFlipped(flipped);
+    if (flipped) setHasFlipped(true);
+  }, []);
 
   const page = PAGES[pageIndex];
   const isLast = pageIndex === PAGES.length - 1;
@@ -90,10 +164,29 @@ export default function TutorialScreen() {
                 Every review is a postcard
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary" style={styles.blurb}>
-                Drag across the card, or press TURN OVER, to read the back.
+                The picture is the front. The review, the rating and the tags are all on the
+                back — drag across the card, or press TURN OVER, to read it.
               </ThemedText>
 
               <View style={styles.cardWrap}>
+                {realVisit ? (
+                  // The real thing, with every action inert: the callbacks
+                  // are no-ops and isOwner is false, so nothing on this
+                  // screen can like, share or delete somebody's review.
+                  // VisitCard routes all of that through props, so leaving
+                  // them empty is enough — it makes no writes of its own.
+                  <VisitCard
+                    visit={realVisit}
+                    photoUrls={photoUrls}
+                    avatarUrl={avatarUrl}
+                    isOwner={false}
+                    isCopied={false}
+                    onToggleLike={() => {}}
+                    onShare={() => {}}
+                    onDeleted={() => {}}
+                    onFlipChange={handleRealFlip}
+                  />
+                ) : (
                 <PostcardFlip
                   isFlipped={isFlipped}
                   front={
@@ -139,6 +232,7 @@ export default function TutorialScreen() {
                     </PostcardPaper>
                   }
                 />
+                )}
               </View>
 
               {hasFlipped ? (

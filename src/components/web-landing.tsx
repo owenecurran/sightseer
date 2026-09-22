@@ -35,7 +35,32 @@ type WebLandingProps = {
 
 export function WebLanding({ inviter = null }: WebLandingProps) {
   const { width } = useWindowDimensions();
-  const isWide = width >= WIDE_BREAKPOINT;
+
+  // Hydration gate, and the reason this page threw React #418 on every
+  // desktop load.
+  //
+  // useWindowDimensions has no window to measure during the Node prerender,
+  // so the server always rendered the narrow arrangement. A desktop browser
+  // then measured 1200px on its very first render, produced the wide one,
+  // and React found markup that did not match what it was hydrating — so it
+  // threw away the server tree and rebuilt the whole page on the client.
+  // Phones never saw it, because narrow happened to agree.
+  //
+  // Forcing the first client render to be narrow too makes the two agree by
+  // construction, and the real width takes over one frame later. Same
+  // mechanism the `device` snapshot below uses, and deliberately so: the
+  // third argument is the value the server renders, and useSyncExternalStore
+  // re-checks getSnapshot once mounted, which is what swaps it.
+  //
+  // The cost is a single frame of the narrow layout on a wide screen. That
+  // is strictly better than what it replaces — the mismatch was discarding
+  // the prerendered page and re-rendering all of it.
+  const hasHydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
+  const isWide = hasHydrated && width >= WIDE_BREAKPOINT;
   const logoUri = useMemo(() => buildLogoDataUri(), []);
 
   const [images, setImages] = useState<string[]>([]);

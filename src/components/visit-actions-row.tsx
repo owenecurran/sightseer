@@ -4,6 +4,10 @@ import { CommentsTrigger } from "@/components/comments-section";
 import { SaveToBoard } from "@/components/save-to-board";
 import { ActionSticker } from "@/components/ui/action-sticker";
 import { Spacing } from "@/constants/theme";
+// Every press here sits on top of the card's flip gesture, so each one is
+// guarded — on web a drag that ends over the heart would otherwise like the
+// review on the way past. See src/lib/card-drag-guard.ts.
+import { guardCardPress } from "@/lib/card-drag-guard";
 
 // Each action owns one accent for the life of the app, so the row is
 // learnable by colour as well as by glyph.
@@ -48,14 +52,14 @@ export function VisitActionsRow({
         accentIndex={LIKE_ACCENT}
         active={isLiked}
         count={likeCount}
-        onPress={onToggleLike}
+        onPress={guardCardPress(onToggleLike)}
         accessibilityLabel={isLiked ? "Unlike" : "Like"}
       />
 
       <CommentsTrigger
         count={commentCount}
         isOpen={isCommentsOpen}
-        onPress={onToggleComments}
+        onPress={guardCardPress(onToggleComments)}
         accentIndex={COMMENT_ACCENT}
       />
 
@@ -65,7 +69,7 @@ export function VisitActionsRow({
         icon={isCopied ? "checkmark-outline" : "arrow-redo-outline"}
         accentIndex={SHARE_ACCENT}
         active={isCopied}
-        onPress={onShare}
+        onPress={guardCardPress(onShare)}
         accessibilityLabel="Share"
       />
 

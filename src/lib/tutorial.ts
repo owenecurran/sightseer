@@ -59,6 +59,24 @@ let cached: boolean | null = null;
 let hasRead = false;
 const listeners = new Set<(value: boolean | null) => void>();
 
+// Whether this app run began with the tutorial unseen — i.e. whether this is
+// a first launch.
+//
+// Captured at the moment storage first answers, and never updated after,
+// which is the entire point. `cached` flips to true the instant someone
+// finishes or skips the tutorial, so by the time the home screen mounts it
+// can no longer tell a brand-new install from a returning one. This can.
+//
+// Read by the home screen to open on Discover rather than on the following
+// feed: a person who has been in the app for ninety seconds follows nobody,
+// so their feed is empty, and an empty feed is the worst possible first
+// impression of a place that is meant to be full of postcards.
+let launchedFresh = false;
+
+export function isFirstLaunch(): boolean {
+  return launchedFresh;
+}
+
 function publish(value: boolean | null) {
   cached = value;
   for (const listener of listeners) listener(value);
@@ -75,7 +93,13 @@ export function useTutorialSeen(): {
     // Read once per app run, however many hooks are mounted.
     if (!hasRead) {
       hasRead = true;
-      void hasSeenTutorial().then(publish);
+      void hasSeenTutorial().then((value) => {
+        // Only here, on the one read per app run, and before publish lets
+        // anything flip it. A storage failure reports "seen", so it lands on
+        // false and the home screen opens on the feed as it always did.
+        launchedFresh = value === false;
+        publish(value);
+      });
     }
     return () => {
       listeners.delete(setSeen);

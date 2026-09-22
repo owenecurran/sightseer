@@ -41,6 +41,7 @@ import {
   type FeedVisit,
 } from "@/lib/feed";
 import { listHomeLocations } from "@/lib/home-locations";
+import { isFirstLaunch } from "@/lib/tutorial";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 import { prefetchThumbnails } from "@/lib/image-prefetch";
 import { getPhotoThumbUrls, getPhotoViewUrls } from "@/lib/photo-view";
@@ -63,7 +64,17 @@ export default function HomeScreen() {
   const { session, profile } = useAuth();
   const theme = useTheme();
   const bottomInset = useBottomTabInset();
-  const [viewMode, setViewMode] = useState<FeedMode>("feed");
+  // Discover on a first launch, the feed on every one after.
+  //
+  // A brand-new account follows nobody, so the feed it would otherwise open
+  // on is empty — the one screen guaranteed to have nothing in it, shown at
+  // the only moment that decides whether someone stays. Discover is full
+  // from the start. Lazily initialised so the flag is read once, at mount,
+  // rather than on every render; see isFirstLaunch in src/lib/tutorial.ts
+  // for why the value has to be captured at app start rather than read live.
+  const [viewMode, setViewMode] = useState<FeedMode>(() =>
+    isFirstLaunch() ? "discover" : "feed",
+  );
   const [items, setItems] = useState<FeedItem[]>([]);
   // "You've been in X a while — is this home now?" Null unless the viewer's
   // own ongoing trip has run long enough to be worth asking about.

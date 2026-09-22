@@ -147,9 +147,20 @@ def db_query(sql):
     result = subprocess.run(
         ["npx", "supabase", "db", "query", "--linked", sql],
         capture_output=True,
+        # Explicit, because text=True on its own decodes with the locale's
+        # preferred codec — cp1252 on a default Windows console. The Supabase
+        # CLI writes UTF-8 and includes non-ASCII progress characters, so the
+        # default killed subprocess's reader thread with a UnicodeDecodeError
+        # and left stdout as None. That surfaced further down as
+        # "'NoneType' object has no attribute 'find'", which says nothing
+        # about the real cause. Observed in PowerShell; a UTF-8 shell hides it.
+        encoding="utf-8",
+        errors="replace",
         text=True,
         shell=(os.name == "nt"),
     )
+    if result.stdout is None:
+        sys.exit("supabase db query produced no readable output:\n" + (result.stderr or ""))
     if result.returncode != 0:
         sys.exit("supabase db query failed:\n" + (result.stderr or result.stdout))
     start = result.stdout.find("{")
