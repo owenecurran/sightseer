@@ -12,6 +12,7 @@ import { FloatingNavBar } from '@/components/floating-nav-bar';
 import { WebLanding } from '@/components/web-landing';
 import { KeyboardProviderWrapper } from '@/components/keyboard-provider-wrapper';
 import { PushPrimingModal } from '@/components/push-priming-modal';
+import { SiteMeta } from '@/components/site-meta';
 import { TAB_ROUTES } from '@/constants/tab-routes';
 import { NavBarVisibilityProvider } from '@/hooks/use-hide-on-scroll';
 import { TabPagerProvider } from '@/hooks/use-tab-pager';
@@ -19,6 +20,7 @@ import { AuthProvider, useAuth } from '@/lib/auth-context';
 import { initDeferredLinks } from '@/lib/deferred-links';
 import { addPushTapListener, getPushPermissionState, registerForPush } from '@/lib/push';
 import { TERMS_VERSION } from '@/lib/terms';
+import { useTutorialSeen } from '@/lib/tutorial';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -51,8 +53,10 @@ const INVITE_PATH_PREFIX = '/i/';
 // screen that shows a card is behind auth, which made checking the WEB build
 // need a signed-in browser — this is the way around that.
 //
-// __DEV__ only, so a release build redirects it away like any other unknown
-// path and the gallery is unreachable.
+// __DEV__ only. Note what this does and does not do: it exempts the path
+// from the SIGNED-OUT redirect, nothing more. It does not keep the gallery
+// out of a release build — a signed-in user reached it in production until
+// the screen itself started redirecting. See dev-postcards.tsx.
 const DEV_PREVIEW_PATH = '/dev-postcards';
 
 function isDevPreviewPath(pathname: string): boolean {
@@ -78,7 +82,10 @@ function RootNavigator() {
     profile?.terms_accepted_at != null && profile?.terms_version === TERMS_VERSION;
   const hasCompletedOnboarding = profile?.handle != null;
   const hasSetDemographics = profile?.has_set_demographics === true;
+  // Null until storage answers — see the guard below for why that matters.
+  const { seen: tutorialSeen } = useTutorialSeen();
   const hasSetPrivacy = profile?.has_set_privacy === true;
+  const hasSeenFindFriends = profile?.has_seen_find_friends === true;
   const hasPassedInviteGate =
     profile?.has_shared_invite === true || profile?.invite_exempt === true;
   // Supersedes every other gate below, including terms and onboarding: an
@@ -209,13 +216,26 @@ function RootNavigator() {
   // same landing and React has nothing to reconcile. Rendering the component
   // directly rather than routing to it keeps that guarantee — the router's
   // own state is not settled this early.
+  // SiteMeta rides along on BOTH arms rather than sitting inside the tree
+  // below, because for every path that is not a landing path this branch is
+  // the entire prerendered document — returning bare null here is what left
+  // the bare domain, /visit/*, /user/* and /place/* with an empty <title>
+  // and no card at all.
   if (isLoading) {
-    if (Platform.OS === 'web' && isLandingPath(pathname)) return <WebLanding />;
-    return null;
+    if (Platform.OS === 'web' && isLandingPath(pathname)) {
+      return (
+        <>
+          <SiteMeta />
+          <WebLanding />
+        </>
+      );
+    }
+    return <SiteMeta />;
   }
 
   return (
     <NavBarVisibilityProvider>
+      <SiteMeta />
       <TabPagerProvider
         value={{ pagerRef, activeIndex, setActiveIndexInternal: setActiveIndex, setActivePage }}
       >
@@ -307,6 +327,10 @@ function RootNavigator() {
               <Stack.Screen name="invite-gate" />
             </Stack.Protected>
 
+            {/* Both halves of contact matching, as one step. Placed after
+                the invite gate because the two are the same conversation
+                from opposite ends — that one is about the people you bring,
+                this one about the people already here. */}
             <Stack.Protected
               guard={
                 isAuthenticated &&
@@ -315,7 +339,55 @@ function RootNavigator() {
                 hasCompletedOnboarding &&
                 hasSetDemographics &&
                 hasSetPrivacy &&
-                hasPassedInviteGate
+                hasPassedInviteGate &&
+                !hasSeenFindFriends
+              }
+            >
+              <Stack.Screen name="find-friends" />
+            </Stack.Protected>
+
+            {/* How the app works, once per install — see lib/tutorial.ts.
+                Registered BEFORE (tabs) so it sits in front of the app the
+                way every other gate above it does.
+
+                `=== false` and not `!tutorialSeen`, deliberately: the flag
+                starts as null while storage is being read, and treating that
+                as "not seen" would throw the tutorial up for a frame on every
+                single launch before it resolved. Unknown means show the app;
+                only a definite "never seen this" opens it. */}
+            <Stack.Protected
+              guard={
+                isAuthenticated &&
+                !isBanned &&
+                hasAcceptedTerms &&
+                hasCompletedOnboarding &&
+                hasSetDemographics &&
+                hasSetPrivacy &&
+                hasPassedInviteGate &&
+                tutorialSeen === false
+              }
+            >
+              <Stack.Screen name="tutorial" options={{ gestureEnabled: false }} />
+            </Stack.Protected>
+
+            <Stack.Protected
+              guard={
+                isAuthenticated &&
+                !isBanned &&
+                hasAcceptedTerms &&
+                hasCompletedOnboarding &&
+                hasSetDemographics &&
+                hasSetPrivacy &&
+                hasPassedInviteGate &&
+                // The app has to be UNAVAILABLE while the tutorial is
+                // pending, not merely registered after it. A Protected route
+                // is a gate on availability, and the navigator resolves the
+                // current path against whatever is available — so with both
+                // this and the tutorial open, '/' still resolves straight to
+                // the tabs and the tutorial never appears. Closing this is
+                // what makes the router fall through, exactly as it does for
+                // every other gate above.
+                tutorialSeen !== false
               }
             >
               <Stack.Screen name="(tabs)" />

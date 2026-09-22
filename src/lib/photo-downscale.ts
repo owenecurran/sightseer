@@ -7,6 +7,15 @@ import * as ImageManipulator from 'expo-image-manipulator';
 // roughly an order of magnitude.
 const MAX_EDGE = 2048;
 
+// What a browser will actually decode.
+//
+// HEIC is the one that matters and the reason this list exists. An iPhone
+// set to "High Efficiency" hands the picker a .heic, and nine photos in
+// production are intact HEIC files sitting under .jpeg keys because nothing
+// on the way in ever re-encoded them — every non-Apple client refuses to
+// draw them. See scripts/audit-photo-objects.py, which is what found them.
+const WEB_SAFE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
 type Downscaled = { uri: string; width: number; height: number; mimeType: string };
 
 // Applied inside the uploaders (not at each picker call site) so every path
@@ -22,12 +31,33 @@ export async function downscaleForUpload(
   mimeType?: string
 ): Promise<Downscaled> {
   const longest = Math.max(width, height);
-  if (!Number.isFinite(longest) || longest <= MAX_EDGE) {
-    return { uri, width, height, mimeType: mimeType ?? 'image/jpeg' };
+  const isOversized = Number.isFinite(longest) && longest > MAX_EDGE;
+  // Unknown counts as unsafe. A caller that does not know what it picked up
+  // is exactly the caller whose file needs converting, and the old code's
+  // `mimeType ?? 'image/jpeg'` turned that missing knowledge into an
+  // assertion — which is how HEIC ended up labelled as JPEG.
+  const isUnsafeType = !mimeType || !WEB_SAFE_TYPES.includes(mimeType);
+
+  // Nothing to do only when it is BOTH small enough and already a format the
+  // web can read. Size alone was the old condition, and it let every small
+  // HEIC through untouched.
+  if (!isOversized && !isUnsafeType) {
+    return { uri, width, height, mimeType };
   }
-  const scale = MAX_EDGE / longest;
-  const target = { width: Math.round(width * scale), height: Math.round(height * scale) };
-  const result = await ImageManipulator.manipulateAsync(uri, [{ resize: target }], {
+
+  // No resize action when the image is already small enough — this pass is
+  // then purely a format conversion, and asking for a resize to its own
+  // dimensions would be a needless resample. An unknown size lands here too:
+  // it cannot be scaled sensibly, but it can still be re-encoded.
+  const actions: ImageManipulator.Action[] = [];
+  if (isOversized) {
+    const scale = MAX_EDGE / longest;
+    actions.push({
+      resize: { width: Math.round(width * scale), height: Math.round(height * scale) },
+    });
+  }
+
+  const result = await ImageManipulator.manipulateAsync(uri, actions, {
     compress: 0.8,
     format: ImageManipulator.SaveFormat.JPEG,
   });

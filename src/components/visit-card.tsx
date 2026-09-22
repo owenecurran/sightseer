@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { guardCardPress } from "@/lib/card-drag-guard";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -42,6 +43,7 @@ import { TagSticker } from "@/components/ui/tag-sticker";
 import { VisitActionsRow } from "@/components/visit-actions-row";
 import { VisitMenu } from "@/components/visit-menu";
 import { BrandColors, Spacing } from "@/constants/theme";
+import { hapticLike, hapticUnlike } from "@/lib/haptics";
 import type { FeedVisit } from "@/lib/feed";
 import { useImageAccent } from "@/hooks/use-image-accent";
 import { hashSeed } from "@/lib/seeded-random";
@@ -171,6 +173,14 @@ type VisitCardProps = {
   // pressing a review is already the answer to "which one", so making you
   // ask twice is a tap for nothing. See visit/[id].tsx.
   initialCommentsOpen?: boolean;
+  // Told which side is showing, whenever that changes.
+  //
+  // Read-only: the card still owns its own flip state, so this reports the
+  // turn rather than controlling it. Added for the tutorial, which has to
+  // know the gesture landed in order to stop asking for it — the card is
+  // the lesson there, so it has to be a real one rather than a replica that
+  // can drift.
+  onFlipChange?: (isFlipped: boolean) => void;
 };
 
 // The feed's own visit card — a postcard with two sides.
@@ -195,6 +205,7 @@ export function VisitCard({
   onShare,
   onDeleted,
   onUntagSelf,
+  onFlipChange,
   maxStampRise,
   onPhotoLayout,
   initialCommentsOpen = false,
@@ -204,6 +215,15 @@ export function VisitCard({
   // Which side is showing. A review can be written to open on its message
   // rather than its picture — some of them are the writing.
   const [isFlipped, setIsFlipped] = useState(visit.card.side === "message");
+  // Every turn goes through here so the optional observer cannot be missed
+  // by a future call site that sets the state directly.
+  const setFlipped = useCallback(
+    (next: boolean) => {
+      setIsFlipped(next);
+      onFlipChange?.(next);
+    },
+    [onFlipChange],
+  );
   // The picture frame's real size. Zero until the first layout pass, which
   // shows no ornaments at all — better than guessing high and having them
   // pop away.
@@ -239,12 +259,22 @@ export function VisitCard({
   // gesture. The like itself was always idempotent; the animation was not.
   const lastBurstAtRef = useRef(0);
 
+  // Both ways of liking go through here, so the knock is tied to the STATE
+  // changing rather than to one of the two buttons. A double tap on a card
+  // that is already liked replays the heart burst but changes nothing, and
+  // buzzing for that would be buzzing for a no-op.
+  function handleToggleLike() {
+    if (visit.isLikedByMe) hapticUnlike();
+    else hapticLike();
+    onToggleLike();
+  }
+
   function handleDoubleTap() {
     const now = Date.now();
     if (now - lastBurstAtRef.current < DOUBLE_TAP_GUARD_MS) return;
     lastBurstAtRef.current = now;
 
-    if (!visit.isLikedByMe) onToggleLike();
+    if (!visit.isLikedByMe) handleToggleLike();
     heartScale.value = 0.6;
     heartOpacity.value = 1;
     heartScale.value = withSequence(
@@ -331,9 +361,9 @@ export function VisitCard({
   const byline = (
     <View style={styles.byline}>
       <Pressable
-        onPress={() =>
+        onPress={guardCardPress(() =>
           router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
-        }
+        )}
       >
         <Avatar uri={avatarUrl} name={visit.authorName} size={28} />
       </Pressable>
@@ -586,9 +616,9 @@ export function VisitCard({
               // printed border they have to clear is.
               { paddingHorizontal: captionEdgeInset, paddingBottom: pictureInset },
             ]}
-            onPress={() =>
+            onPress={guardCardPress(() =>
               router.push({ pathname: "/place/[id]", params: { id: visit.placeId } })
-            }
+            )}
           >
             <StretchText
               type="headline"
@@ -650,9 +680,9 @@ export function VisitCard({
               ]}
             >
               <Pressable
-                onPress={() =>
+                onPress={guardCardPress(() =>
                   router.push({ pathname: "/place/[id]", params: { id: visit.placeId } })
-                }
+                )}
               >
                 {/* Never truncated, however long the name — see StretchText's
                     own note. Lettered differently per card, and struck in more
@@ -744,7 +774,7 @@ export function VisitCard({
           {ornaments}
         </>
       }
-      onFlip={() => setIsFlipped(true)}
+      onFlip={() => setFlipped(true)}
       flipLabel="Read the message"
       flipReach={FRONT_FLIP_REACH}
       onDoubleTap={handleDoubleTap}
@@ -799,7 +829,7 @@ export function VisitCard({
     // have to match the picture side exactly.
     <PostcardPaper
       sheet={sheet}
-      onFlip={() => setIsFlipped(false)}
+      onFlip={() => setFlipped(false)}
       flipLabel="Show the picture side"
       flipReach={BACK_FLIP_REACH}
       onDoubleTap={handleDoubleTap}
@@ -814,9 +844,9 @@ export function VisitCard({
       <View style={styles.backHeader}>
         <Pressable
           style={styles.backHeaderText}
-          onPress={() =>
+          onPress={guardCardPress(() =>
             router.push({ pathname: "/place/[id]", params: { id: visit.placeId } })
-          }
+          )}
         >
           <ThemedText type="smallBold" numberOfLines={1}>
             {visit.placeName}
@@ -931,7 +961,7 @@ export function VisitCard({
           visitId={visit.id}
           isLiked={visit.isLikedByMe}
           likeCount={visit.likeCount}
-          onToggleLike={onToggleLike}
+          onToggleLike={handleToggleLike}
           onShare={onShare}
           isCopied={isCopied}
           isOwnerOrTagged={isOwner || visit.isViewerTagged}

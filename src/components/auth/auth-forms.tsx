@@ -1,17 +1,19 @@
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp, LinearTransition } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { CodeInput } from '@/components/ui/code-input';
 import { Turnstile, isTurnstileConfigured } from '@/components/auth/turnstile';
+import { PhoneVerify } from '@/components/phone-verify';
 import { SocialAuthButtons } from '@/components/ui/social-auth-buttons';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
 import { authErrorMessage, isEmailNotConfirmed } from '@/lib/auth-errors';
+import { getPendingInviteCode, setPendingInviteCode } from '@/lib/invites';
 import { supabase } from '@/lib/supabase';
 import { signInWithUsername } from '@/lib/username-signin';
 
@@ -66,6 +68,7 @@ export function SignInForm({ onForgotPassword }: { onForgotPassword?: () => void
   const router = useRouter();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [isPhoneOpen, setIsPhoneOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
@@ -194,6 +197,18 @@ export function SignInForm({ onForgotPassword }: { onForgotPassword?: () => void
         </ThemedText>
       )}
       <SocialAuthButtons onError={setError} />
+
+      {isPhoneOpen ? (
+        <PhoneVerify
+          mode="signin"
+          caption="We'll text a code to the number on your account."
+          onVerified={() => {}}
+        />
+      ) : (
+        <Pressable onPress={() => setIsPhoneOpen(true)} hitSlop={8} style={styles.inviteToggle}>
+          <ThemedText type="link">Sign in with a phone number</ThemedText>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -209,6 +224,36 @@ export function SignUpForm() {
   // Bumped after a failed signup so the widget issues a fresh token — see
   // Turnstile's resetSignal.
   const [captchaReset, setCaptchaReset] = useState(0);
+
+  // The invite code, typed by hand.
+  //
+  // The other two routes in never need this: a web visitor arrives on
+  // /i/<code> which parks the code for them, and an app opened from a link
+  // on a device that already has it gets handed the code directly. The gap
+  // is an install that went through the App Store or TestFlight, where iOS
+  // gives the app no referrer at all and nothing survives the trip. Until
+  // deferred linking is turned on (src/lib/deferred-links.ts, which needs a
+  // native build), typing it is the only way that person's inviter gets
+  // credited — so the invite landing shows the code and this is where it
+  // goes.
+  //
+  // Folded away by default. Most people have nothing to put here, and an
+  // empty field labelled "invite code" on a sign-up form reads as a
+  // requirement rather than an option.
+  const [inviteCode, setInviteCode] = useState('');
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isPhoneOpen, setIsPhoneOpen] = useState(false);
+
+  // Opened and filled when a code is already parked, which is the ordinary
+  // web case. Shown rather than applied silently so that the person can see
+  // whose invite is about to be attached, and correct it if it is wrong.
+  useEffect(() => {
+    getPendingInviteCode().then((parked) => {
+      if (!parked) return;
+      setInviteCode(parked);
+      setIsInviteOpen(true);
+    });
+  }, []);
 
   async function handleSignUp() {
     setError(null);
@@ -232,6 +277,14 @@ export function SignUpForm() {
       setError('Please complete the security check.');
       return;
     }
+
+    // Parked before the account exists, because that is the only order that
+    // works: consumePendingInvite in auth-context redeems it at the first
+    // authenticated moment, which may be now or may be after a round trip
+    // through a confirmation email. redeem_invite is write-once server-side,
+    // so re-parking a code that was already applied cannot double-count.
+    const typedCode = inviteCode.trim();
+    if (typedCode) await setPendingInviteCode(typedCode);
 
     setIsSubmitting(true);
     const { data, error: signUpError } = await supabase.auth.signUp({
@@ -299,6 +352,21 @@ export function SignUpForm() {
           />
         </Animated.View>
       )}
+      {isInviteOpen ? (
+        <Animated.View entering={FadeInDown.duration(REVEAL_MS)}>
+          <TextField
+            placeholder="Invite code (optional)"
+            value={inviteCode}
+            onChangeText={setInviteCode}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+        </Animated.View>
+      ) : (
+        <Pressable onPress={() => setIsInviteOpen(true)} hitSlop={8} style={styles.inviteToggle}>
+          <ThemedText type="link">Have an invite code?</ThemedText>
+        </Pressable>
+      )}
       <Turnstile onToken={setCaptchaToken} action="signup" resetSignal={captchaReset} />
       {error && (
         <ThemedText type="small" themeColor="textSecondary">
@@ -307,6 +375,27 @@ export function SignUpForm() {
       )}
       <Button label="Sign up" onPress={handleSignUp} loading={isSubmitting} />
       <SocialAuthButtons onError={setError} />
+
+      {/* A number instead of an address.
+          The account it makes has no email, which is worth knowing: password
+          reset and anything else that writes to an inbox have nothing to
+          write to until one is added in Settings. In exchange it arrives
+          already verified, so hashed_phone is derived on the spot and
+          contact matching works without a second trip. */}
+      {isPhoneOpen ? (
+        <PhoneVerify
+          mode="signin"
+          caption="We'll text you a code. No password to remember, and your number is hashed before it is stored."
+          onVerified={() => {
+            // Nothing to do — verifyOtp establishes the session and the root
+            // layout's guards take it from here, same as any other sign-in.
+          }}
+        />
+      ) : (
+        <Pressable onPress={() => setIsPhoneOpen(true)} hitSlop={8} style={styles.inviteToggle}>
+          <ThemedText type="link">Sign up with a phone number instead</ThemedText>
+        </Pressable>
+      )}
     </Animated.View>
   );
 }
@@ -555,6 +644,9 @@ export function ForgotPasswordForm() {
 }
 
 const styles = StyleSheet.create({
+  inviteToggle: {
+    alignSelf: 'center',
+  },
   form: {
     gap: Spacing.three,
   },

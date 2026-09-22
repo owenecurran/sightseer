@@ -22,7 +22,8 @@ export type NotificationKey =
   | 'notify_saves'
   | 'notify_friend_activity'
   | 'notify_nearby_reviews'
-  | 'notify_friend_digest';
+  | 'notify_friend_digest'
+  | 'notify_contact_joins';
 
 // Grouped by what actually prompts the notification, because the deciding
 // question differs: "someone did something to my post" is a different
@@ -43,6 +44,14 @@ const NOTIFICATION_GROUPS: {
       { key: 'notify_follows', label: 'New followers and follow requests', defaultValue: true },
       { key: 'notify_tags', label: 'Someone tags me in a review', defaultValue: true },
       { key: 'notify_saves', label: 'Someone saves my board or travel book', defaultValue: true },
+      // Sits in "About you" rather than under the round-ups: it is a one-off
+      // about a specific person, arrives at most once each, and is the same
+      // shape of thing as gaining a follower.
+      {
+        key: 'notify_contact_joins',
+        label: 'Someone in my contacts joins Sightseer',
+        defaultValue: true,
+      },
     ],
   },
   {

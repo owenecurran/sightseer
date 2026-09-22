@@ -8,6 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BackLink } from '@/components/ui/back-link';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { PaperPanel } from '@/components/ui/paper-panel';
+import { EmailLink } from '@/components/email-link';
+import { PhoneVerify } from '@/components/phone-verify';
 import { SettingsRow } from '@/components/ui/settings-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -19,7 +21,7 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { listBlockedUsers } from '@/lib/blocks';
-import { setDiscoverableByContacts, setMyPhoneNumber } from '@/lib/contacts';
+import { setDiscoverableByContacts } from '@/lib/contacts';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 import { unregisterPush } from '@/lib/push';
@@ -41,9 +43,6 @@ export default function SettingsScreen() {
   const [isSavingPrivacy, setIsSavingPrivacy] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [isSavingPhone, setIsSavingPhone] = useState(false);
-  const [phoneSaved, setPhoneSaved] = useState(false);
   const [isSavingDiscoverable, setIsSavingDiscoverable] = useState(false);
 
   const [isLinkingApple, setIsLinkingApple] = useState(false);
@@ -137,23 +136,6 @@ export default function SettingsScreen() {
     if (!error) await refreshProfile();
   }
 
-  async function handleSavePhone() {
-    if (!session || !phoneNumber.trim()) return;
-    setIsSavingPhone(true);
-    setPhoneSaved(false);
-    try {
-      await setMyPhoneNumber(session.user.id, phoneNumber.trim());
-      setPhoneSaved(true);
-      setPhoneNumber('');
-      await refreshProfile();
-    } catch {
-      // Best-effort — no dedicated error state here, matches this screen's
-      // existing light-touch error handling for similar single-field saves.
-    } finally {
-      setIsSavingPhone(false);
-    }
-  }
-
   async function handleToggleDiscoverable() {
     if (!session || !profile) return;
     setIsSavingDiscoverable(true);
@@ -238,24 +220,16 @@ export default function SettingsScreen() {
               contact-sync action they were previously mixed with. */}
           <PaperPanel seed="settings-finding" accentIndex={2}>
             <ThemedText type="sectionLabel">Finding you</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Add your phone number so friends who sync their contacts can find you. It is hashed
-              before it ever leaves your device, and never stored or shown as plain text.
-            </ThemedText>
-            <TextField
-              placeholder="Phone number"
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              keyboardType="phone-pad"
-              textContentType="telephoneNumber"
-            />
-            {phoneNumber.trim().length > 0 && (
-              <Button label="Save number" onPress={handleSavePhone} loading={isSavingPhone} />
-            )}
-            {phoneSaved && (
+            {profile?.hashed_phone != null ? (
               <ThemedText type="small" themeColor="sage">
-                Number saved.
+                Your number is verified. Friends who have it in their contacts can find you.
               </ThemedText>
+            ) : (
+              <PhoneVerify
+                mode="link"
+                caption="Verify your phone number so friends who sync their contacts can find you. We text you a code. The number is hashed before it is stored and never kept as plain text."
+                onVerified={() => void refreshProfile()}
+              />
             )}
             <CheckboxRow
               label="Let friends find me by my contact info"
@@ -272,6 +246,20 @@ export default function SettingsScreen() {
               privacy toggle it has nothing to do with. */}
           <PaperPanel seed="settings-account" accentIndex={3}>
             <ThemedText type="sectionLabel">Account</ThemedText>
+
+            {/* An account made with a phone number has no address, and
+                everything that reaches somebody through an inbox then has
+                nowhere to go — password recovery first among them. Until one
+                is added, losing the phone number loses the account, so this
+                sits at the top of the card rather than under the providers. */}
+            {/* Falsy rather than == null: GoTrue has been seen to return an
+                empty string for an absent address as well as omitting it. */}
+            {!session?.user.email && (
+              <EmailLink
+                caption="This account has no email address. Add one so you can recover it if you ever lose access to your phone number."
+                onLinked={() => void refreshProfile()}
+              />
+            )}
 
             {Platform.OS === 'ios' && (
               <Button

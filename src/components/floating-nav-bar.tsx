@@ -1,14 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Avatar } from '@/components/ui/avatar';
 import { BrandColors, Colors, Spacing } from '@/constants/theme';
 import { TAB_ROUTES } from '@/constants/tab-routes';
 import { useNavBarHidden } from '@/hooks/use-hide-on-scroll';
 import { useTabPager } from '@/hooks/use-tab-pager';
+import { getAvatarViewUrls } from '@/lib/avatar';
+import { useAuth } from '@/lib/auth-context';
+
+// The last tab, which is the only one that shows a person rather than a
+// thing. Derived from the route list rather than written as 4, so it cannot
+// drift if a tab is ever inserted.
+const PROFILE_TAB_INDEX = TAB_ROUTES.length - 1;
+const AVATAR_TAB_SIZE = 26;
 
 // Icon info keyed to TAB_ROUTES by index (not a separately hand-copied href
 // list) — see that file's own comment for why: a pager page order that
@@ -54,6 +63,33 @@ export function FloatingNavBar() {
     opacity: 1 - hidden.value,
   }));
 
+  // The profile tab wears the viewer's own face.
+  //
+  // Only when there is one. An account with no photograph keeps the person
+  // glyph rather than falling back to Avatar's initials: a single letter
+  // sitting in a row of line icons reads as a different kind of control, and
+  // the glyph is already the right answer for "you".
+  const { session, profile } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    // No synchronous setState to clear a stale url — React's lint rejects
+    // that, and it is not needed: whether the face is DRAWN is derived from
+    // the key below, so a url left over from a removed photograph is simply
+    // never read.
+    if (!session || !profile?.avatar_r2_key) return;
+    let cancelled = false;
+    void getAvatarViewUrls([session.user.id])
+      .then((urls) => {
+        if (!cancelled) setAvatarUrl(urls[session.user.id] ?? null);
+      })
+      // A face that will not load is not worth surfacing; the glyph stands in.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [session, profile?.avatar_r2_key]);
+
   return (
     <Animated.View
       pointerEvents="box-none"
@@ -69,7 +105,17 @@ export function FloatingNavBar() {
           return (
             <View key={href} style={styles.iconRow}>
               <Pressable onPress={() => setActivePage(index)} hitSlop={8} style={styles.iconButton}>
-                <Ionicons name={isActive ? icons.activeIcon : icons.icon} size={28} color={BrandColors.cream} />
+                {index === PROFILE_TAB_INDEX && profile?.avatar_r2_key && avatarUrl ? (
+                  // The ring is how this tab says "active", since a
+                  // photograph has no outline/filled pair to switch between
+                  // the way the glyphs do. Always drawn and only coloured in,
+                  // so the icon does not change size when it is selected.
+                  <View style={[styles.avatarRing, isActive && styles.avatarRingActive]}>
+                    <Avatar uri={avatarUrl} name={profile?.name ?? profile?.handle} size={AVATAR_TAB_SIZE} />
+                  </View>
+                ) : (
+                  <Ionicons name={isActive ? icons.activeIcon : icons.icon} size={28} color={BrandColors.cream} />
+                )}
               </Pressable>
               {index < TAB_ROUTES.length - 1 && <View style={styles.divider} />}
             </View>
@@ -81,6 +127,18 @@ export function FloatingNavBar() {
 }
 
 const styles = StyleSheet.create({
+  // Slightly under the 28pt glyphs: a filled circle reads bigger than a line
+  // icon at the same measurement, so matching the number would make this tab
+  // look like the largest thing in the bar.
+  avatarRing: {
+    borderWidth: 2,
+    borderColor: 'transparent',
+    borderRadius: (AVATAR_TAB_SIZE + 4) / 2,
+    padding: 1,
+  },
+  avatarRingActive: {
+    borderColor: BrandColors.cream,
+  },
   wrap: {
     position: 'absolute',
     left: 0,

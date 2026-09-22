@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Gesture } from 'react-native-gesture-handler';
+import { hapticFlip } from '@/lib/haptics';
+import { markCardDragEnded, markCardDragStarted } from '@/lib/card-drag-guard';
+import { usePagerSwipeLock } from '@/hooks/use-tab-pager';
 import Animated, {
   interpolate,
   runOnJS,
@@ -114,6 +117,7 @@ export function useFlipGesture(
   { onDoubleTap }: FlipGestureOptions,
 ) {
   const control = useContext(FlipContext);
+  const setPagerLocked = usePagerSwipeLock();
 
   return useMemo(() => {
     if (control == null || onFlip == null) return null;
@@ -127,6 +131,21 @@ export function useFlipGesture(
       .failOffsetY([-FAIL_Y, FAIL_Y])
       .onBegin(() => {
         begin();
+        // On touch-DOWN, not on activation. That distinction is the whole fix
+        // for iOS: by the time this pan has seen its ACTIVATE_X of travel the
+        // pager's own scroll view has already claimed the touch, so waiting
+        // until then would be waiting until it is too late. From the first
+        // contact with the card the pager is off, and a sideways drag inside
+        // a postcard's bounds cannot page across to Search.
+        runOnJS(setPagerLocked)(true);
+      })
+      .onStart(() => {
+        // Activation, not contact: this fires only once the finger has gone
+        // ACTIVATE_X sideways, which is exactly the point at which the
+        // interaction stops being a possible tap. On web the Pressable
+        // underneath will still get its pointerup, so this is what tells it
+        // to ignore it. See src/lib/card-drag-guard.ts.
+        runOnJS(markCardDragStarted)();
       })
       .onUpdate((e) => {
         move(e.translationX);
@@ -135,10 +154,27 @@ export function useFlipGesture(
         // The commit is the STATE change, not an animation: flipping the prop
         // re-runs the effect below, which carries the turn the rest of the way
         // from wherever the finger left it rather than restarting it.
-        if (release(e.translationX, e.velocityX)) runOnJS(onFlip)();
+        if (release(e.translationX, e.velocityX)) {
+          // At the moment the drag COMMITS, not when the finger lands. That
+          // instant is the thing a card cannot show you — it is the answer to
+          // "was that far enough?", delivered before the animation says so.
+          runOnJS(hapticFlip)();
+          runOnJS(onFlip)();
+        }
       })
       .onFinalize(() => {
         release(0, 0);
+        // Paired with onStart above, and on onFinalize for the same reason
+        // the pager unlock is: it is the one callback that fires for every
+        // outcome. A drag that never cleared its offsets leaves the flag
+        // untouched, so an ordinary tap is unaffected.
+        runOnJS(markCardDragEnded)();
+        // onFinalize rather than onEnd, because it is the one that fires for
+        // every outcome — the drag completing, the drag failing its offsets
+        // and handing the touch back, the gesture being cancelled. A lock
+        // released on only the happy path is a lock that eventually sticks,
+        // and a stuck one means the tabs stop swiping entirely.
+        runOnJS(setPagerLocked)(false);
       });
 
     if (onDoubleTap == null) return pan;
@@ -158,7 +194,7 @@ export function useFlipGesture(
       });
 
     return Gesture.Race(pan, doubleTap);
-  }, [control, onFlip, onDoubleTap]);
+  }, [control, onFlip, onDoubleTap, setPagerLocked]);
 }
 
 // A card with two sides that turns over.

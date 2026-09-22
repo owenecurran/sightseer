@@ -972,52 +972,6 @@ export default function ReviewFormScreen() {
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Postcard</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Which way up it is printed, and which side it opens on.
-                </ThemedText>
-
-                <View style={styles.cardChoiceRow}>
-                  {(
-                    [
-                      ['Fit the photos', null],
-                      ['Landscape', 'horizontal'],
-                      ['Portrait', 'vertical'],
-                    ] as const
-                  ).map(([label, value]) => (
-                    <Pressable key={label} onPress={() => setCardOrientation(value)}>
-                      <ThemedView
-                        type={
-                          cardOrientation === value ? 'backgroundSelected' : 'backgroundElement'
-                        }
-                        style={styles.cardChoice}
-                      >
-                        <ThemedText type="small">{label}</ThemedText>
-                      </ThemedView>
-                    </Pressable>
-                  ))}
-                </View>
-
-                <View style={styles.cardChoiceRow}>
-                  {(
-                    [
-                      ['Opens on the picture', 'picture'],
-                      ['Opens on the message', 'message'],
-                    ] as const
-                  ).map(([label, value]) => (
-                    <Pressable key={value} onPress={() => setCardSide(value)}>
-                      <ThemedView
-                        type={cardSide === value ? 'backgroundSelected' : 'backgroundElement'}
-                        style={styles.cardChoice}
-                      >
-                        <ThemedText type="small">{label}</ThemedText>
-                      </ThemedView>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.section}>
                 <ThemedText type="sectionLabel">Tag people (optional)</ThemedText>
                 {taggedUsers.length > 0 && (
                   <View style={styles.tagRow}>
@@ -1052,6 +1006,72 @@ export default function ReviewFormScreen() {
                     </ThemedView>
                   </Pressable>
                 ))}
+              </View>
+
+              {/* How the card LOOKS, kept together and placed directly above
+                  the preview that shows it. These two used to sit between
+                  "Date visited" and "Tag people" — two unlabelled rows of
+                  chips under one heading that described both of them at
+                  once, several sections away from the only thing on the form
+                  that shows what they do. */}
+              <View style={styles.section}>
+                <ThemedText type="sectionLabel">Postcard</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  How your card is printed.
+                </ThemedText>
+
+                <View style={styles.subSection}>
+                  <ThemedText type="smallBold">Which way up</ThemedText>
+                  <View style={styles.cardChoiceRow}>
+                    {(
+                      [
+                        ['Fit the photos', null],
+                        ['Landscape', 'horizontal'],
+                        ['Portrait', 'vertical'],
+                      ] as const
+                    ).map(([label, value]) => (
+                      <Pressable key={label} onPress={() => setCardOrientation(value)}>
+                        <ThemedView
+                          type={
+                            cardOrientation === value ? 'backgroundSelected' : 'backgroundElement'
+                          }
+                          style={styles.cardChoice}
+                        >
+                          <ThemedText type="small">{label}</ThemedText>
+                        </ThemedView>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.subSection}>
+                  <ThemedText type="smallBold">Which side it opens on</ThemedText>
+                  <View style={styles.cardChoiceRow}>
+                    {(
+                      [
+                        ['Picture', 'picture'],
+                        ['Message', 'message'],
+                      ] as const
+                    ).map(([label, value]) => (
+                      <Pressable key={value} onPress={() => setCardSide(value)}>
+                        <ThemedView
+                          // Null is not "neither" — VisitCard only starts a
+                          // card flipped when the side is 'message', so an
+                          // unset card opens on the picture. Showing nothing
+                          // selected described a state the card never has.
+                          type={
+                            (cardSide ?? 'picture') === value
+                              ? 'backgroundSelected'
+                              : 'backgroundElement'
+                          }
+                          style={styles.cardChoice}
+                        >
+                          <ThemedText type="small">{label}</ThemedText>
+                        </ThemedView>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
               </View>
 
               <View style={styles.section}>
@@ -1235,6 +1255,12 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+  },
+  // A labelled choice inside a section. Tighter than the gap between
+  // sections, so the two postcard choices read as two parts of one decision
+  // rather than as two more items in the form's flat run.
+  subSection: {
+    gap: Spacing.one,
   },
   row: {
     flexDirection: 'row',

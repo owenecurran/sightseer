@@ -150,7 +150,22 @@ export async function uploadPhotoForDraft(params: UploadDraftPhotoParams): Promi
   const { draftId, uri, mimeType, width, height, position = 0 } = params;
   // Downscale before anything touches the network — see photo-downscale.ts.
   const scaled = await downscaleForUpload(uri, width, height, mimeType);
-  const contentType = ALLOWED_CONTENT_TYPES.includes(scaled.mimeType) ? scaled.mimeType : 'image/jpeg';
+  // NOT a fallback — an assertion.
+  //
+  // This used to read `ALLOWED.includes(x) ? x : 'image/jpeg'`, which took a
+  // type it did not support and relabelled it as one it did. The bytes were
+  // unchanged, so a HEIC went to R2 under a .jpeg key with an image/jpeg
+  // content type and every non-Apple client refused to draw it. Nine photos
+  // in production are still like that.
+  //
+  // downscaleForUpload now guarantees a web-safe type, so reaching this
+  // branch means that guarantee broke. Failing the upload is the right
+  // answer: an error the person can retry is recoverable, and a file that
+  // silently will not render for anyone is not.
+  if (!ALLOWED_CONTENT_TYPES.includes(scaled.mimeType)) {
+    throw new Error(`Cannot upload ${scaled.mimeType} — the image was not converted.`);
+  }
+  const contentType = scaled.mimeType;
 
   const { data, error: fnError } = await supabase.functions.invoke('create-draft-photo-upload-url', {
     body: { draftId, contentType },
