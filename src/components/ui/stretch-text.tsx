@@ -11,7 +11,11 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { ThemedText, type ThemedTextProps } from "@/components/themed-text";
+import {
+  TextTypeStyles,
+  ThemedText,
+  type ThemedTextProps,
+} from "@/components/themed-text";
 import { OutlinedText } from "@/components/ui/outlined-text";
 
 type StretchTextProps = ThemedTextProps & {
@@ -79,6 +83,40 @@ const FILL_MAX_SCALE = 2.2;
 
 const OUTLINE_OVERSHOOT = 1.02;
 const FILL_HEIGHT_OVERSHOOT = 1.25;
+
+// How far past its natural size this component will raise the text's own
+// font before falling back on the transform to finish the job.
+//
+// THE PROBLEM. Every mode here sizes text by drawing it at its declared
+// size and then scaling it with a transform. Android re-draws the glyphs
+// under that transform, so they stay sharp; iOS does not — a UIView's layer
+// is rasterised once at its own bounds and the transform resamples that
+// bitmap, so a 7x scale is a 7x enlargement of a small image. That is the
+// "low-res text" seen on the TestFlight build and not on the emulator, and
+// it is why the bug looked unreproducible.
+//
+// THE FIX. Draw the text at `fontSize * supersample` and divide the
+// transform by the same number. The geometry is unchanged — the two cancel
+// exactly — but the glyphs are now rasterised at (or nearer) the size they
+// are actually shown at, and what is left for the transform to do is a
+// scale of 1 or less. Shrinking a bitmap never blurs it; only growing does.
+//
+// WHY THERE IS A CEILING AT ALL. The raster grows with the square of this
+// number, and the pre-transform box is sized isotropically while the target
+// is not: a title at scaleX 2.2 / scaleY 9.2 needs a box 9.2x wider than the
+// ink will end up being. Measured across the feed, profile and place screens
+// on this app's real data, the scales in play are: median 2.2, mean 3.2,
+// worst 9.2. At 4 the worst case costs roughly 1MB of texture per drawn copy
+// (and LayeredHeadline draws several), which is affordable; uncapped, that
+// same title costs closer to 6MB per copy, which on a scrolling feed of
+// postcards is not.
+//
+// So 4 is a budget, not a fidelity target: it makes the common case (2.2)
+// exact and cuts the worst case from a 9.2x enlargement to 2.3x.
+const SUPERSAMPLE_MAX = 4;
+
+// What React Native draws text at when no style in the chain sets a size.
+const RN_DEFAULT_FONT_SIZE = 14;
 
 // Ceiling on `fill`'s vertical compensation, applied only to a name shown in
 // full past TRUNCATE_THRESHOLD (see `truncateLongText`).
@@ -171,6 +209,65 @@ export function StretchText({
           (fillHeightExact ? 1 : FILL_HEIGHT_OVERSHOOT)
         : fillScaleY(scaleX, isUntruncatedLongName ? LONG_TEXT_MAX_SCALE_Y : undefined)
       : 1;
+
+  // See SUPERSAMPLE_MAX. `scaleX`/`scaleY` above are the sizes the text has
+  // to end up at; everything below splits that between the font and the
+  // transform instead of leaving all of it to the transform.
+  const flatStyle = StyleSheet.flatten(style) as TextStyle | undefined;
+  // What the text is drawn at today: an explicit size in the caller's style
+  // if there is one, otherwise whatever `type` declares. `rest.type` is the
+  // same prop ThemedText reads; it is pulled out here rather than destructured
+  // so it still reaches the Text components untouched.
+  //
+  // Flattened in the same order ThemedText itself composes them — the type's
+  // style first, the caller's over it — rather than read from `style` with
+  // the type's value as a fallback. The two are NOT equivalent: a caller that
+  // passes `fontSize: undefined` unsets the type's size rather than deferring
+  // to it (see headlineTreatmentFor, where exactly that was happening), and
+  // only flattening reproduces that. Reading them separately would report a
+  // size the text is not actually being drawn at, and every scale computed
+  // from it would be wrong by that ratio.
+  const resolvedTextStyle = StyleSheet.flatten([
+    TextTypeStyles[(rest as ThemedTextProps).type ?? "default"],
+    style,
+  ]) as TextStyle | undefined;
+  // React Native's own default when nothing sets one, which is what the text
+  // is drawn at if the flatten above came back without a size.
+  const baseFontSize = resolvedTextStyle?.fontSize ?? RN_DEFAULT_FONT_SIZE;
+  // 1 means "changed nothing", which is both the fallback when the size
+  // cannot be resolved and the answer for every case that is not being
+  // enlarged — the plain non-fill path scales by 1 on both axes and so is
+  // left exactly as it was.
+  const supersample =
+    baseFontSize > 0 ? Math.min(Math.max(scaleX, scaleY, 1), SUPERSAMPLE_MAX) : 1;
+  // What is left for the transform once the font has taken its share. Both
+  // are <= 1 whenever the ceiling above did not bind.
+  const drawScaleX = scaleX / supersample;
+  const drawScaleY = scaleY / supersample;
+  // The text's own pre-transform box, at the size it is actually drawn.
+  // Stands in for contentWidth/contentHeight everywhere the *visible* copy is
+  // being positioned — the measuring copy is untouched and still reports the
+  // natural size, which is what the scales above are derived from.
+  const drawnContentWidth = contentWidth * supersample;
+  const drawnContentHeight = contentHeight * supersample;
+  // Everything in the caller's style that is an absolute length has to come
+  // up with the font size, or it stops being proportional to the letters and
+  // the transform then shrinks it below what was asked for. `lineHeight` is
+  // resolved the same way `baseFontSize` is, because several of ThemedText's
+  // types set one and a type's lineHeight is not in `style` to be found.
+  const baseLineHeight = resolvedTextStyle?.lineHeight;
+  const supersampledFont: TextStyle | null =
+    supersample !== 1
+      ? {
+          fontSize: baseFontSize * supersample,
+          ...(typeof baseLineHeight === "number"
+            ? { lineHeight: baseLineHeight * supersample }
+            : null),
+          ...(typeof resolvedTextStyle?.letterSpacing === "number"
+            ? { letterSpacing: resolvedTextStyle.letterSpacing * supersample }
+            : null),
+        }
+      : null;
   // The centered-growth correction for `fillHeight` (and the plain
   // default case, where it's always a no-op since scaleY is 1 there) —
   // see its own comment at the transform/transformOrigin call site below
@@ -197,9 +294,15 @@ export function StretchText({
   // putting the scaled text's top edge on the container's top edge and its
   // bottom on the container's bottom.
   const VISUAL_LIFT_RATIO = fillHeightExact ? 0 : 0.1;
+  //
+  // Reads the DRAWN box, not the natural one: raising the font size makes
+  // this child taller, and the container centres it, so its top edge moves
+  // up by exactly half that growth. Using the same enlarged height here
+  // moves it back down by the same amount and the two cancel — which is what
+  // keeps the supersampled render landing in the identical place.
   const centeredGrowthTranslateY =
-    (contentHeight * (1 - scaleY)) / 2 -
-    contentHeight * scaleY * VISUAL_LIFT_RATIO;
+    (drawnContentHeight * (1 - drawScaleY)) / 2 -
+    drawnContentHeight * drawScaleY * VISUAL_LIFT_RATIO;
   // fill's vertical compensation grows the *visible* text past its natural
   // single-line height via transform, which (unlike outline's band, sized by
   // its own layout already) doesn't itself resize this container — without
@@ -211,16 +314,22 @@ export function StretchText({
   // `fillHeight` skips this entirely — there, the container's height is the
   // *given* (a real, externally-established box, e.g. a flex:1 row), not
   // something to grow from the text's own pre-transform size.
+  //
+  // Also set when the supersample alone grew the child: this container takes
+  // its height from its content, so drawing the text at a larger font size
+  // would otherwise make the BOX that much taller even though the visible
+  // text is the same size it always was. Pinning it to the final height
+  // keeps the surrounding layout where it was.
   const containerHeightOverride =
-    fill && !fillHeight && contentHeight > 0 && scaleY > 1
-      ? contentHeight * scaleY
+    fill && !fillHeight && contentHeight > 0 && (scaleY > 1 || supersample > 1)
+      ? contentHeight * Math.max(scaleY, 1)
       : undefined;
   // See OUTLINE_STROKE_RADIUS above: shrink the pre-transform radius as the
   // applied scale grows, so the outline's *rendered* size stays constant
   // instead of growing right along with the text and swallowing thin
   // letterforms.
   const outlineStrokeRadius =
-    OUTLINE_STROKE_RADIUS / Math.max(scaleX, scaleY, 1);
+    OUTLINE_STROKE_RADIUS / Math.max(drawScaleX, drawScaleY, 1);
   // The same correction, for a blurred text shadow.
   //
   // A transform scales everything the text paints, the shadow's blur
@@ -250,16 +359,32 @@ export function StretchText({
   // object carrying the radius alone does not override the earlier complete
   // one, it is simply dropped. Confirmed in the browser: the computed value
   // stayed at the uncompensated 9px until the colour and offset came with it.
-  const flatStyle = StyleSheet.flatten(style) as TextStyle | undefined;
   const shadowRadius = flatStyle?.textShadowRadius;
-  const compensatedShadow =
-    shadowRadius != null && shadowRadius > 0
-      ? {
-          textShadowColor: flatStyle?.textShadowColor,
-          textShadowOffset: flatStyle?.textShadowOffset,
-          textShadowRadius: shadowRadius / Math.max(scaleX, scaleY, 1),
-        }
-      : null;
+  const shadowOffset = flatStyle?.textShadowOffset;
+  // An offset on its own is still a shadow. It used to be left alone here
+  // because the transform carried it along with the letters; now that some
+  // of that scaling has moved into the font size, it has to be restated at
+  // the drawn size or the throw quietly shrinks by the supersample factor.
+  const hasShadow =
+    (shadowRadius != null && shadowRadius > 0) ||
+    (shadowOffset != null &&
+      (shadowOffset.width !== 0 || shadowOffset.height !== 0));
+  const compensatedShadow = hasShadow
+    ? {
+        textShadowColor: flatStyle?.textShadowColor,
+        textShadowOffset:
+          shadowOffset != null
+            ? {
+                width: shadowOffset.width * supersample,
+                height: shadowOffset.height * supersample,
+              }
+            : shadowOffset,
+        // Divided by what the transform still does, which is the residual
+        // rather than the whole scale. When the supersample absorbed all of
+        // it, that residual is 1 and the radius is simply the one asked for.
+        textShadowRadius: (shadowRadius ?? 0) / Math.max(drawScaleX, drawScaleY, 1),
+      }
+    : null;
   const Text = outline ? OutlinedText : ThemedText;
 
   // contentWidth is the string's natural width and scaleX is what it is drawn
@@ -367,6 +492,10 @@ export function StretchText({
           style,
           withinRange ? styles.noMaxWidth : null,
           withinRange ? noEllipsisStyle : null,
+          // After `style`, so it overrides the size the caller asked for —
+          // see SUPERSAMPLE_MAX. Only ever set when the text is being
+          // enlarged; null leaves the caller's own size in place.
+          supersampledFont,
 
           // The text's own natural width, NOT the container's. `fill`
           // relies on laying the whole string out at full size and then
@@ -375,11 +504,42 @@ export function StretchText({
           // transform then shrinks an already-truncated line. The
           // containing View is what stops this overflowing the page — see
           // `webFillClip`.
+          // The text's own box, at the size it is actually drawn.
+          //
+          // HEIGHT, not just width, and for the same reason the width is here
+          // (below): React Native measures a Text against the room its parent
+          // offers and CLAMPS the result to it. The container is sized to the
+          // finished text — deliberately, that is what reserves the right
+          // amount of space in the surrounding layout — so a supersampled
+          // copy, whose pre-transform box is `supersample` times taller than
+          // that, was being measured back down to the container's height and
+          // its glyphs cut off inside a box less than half their size.
+          //
+          // The transform then scaled that truncated box about a bottom edge
+          // which was no longer where the bottom of the text was, which is
+          // why the remnant also landed in the wrong place. Measured on a
+          // feed card: a title whose natural box is 85pt was reporting 39.
+          //
+          // Stating the height explicitly is not an override of the layout —
+          // it IS the natural height (contentHeight scales linearly with font
+          // size, verified on device), asserted so that nothing quietly
+          // shrinks it. At supersample 1 it is exactly what the text would
+          // have measured anyway.
+          withinRange && contentHeight > 0
+            ? { height: drawnContentHeight }
+            : null,
+
           withinRange && contentWidth > 0
             ? {
                 width:
-                  contentWidth +
-                  (Platform.OS === "web" ? WEB_WIDTH_SAFETY_MARGIN : 0),
+                  drawnContentWidth +
+                  // Scaled with the box it is padding. This margin exists to
+                  // survive the transform (see the constant); left at its flat
+                  // value it would be divided by the supersample along with
+                  // everything else and stop covering what it is there for.
+                  (Platform.OS === "web"
+                    ? WEB_WIDTH_SAFETY_MARGIN * supersample
+                    : 0),
               }
             : null,
 
@@ -387,7 +547,7 @@ export function StretchText({
           // Single-line text is unaffected, so nothing that fits today
           // changes.
           !withinRange && contentHeight > 0
-            ? { lineHeight: contentHeight * WRAP_LINE_HEIGHT_RATIO }
+            ? { lineHeight: drawnContentHeight * WRAP_LINE_HEIGHT_RATIO }
             : null,
 
           compensatedShadow,
@@ -395,11 +555,11 @@ export function StretchText({
           {
             transform:
               outline || (fill && !fillHeight)
-                ? [{ scaleX }, { scaleY }]
+                ? [{ scaleX: drawScaleX }, { scaleY: drawScaleY }]
                 : [
                     { translateY: centeredGrowthTranslateY },
-                    { scaleX },
-                    { scaleY },
+                    { scaleX: drawScaleX },
+                    { scaleY: drawScaleY },
                   ],
             transformOrigin:
               outline || (fill && !fillHeight) ? "left bottom" : "0% 0%",

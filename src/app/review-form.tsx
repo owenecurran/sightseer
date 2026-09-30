@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -144,6 +144,9 @@ export default function ReviewFormScreen() {
   const [cardSide, setCardSide] = useState<'picture' | 'message'>('picture');
   const [isSavingVisit, setIsSavingVisit] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState<string | null>(null);
+  // Whether the review just saved is this account's FIRST. Drives the
+  // profile pointer in the post-save panel below.
+  const [isFirstReview, setIsFirstReview] = useState(false);
 
   const [pendingPhotos, setPendingPhotos] = useState<CroppedPhoto[]>([]);
   const [uploadedPhotoUris, setUploadedPhotoUris] = useState<string[]>([]);
@@ -590,6 +593,22 @@ export default function ReviewFormScreen() {
       }
 
       setSavedVisitId(visitId);
+
+      // Their first one? Counted after the insert, so this review is
+      // included and "first" means exactly one exists.
+      //
+      // head + count rather than selecting the rows: the number is the whole
+      // question, and an account with two hundred reviews should not pay to
+      // find out it is not on its first.
+      //
+      // Not fatal if it fails — a null count leaves isFirstReview false, and
+      // the save itself has already succeeded by this point. Losing the
+      // prompt is not worth failing the thing they came here to do.
+      const { count } = await supabase
+        .from('visits')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', session.user.id);
+      setIsFirstReview(count === 1);
 
       // The postcard this review is printed on, fixed now rather than
       // re-derived on every render. Written as an update after the fact
@@ -1137,6 +1156,30 @@ export default function ReviewFormScreen() {
 
               <SaveToBoard visitId={savedVisitId} isOwnerOrTagged />
 
+              {/* The first review is the moment a profile stops being empty
+                  and starts being somebody's — and the moment they have a
+                  reason to care what it looks like. Shown here rather than
+                  after the tutorial, which happens before they have made
+                  anything and so has nothing to point at.
+
+                  An offer, not a redirect: publishing something and being
+                  thrown into a settings form would read as the app having
+                  more to ask of them. "Done" is still right there. */}
+              {isFirstReview && (
+                <View style={styles.firstReviewPrompt}>
+                  <ThemedText type="sectionLabel">That’s your first one</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    Add a photo and a line about yourself so people who find this review know
+                    whose it is.
+                  </ThemedText>
+                  <Button
+                    label="Set up my profile"
+                    variant="secondary"
+                    onPress={() => router.push('/edit-profile')}
+                  />
+                </View>
+              )}
+
               {/* goBack() (not a fixed destination) is what makes "back
                   to your remaining drafts after a bulk upload" fall out for
                   free: a draft was reached by pushing this screen ON TOP of
@@ -1196,6 +1239,9 @@ export default function ReviewFormScreen() {
 }
 
 const styles = StyleSheet.create({
+  firstReviewPrompt: {
+    gap: Spacing.two,
+  },
   container: {
     flex: 1,
   },

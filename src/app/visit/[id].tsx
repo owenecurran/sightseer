@@ -1,7 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -18,6 +17,7 @@ import { getVisitsByIds, likeVisit, unlikeVisit, type FeedVisit } from '@/lib/fe
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 import { goBack } from '@/lib/navigation';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 
 export default function VisitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -96,7 +96,11 @@ export default function VisitDetailScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        {/* KeyboardAwareScroll, not Animated.ScrollView: this screen opens
+            with its comments already expanded, so the composer is the point
+            of it — and with a plain scroll view the keyboard covered the
+            very field being tapped. Same drop-in the form screens use. */}
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -136,7 +140,7 @@ export default function VisitDetailScreen() {
             initialCommentsOpen
           />
         )}
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );

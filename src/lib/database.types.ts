@@ -299,6 +299,47 @@ export type Database = {
           },
         ]
       }
+      bug_reports: {
+        Row: {
+          app_version: string | null
+          created_at: string
+          id: string
+          message: string
+          platform: string | null
+          resolved_at: string | null
+          route: string | null
+          user_id: string
+        }
+        Insert: {
+          app_version?: string | null
+          created_at?: string
+          id?: string
+          message: string
+          platform?: string | null
+          resolved_at?: string | null
+          route?: string | null
+          user_id: string
+        }
+        Update: {
+          app_version?: string | null
+          created_at?: string
+          id?: string
+          message?: string
+          platform?: string | null
+          resolved_at?: string | null
+          route?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bug_reports_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_errors: {
         Row: {
           app_version: string | null
@@ -1680,6 +1721,7 @@ export type Database = {
           map_default_layers: string[]
           map_default_zoom: number | null
           name: string | null
+          notify_close_friend_posts: boolean
           notify_comments: boolean
           notify_contact_joins: boolean
           notify_follows: boolean
@@ -1687,6 +1729,7 @@ export type Database = {
           notify_friend_digest: boolean
           notify_likes: boolean
           notify_nearby_reviews: boolean
+          notify_review_nudge: boolean
           notify_saves: boolean
           notify_tags: boolean
           profile_section_order: string[] | null
@@ -1725,6 +1768,7 @@ export type Database = {
           map_default_layers?: string[]
           map_default_zoom?: number | null
           name?: string | null
+          notify_close_friend_posts?: boolean
           notify_comments?: boolean
           notify_contact_joins?: boolean
           notify_follows?: boolean
@@ -1732,6 +1776,7 @@ export type Database = {
           notify_friend_digest?: boolean
           notify_likes?: boolean
           notify_nearby_reviews?: boolean
+          notify_review_nudge?: boolean
           notify_saves?: boolean
           notify_tags?: boolean
           profile_section_order?: string[] | null
@@ -1770,6 +1815,7 @@ export type Database = {
           map_default_layers?: string[]
           map_default_zoom?: number | null
           name?: string | null
+          notify_close_friend_posts?: boolean
           notify_comments?: boolean
           notify_contact_joins?: boolean
           notify_follows?: boolean
@@ -1777,6 +1823,7 @@ export type Database = {
           notify_friend_digest?: boolean
           notify_likes?: boolean
           notify_nearby_reviews?: boolean
+          notify_review_nudge?: boolean
           notify_saves?: boolean
           notify_tags?: boolean
           profile_section_order?: string[] | null
@@ -1975,6 +2022,13 @@ export type Database = {
         Returns: boolean
       }
       clear_contact_hashes: { Args: never; Returns: undefined }
+      close_contacts: {
+        Args: { p_min_interactions?: number; p_user: string }
+        Returns: {
+          interactions: number
+          other_id: string
+        }[]
+      }
       deepest_common_area: { Args: { p_ids: string[] }; Returns: string }
       discover_half_life_days: { Args: never; Returns: number }
       discover_prior_weight: { Args: never; Returns: number }
@@ -2206,8 +2260,10 @@ export type Database = {
           state_name: string
         }[]
       }
+      run_close_friend_posts: { Args: never; Returns: number }
       run_friend_review_digest: { Args: never; Returns: undefined }
       run_nearby_review_digest: { Args: never; Returns: undefined }
+      run_review_nudge: { Args: never; Returns: number }
       set_user_banned: {
         Args: { p_reason: string; p_user_id: string }
         Returns: undefined
@@ -2216,6 +2272,15 @@ export type Database = {
       show_trgm: { Args: { "": string }; Returns: string[] }
       store_place_boundary: {
         Args: { geojson: Json; place_id: string }
+        Returns: undefined
+      }
+      submit_bug_report: {
+        Args: {
+          p_app_version?: string
+          p_message: string
+          p_platform?: string
+          p_route?: string
+        }
         Returns: undefined
       }
       sync_contact_hashes: {

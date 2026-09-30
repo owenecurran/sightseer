@@ -9,6 +9,7 @@ import Animated, {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { DiscoverView } from "@/components/discover-view";
+import { KeyboardAwareScroll } from "@/components/keyboard-aware-scroll";
 import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
 import { PaperPanel } from "@/components/ui/paper-panel";
@@ -441,7 +442,12 @@ export default function HomeScreen() {
               // not an infinite-scroll timeline); worth revisiting if the
               // feed ever needs to hold hundreds+ of items at once.
             }
-            <Animated.ScrollView
+            {/* KeyboardAwareScroll, not Animated.ScrollView: the comment
+                composer sits at the bottom of a card in the middle of this
+                list, and with a plain scroll view focusing it put the
+                keyboard straight over the field being typed into. This is
+                the same drop-in the form screens already use. */}
+            <KeyboardAwareScroll
               contentContainerStyle={[
                 styles.list,
                 { paddingBottom: bottomInset },
@@ -554,7 +560,7 @@ export default function HomeScreen() {
                   )}
                 </View>
               ))}
-            </Animated.ScrollView>
+            </KeyboardAwareScroll>
           </>
         )}
       </SafeAreaView>

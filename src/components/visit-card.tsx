@@ -328,6 +328,27 @@ export function VisitCard({
     opacity: withTiming(revealed ? 1 : 0, { duration: REVEAL_FADE_MS }),
   }));
 
+  // Once the fade has finished, STOP driving opacity from an animated style.
+  //
+  // An animated opacity sitting above PostcardFlip is not free: the faces
+  // below carry perspective/rotateY and overlap as absolutely-positioned
+  // layers, and an animating group opacity over a 3D-transformed subtree
+  // makes Core Animation composite the whole group offscreen. That buffer is
+  // not guaranteed to be allocated at the screen's scale, and in a release
+  // build it came out at 1x — which is why a card's headline, its shadow AND
+  // its photographs all went soft together while every other pixel on the
+  // screen stayed sharp. One layer, rendered once, at the wrong size.
+  //
+  // Swapping the STYLE rather than the component keeps PostcardFlip mounted:
+  // remounting it would reset which side is showing and start every image
+  // loading again, which is the thing this whole gate exists to avoid.
+  const [fadeSettled, setFadeSettled] = useState(false);
+  useEffect(() => {
+    if (!revealed || fadeSettled) return;
+    const timer = setTimeout(() => setFadeSettled(true), REVEAL_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [revealed, fadeSettled]);
+
   // The author's choice wins; otherwise the photos decide, which is what
   // every review written before the choice existed still does.
   const orientation =
@@ -688,7 +709,21 @@ export function VisitCard({
                     own note. Lettered differently per card, and struck in more
                     than one colour on most of them — see headlineTreatmentFor
                     and LayeredHeadline. */}
-                <View style={{ height: frame.height * CAPTION_HEIGHT_SHARE }}>
+                {/* overflow visible, explicitly.
+                    
+                    fillHeight scales the name to FILL_HEIGHT_OVERSHOOT
+                    (1.25) times this box on purpose — the type is MEANT to
+                    stand a little proud of its band. Android clips an
+                    overflowing child by default where iOS does not, so that
+                    deliberate overshoot came out as the bottom of every
+                    letter sliced off by a straight horizontal edge, whatever
+                    the name and wherever it sat on the card. */}
+                <View
+                  style={{
+                    height: frame.height * CAPTION_HEIGHT_SHARE,
+                    overflow: 'visible',
+                  }}
+                >
                   <LayeredHeadline
                     fillHeight
                     style={headline.style}
@@ -988,7 +1023,7 @@ export function VisitCard({
           OPACITY rather than not rendering it: the card has to be mounted to
           load anything at all, and it has to occupy its height the whole time
           or the feed shoves itself around as each one arrives. */}
-      <Animated.View style={revealStyle}>
+      <Animated.View style={fadeSettled ? styles.settled : revealStyle}>
         <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
       </Animated.View>
     </View>
@@ -996,6 +1031,11 @@ export function VisitCard({
 }
 
 const styles = StyleSheet.create({
+  // A plain, non-animated opacity. Replaces revealStyle the moment the fade
+  // is over so no animated node is left driving this layer — see fadeSettled.
+  settled: {
+    opacity: 1,
+  },
   card: {
     gap: Spacing.two,
   },

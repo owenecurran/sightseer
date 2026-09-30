@@ -23,7 +23,9 @@ export type NotificationKey =
   | 'notify_friend_activity'
   | 'notify_nearby_reviews'
   | 'notify_friend_digest'
-  | 'notify_contact_joins';
+  | 'notify_contact_joins'
+  | 'notify_close_friend_posts'
+  | 'notify_review_nudge';
 
 // Grouped by what actually prompts the notification, because the deciding
 // question differs: "someone did something to my post" is a different
@@ -63,12 +65,32 @@ const NOTIFICATION_GROUPS: {
         label: 'People I follow post a new review',
         defaultValue: false,
       },
+      // Separate switch from the one above, and deliberately not a
+      // replacement for it. That one is immediate, uncapped, and covers
+      // everyone you follow — which is why it defaults off. This is at most
+      // one a day, only about people you actually like and comment on, and
+      // only about posts you have not already scrolled past, so it can
+      // default on without being noise.
+      {
+        key: 'notify_close_friend_posts',
+        label: 'People I interact with post something I missed',
+        defaultValue: true,
+      },
     ],
   },
   {
     title: 'Weekly round-ups',
     caption: 'At most one of each per week.',
     options: [
+      // Off by default. A prompt to go and make something is a different
+      // kind of message from a notification about something that happened,
+      // and the polite default for "we noticed you have not posted" is not
+      // to send it.
+      {
+        key: 'notify_review_nudge',
+        label: 'Remind me to write a review',
+        defaultValue: false,
+      },
       {
         key: 'notify_nearby_reviews',
         label: 'New reviews at places I’ve been',

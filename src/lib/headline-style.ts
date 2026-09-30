@@ -422,11 +422,28 @@ export function headlineTreatmentFor(
 ): HeadlineTreatment {
   const face = pick(`headline-face:${seed}`, HEADLINE_FACES);
 
+  // Only the keys this face actually sets.
+  //
+  // Writing `fontSize: face.fontSize` unconditionally looks equivalent and is
+  // not: for a face that does not override it that puts `fontSize: undefined`
+  // into the object, and React Native's style flattening copies every own key
+  // it finds, undefined included. An explicit undefined therefore does not
+  // mean "leave it alone", it means "unset it" — and this style is applied
+  // AFTER ThemedText's `headline`, so it was wiping that type's own
+  // `fontSize: 34` and `textTransform: 'uppercase'` and dropping the name to
+  // the platform's default 14pt in title case.
+  //
+  // Nothing looked obviously broken because StretchText scales the name to
+  // the card whatever size it starts at — it was simply starting nine times
+  // too small and making the difference up with a transform, which is exactly
+  // the case iOS cannot render sharply (see SUPERSAMPLE_MAX in
+  // stretch-text.tsx). Measured on device: 14pt stretched 7.5x, against 34pt
+  // stretched 2.7x once this is set properly.
   const base: TextStyle = {
     fontFamily: face.family,
-    letterSpacing: face.letterSpacing,
-    textTransform: face.textTransform,
-    fontSize: face.fontSize,
+    ...(face.letterSpacing != null ? { letterSpacing: face.letterSpacing } : null),
+    ...(face.textTransform != null ? { textTransform: face.textTransform } : null),
+    ...(face.fontSize != null ? { fontSize: face.fontSize } : null),
   };
 
   if (options.onCard) {
@@ -569,8 +586,11 @@ function regionTreatmentFor(seed: string, color: string, isLight: boolean): Regi
       // which stopped the clipping and bought the opposite problem — the faces
       // that needed the least room got the most, and floated off the name.
       lineHeight: box.lineHeight,
-      letterSpacing: face.letterSpacing,
-      textTransform: face.textTransform,
+      // Guarded for the same reason the name's own style above is: an
+      // explicit undefined unsets, it does not skip. A no-op today — `small`
+      // carries neither of these to unset — and one edit away from not being.
+      ...(face.letterSpacing != null ? { letterSpacing: face.letterSpacing } : null),
+      ...(face.textTransform != null ? { textTransform: face.textTransform } : null),
       color,
       // An edge, always, and in whichever direction actually helps.
       //

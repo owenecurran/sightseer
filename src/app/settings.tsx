@@ -323,6 +323,14 @@ export default function SettingsScreen() {
 
           <PaperPanel seed="settings-about" accentIndex={4}>
             <ThemedText type="sectionLabel">About</ThemedText>
+            {/* First in this section, above the legal links. Somebody opening
+                "About" because something is broken should not have to read
+                past the terms of use to find the way to say so. */}
+            <SettingsRow
+              label="Report a bug"
+              description="Tell us what went wrong — your app version is included automatically"
+              onPress={() => router.push('/report-bug')}
+            />
             <SettingsRow label="Terms of use" onPress={() => router.push('/terms')} />
             {/* Both render only once a real destination is configured -- see
                 legal.ts. A link that 404s reads worse to a reviewer than no

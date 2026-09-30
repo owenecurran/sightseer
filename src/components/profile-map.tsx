@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ProfileMapModal } from '@/components/profile-map-modal';
 import { ThemedText } from '@/components/themed-text';
+import { StickerArrow } from '@/components/ui/sticker-arrow';
 import { BrandColors, Spacing } from '@/constants/theme';
 import {
   COUNTRY_FILL,
@@ -153,9 +154,25 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
 
   return (
     <View style={styles.container}>
-      <ThemedText type="small" themeColor="textSecondary">
-        📍 {places.length} place{places.length === 1 ? '' : 's'} visited — tap to explore
-      </ThemedText>
+      {/* Composed like the other profile sections (see TeaserCard): a
+          sectionLabel, the thing itself on the row below, and an arrow
+          sticker hanging off the edge to say it opens something.
+          
+          No separator punctuation. The count and the instruction used to be
+          one sentence joined by a dash or a middot, which read as a caption
+          rather than as a section — and with the arrow there, "tap to
+          explore" was saying in words what the sticker already says. */}
+      <View style={styles.captionRow}>
+        <View style={styles.captionText}>
+          <ThemedText type="sectionLabel">Places I&apos;ve been</ThemedText>
+          <ThemedText type="default">
+            {places.length} place{places.length === 1 ? '' : 's'}
+          </ThemedText>
+        </View>
+        <View style={styles.stickerHang}>
+          <StickerArrow direction="right" seed="profile-map" />
+        </View>
+      </View>
       <Pressable onPress={() => setIsExpanded(true)}>
         <View ref={containerRef} style={styles.map} pointerEvents="none" />
       </Pressable>
@@ -175,6 +192,20 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
 const styles = StyleSheet.create({
   container: {
     gap: Spacing.two,
+  },
+  captionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  captionText: {
+    flex: 1,
+  },
+  // Pulled past the panel's own edge so it reads as stuck on rather than
+  // tucked in — the same trick TeaserCard uses for its arrow.
+  stickerHang: {
+    alignSelf: 'center',
+    marginRight: -Spacing.two,
   },
   map: {
     width: '100%',

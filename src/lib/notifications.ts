@@ -16,7 +16,12 @@ export type NotificationType =
   // 20260922120000_contact_joined.sql — the trigger fires when they first
   // make their number matchable, not when the account was created, because
   // that is the only moment the two can be connected.
-  | 'contact_joined';
+  | 'contact_joined'
+  // Compiled, capped and delayed: the people you actually like and comment
+  // on have posted things you have not seen. See run_close_friend_posts.
+  | 'close_friend_posts'
+  // The weekly "you have not written one in a while". Has no actor.
+  | 'review_nudge';
 
 export type AppNotification = {
   id: string;
