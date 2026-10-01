@@ -5,22 +5,28 @@
 --
 --   DELETES ON THE PARENT. Every `on delete cascade` has to find the children,
 --     and with no index that is a sequential scan per child table. Deleting
---     one account currently scans client_errors, bug_reports, notifications,
---     saved_boards and travel_book_collaborators end to end. That is the path
---     an account-deletion request takes, so it is the one that must not be the
+--     one account currently scans client_errors, bug_reports, notifications
+--     and travel_book_collaborators end to end. That is the path an
+--     account-deletion request takes, so it is the one that must not be the
 --     slowest thing in the system.
 --
 --   JOINS AND FILTERS. notifications.actor_id and board_items.visit_id are
 --     read on screens people open constantly.
 --
--- Columns already covered by a primary key or unique constraint whose LEADING
--- column they are — likes(visit_id, …), follows(follower_id, …) and the rest —
--- are deliberately absent: a second index there would be dead weight.
+-- THE LIST IS FROM THE DATABASE, not from reading these migration files. A
+-- static pass over the migrations said 31; pg_constraint joined against
+-- pg_index says 40, and the two sets differ rather than nest --
+-- travel_books.cover_photo_id, reports.reported_user_id, users.home_place_id
+-- and profile_prompts.user_id are all real gaps the file-reading missed, and
+-- a few it reported were already covered by a constraint it could not see.
+--
+-- Columns already covered by an index whose LEADING column they are are
+-- excluded by the query itself, so nothing here is redundant.
 --
 -- Plain CREATE INDEX rather than CONCURRENTLY, because the CLI runs a
 -- migration inside a transaction and CONCURRENTLY cannot. At present table
--- sizes the write lock is momentary. If any of these tables is large by the
--- time this runs, pull that line out and do it CONCURRENTLY by hand.
+-- sizes the write lock is momentary. If any of these is large by the time
+-- this runs, pull that line out and do it CONCURRENTLY by hand.
 
 create index if not exists articles_author_id_idx
   on public.articles (author_id);
@@ -36,6 +42,8 @@ create index if not exists board_items_place_id_idx
   on public.board_items (place_id);
 create index if not exists board_items_visit_id_idx
   on public.board_items (visit_id);
+create index if not exists boards_cover_photo_id_idx
+  on public.boards (cover_photo_id);
 create index if not exists bug_reports_user_id_idx
   on public.bug_reports (user_id);
 create index if not exists client_errors_user_id_idx
@@ -60,14 +68,22 @@ create index if not exists notifications_travel_book_item_id_idx
   on public.notifications (travel_book_item_id);
 create index if not exists profile_prompt_attachments_board_id_idx
   on public.profile_prompt_attachments (board_id);
+create index if not exists profile_prompt_attachments_cover_photo_id_idx
+  on public.profile_prompt_attachments (cover_photo_id);
+create index if not exists profile_prompt_attachments_place_id_idx
+  on public.profile_prompt_attachments (place_id);
 create index if not exists profile_prompt_attachments_prompt_id_idx
   on public.profile_prompt_attachments (prompt_id);
+create index if not exists profile_prompt_attachments_travel_book_id_idx
+  on public.profile_prompt_attachments (travel_book_id);
 create index if not exists profile_prompt_attachments_visit_id_idx
   on public.profile_prompt_attachments (visit_id);
-create index if not exists profile_prompts_board_id_idx
-  on public.profile_prompts (board_id);
-create index if not exists profile_prompts_visit_id_idx
-  on public.profile_prompts (visit_id);
+create index if not exists profile_prompt_attachments_visit_photo_id_idx
+  on public.profile_prompt_attachments (visit_photo_id);
+create index if not exists profile_prompts_user_id_idx
+  on public.profile_prompts (user_id);
+create index if not exists reports_reported_user_id_idx
+  on public.reports (reported_user_id);
 create index if not exists travel_book_collaborators_user_id_idx
   on public.travel_book_collaborators (user_id);
 create index if not exists travel_book_item_checks_travel_book_id_idx
@@ -76,11 +92,19 @@ create index if not exists travel_book_item_checks_travel_book_item_id_idx
   on public.travel_book_item_checks (travel_book_item_id);
 create index if not exists travel_book_recaps_author_id_idx
   on public.travel_book_recaps (author_id);
+create index if not exists travel_books_cover_photo_id_idx
+  on public.travel_books (cover_photo_id);
+create index if not exists travel_books_location_place_id_idx
+  on public.travel_books (location_place_id);
 create index if not exists trip_excluded_visits_visit_id_idx
   on public.trip_excluded_visits (visit_id);
 create index if not exists trip_overrides_display_place_id_idx
   on public.trip_overrides (display_place_id);
 create index if not exists trip_overrides_travel_book_id_idx
   on public.trip_overrides (travel_book_id);
+create index if not exists users_home_place_id_idx
+  on public.users (home_place_id);
+create index if not exists users_invited_via_code_idx
+  on public.users (invited_via_code);
 create index if not exists visit_tagged_places_place_id_idx
   on public.visit_tagged_places (place_id);
