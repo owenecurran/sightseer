@@ -1,25 +1,34 @@
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FindFriendsPanel } from '@/components/find-friends-panel';
-import { ThemedText } from '@/components/themed-text';
+import { FindFriendsStep, useFindFriendsStep } from '@/components/find-friends-step';
 import { ThemedView } from '@/components/themed-view';
 import { BackLink } from '@/components/ui/back-link';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 
 // Find friends, reached from Settings.
 //
-// The screen itself is chrome now — a back link and a title around
-// FindFriendsPanel, which is the same component the sign-up step renders.
-// One implementation, so the two cannot drift; that was the whole point of
-// pulling it out.
+// Chrome around FindFriendsStep, which is exactly what the sign-up gate
+// renders — same sequence, same assurances, same wording. It used to render
+// FindFriendsPanel directly in its one-page form, so the two drifted the
+// moment the sign-up step became a sequence: somebody arriving here from
+// Settings got the old stacked screen with everything on it at once.
+//
+// What this screen still owns is only what genuinely differs from sign-up: a
+// back link instead of Skip, and no has_seen_find_friends write, because
+// nothing is being gated here. Leaving is the whole exit.
+//
+// No title of its own. The step supplies "Your number" or "Your contacts",
+// and a "Find friends" heading above that would be a second heading saying
+// less than the one under it.
 export default function ContactsSyncScreen() {
+  const step = useFindFriendsStep();
+
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <BackLink seed="contacts-sync" />
-        <ThemedText type="displaySerif">Find friends</ThemedText>
-        <FindFriendsPanel />
+        <FindFriendsStep step={step} />
       </SafeAreaView>
     </ThemedView>
   );
@@ -36,6 +45,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
-    gap: Spacing.three,
+    gap: Spacing.four,
   },
 });

@@ -1,13 +1,11 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { FindFriendsPanel } from '@/components/find-friends-panel';
+import { FindFriendsStep, useFindFriendsStep } from '@/components/find-friends-step';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { PaperPanel } from '@/components/ui/paper-panel';
-import { BrandColors, MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 
@@ -53,41 +51,8 @@ import { supabase } from '@/lib/supabase';
 // Skippable throughout, and skipping counts as done. Nothing here is required
 // to use the app, and a gate somebody cannot get past is a wall.
 
-type Assurance = { icon: keyof typeof Ionicons.glyphMap; text: string };
-
-const PHONE_ASSURANCES: Assurance[] = [
-  { icon: 'chatbubble-ellipses-outline', text: 'We text you a 6-digit code.' },
-  { icon: 'lock-closed-outline', text: 'Your number is scrambled on your device.' },
-  { icon: 'eye-off-outline', text: 'It is never stored as a number.' },
-];
-
-const CONTACTS_ASSURANCES: Assurance[] = [
-  { icon: 'people-outline', text: 'See which of your contacts are already here.' },
-  { icon: 'paper-plane-outline', text: 'Invite the ones who are not.' },
-  { icon: 'lock-closed-outline', text: 'Contacts never leave your device unhashed.' },
-];
-
-function AssuranceList({ items, seed }: { items: Assurance[]; seed: string }) {
-  return (
-    <PaperPanel seed={seed} accentIndex={1} style={styles.assurances}>
-      {items.map((item) => (
-        <View key={item.text} style={styles.assuranceRow}>
-          {/* Fixed width, so the text starts on one column instead of
-              stepping in and out with each icon's own width. */}
-          <View style={styles.assuranceIcon}>
-            <Ionicons name={item.icon} size={16} color={BrandColors.sage} />
-          </View>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.assuranceText}>
-            {item.text}
-          </ThemedText>
-        </View>
-      ))}
-    </PaperPanel>
-  );
-}
-
 export default function FindFriendsScreen() {
-  const { session, profile, refreshProfile } = useAuth();
+  const { session, refreshProfile } = useAuth();
   const [isFinishing, setIsFinishing] = useState(false);
 
   // The step is DERIVED rather than advanced by hand, and holds no state of
@@ -99,8 +64,9 @@ export default function FindFriendsScreen() {
   // with one) never sees the phone screen at all rather than being asked for
   // something they have already given. The transition only ever runs one way:
   // nothing clears hashed_phone from under this screen.
-  const step: 'phone' | 'contacts' =
-    profile?.hashed_phone != null ? 'contacts' : 'phone';
+  // Shared with the Settings entry so the two cannot disagree about which
+  // step somebody is on — see find-friends-step.tsx.
+  const step = useFindFriendsStep();
 
   async function finish() {
     if (!session) return;
@@ -121,41 +87,7 @@ export default function FindFriendsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        {step === 'phone' ? (
-          <>
-            <View style={styles.heading}>
-              <ThemedText type="displaySerif" style={styles.centered}>
-                Your number
-              </ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" style={styles.centered}>
-                So people who already have it can find you here.
-              </ThemedText>
-            </View>
-
-            <AssuranceList items={PHONE_ASSURANCES} seed="find-friends-phone" />
-
-            {/* Its own caption is dropped: the panel above now carries the
-                same three facts, and carries them better. PhoneVerify owns
-                the only action on this screen, so there is no second button
-                beside it. */}
-            <FindFriendsPanel compact section="phone" sendLabel="Continue" phoneCaption="" />
-          </>
-        ) : (
-          <>
-            <View style={styles.heading}>
-              <ThemedText type="displaySerif" style={styles.centered}>
-                Your contacts
-              </ThemedText>
-              <ThemedText type="default" themeColor="textSecondary" style={styles.centered}>
-                Find the people you already know.
-              </ThemedText>
-            </View>
-
-            <AssuranceList items={CONTACTS_ASSURANCES} seed="find-friends-contacts" />
-
-            <FindFriendsPanel compact section="contacts" contactsCaption="" />
-          </>
-        )}
+        <FindFriendsStep step={step} />
 
         {/* Always reachable, from the first frame and on both steps — the
             same rule the tutorial follows. */}
@@ -186,30 +118,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four,
     gap: Spacing.four,
-  },
-  // Title and subtitle are one unit, tighter to each other than to what comes
-  // after — otherwise three evenly spaced blocks read as three topics.
-  heading: {
-    gap: Spacing.two,
-  },
-  centered: {
-    textAlign: 'center',
-  },
-  assurances: {
-    gap: Spacing.two,
-  },
-  assuranceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  assuranceIcon: {
-    width: 20,
-    alignItems: 'center',
-  },
-  assuranceText: {
-    // Wraps inside the row rather than pushing the icon off the edge.
-    flex: 1,
   },
   skip: {
     alignSelf: 'center',
