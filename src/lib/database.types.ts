@@ -1736,6 +1736,7 @@ export type Database = {
           show_map: boolean
           terms_accepted_at: string | null
           terms_version: string | null
+          tutorial_seen_at: string | null
         }
         Insert: {
           avatar_r2_key?: string | null
@@ -1783,6 +1784,7 @@ export type Database = {
           show_map?: boolean
           terms_accepted_at?: string | null
           terms_version?: string | null
+          tutorial_seen_at?: string | null
         }
         Update: {
           avatar_r2_key?: string | null
@@ -1830,6 +1832,7 @@ export type Database = {
           show_map?: boolean
           terms_accepted_at?: string | null
           terms_version?: string | null
+          tutorial_seen_at?: string | null
         }
         Relationships: [
           {

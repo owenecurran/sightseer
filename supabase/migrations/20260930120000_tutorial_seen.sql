@@ -1,0 +1,37 @@
+-- Whether this PERSON has been shown how the app works.
+--
+-- Replaces a device-level AsyncStorage flag ('sightseer.tutorial-seen.v1'),
+-- which had a hole that shows up the moment a device is used by more than one
+-- account: the flag belongs to the install, so a second account signing in on
+-- a phone that had already seen the tutorial never got shown it at all.
+--
+-- Verified on the test emulator before changing anything — that device's
+-- storage held:
+--
+--     sightseer.tutorial-seen.v1   = true
+--
+-- so every new account created on it skipped the tutorial silently. That is
+-- the "it completely skipped the tutorial" report, and it is not a crash: the
+-- gate was working exactly as written, on the wrong subject.
+--
+-- The original reason for putting it on the device is preserved rather than
+-- lost. That reasoning was: an account flag "would only ever fire for someone
+-- signing up", and the people who most need the tutorial are existing testers
+-- who already have accounts. This column is null for every row that already
+-- exists, so those testers are precisely who it fires for — they get it once,
+-- next launch, which is what the device flag was reaching for.
+--
+-- What changes, accepted deliberately: a reinstall no longer replays the
+-- tutorial, because the account remembers. For "has this person been shown
+-- this yet" that is the correct answer.
+--
+-- A timestamp rather than a boolean, for the same reason resolved_at is one on
+-- bug_reports: it answers "have they" and "when" at the same cost, and "when"
+-- is what tells you whether somebody saw the current tutorial or one from
+-- three versions ago.
+alter table public.users
+  add column if not exists tutorial_seen_at timestamptz;
+
+-- No policy work needed: users_update_own is `auth.uid() = id` with no column
+-- list, so an account can already stamp its own row — the same path
+-- has_shared_invite uses from the invite gate.

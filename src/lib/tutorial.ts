@@ -1,118 +1,103 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 
-const STORAGE_KEY = 'sightseer.tutorial-seen.v1';
+import { useAuth } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase';
 
-// Whether this device has already been shown how the app works.
+// Whether this PERSON has already been shown how the app works.
 //
-// On the DEVICE rather than on the account, deliberately. An account-level
-// flag would only ever fire for someone signing up, and the people who most
-// need this are the ones who already have an account — every existing tester
-// has a feed full of postcards and no idea they turn over. A device flag
-// shows it once per install to everyone, which is also what "on download"
-// actually means.
+// On the ACCOUNT (users.tutorial_seen_at), not on the device. It used to be a
+// device flag in AsyncStorage, and that had a hole which only appears once a
+// phone is used by more than one account: the flag belonged to the install, so
+// a second account signing in on a device that had already seen the tutorial
+// never got shown it.
 //
-// The consequence, accepted: a reinstall shows it again. For a tutorial that
-// is the right way round — someone starting over on a new phone is exactly
-// who might want the reminder — and it is three screens they can leave at
-// any point.
+// That is not a theory. The test emulator's storage held
+// `sightseer.tutorial-seen.v1 = true`, so every account created on it skipped
+// the tutorial silently — the gate was working exactly as written, on the
+// wrong subject.
 //
-// Versioned in the key. When the app teaches something new, bumping to v2
-// shows the new tutorial once to everybody rather than only to people who
-// have never installed it.
-export async function hasSeenTutorial(): Promise<boolean> {
-  try {
-    return (await AsyncStorage.getItem(STORAGE_KEY)) === 'true';
-  } catch {
-    // Storage that cannot be read is treated as "already seen". Failing
-    // toward NOT showing it matters: the opposite would put a tutorial in
-    // front of the app on every single launch for anyone whose storage is
-    // unavailable, with no way past it.
-    return true;
-  }
-}
-
-export async function markTutorialSeen(): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, 'true');
-  } catch {
-    // Worst case it is shown again next launch. Not worth failing over.
-  }
-}
+// The device flag's own argument is preserved rather than thrown away. It was:
+// an account flag "would only ever fire for someone signing up", and the
+// people who most need this are existing testers who already have accounts and
+// have never been told their postcards turn over. The new column is null on
+// every row that already exists, so those testers are exactly who it fires
+// for. Same outcome, without the hole.
+//
+// Accepted trade: a reinstall no longer replays the tutorial. For "has this
+// person been shown this yet" that is the right answer.
+//
+// Nothing is read from storage here any more. The flag arrives with the
+// profile the root layout already waits on, alongside has_shared_invite and
+// has_seen_find_friends, so it is subject to exactly the same loading rules as
+// every other gate rather than to its own.
 
 // Three states, and the third is the important one.
 //
-// `null` means "not read yet". The guard in _layout.tsx must not treat that
-// as "not seen", or the tutorial flashes up for a frame on every launch
-// before storage answers and then vanishes — which looks like a bug and, on
-// a slow read, is one.
-//
-// The value lives in a MODULE-LEVEL store rather than in each hook's own
-// state, and that is load-bearing rather than tidiness. Two places call this:
-// the root layout, which owns the gate, and the tutorial screen, which is
-// what closes it. With per-hook state, the screen calling markSeen updated
-// only the screen's own copy — the layout's still said "not seen", so the
-// gate stayed shut and the tutorial sat there until the app was restarted.
-// The flag did reach storage, which made it look fixed on the next launch
-// and hid the bug entirely. One store, every reader notified.
-let cached: boolean | null = null;
-let hasRead = false;
-const listeners = new Set<(value: boolean | null) => void>();
+// `null` means "no profile yet". The guard in _layout.tsx must not read that
+// as "not seen", or the tutorial flashes up for a frame before the profile
+// arrives — which is why that guard tests `=== false` rather than `!seen`.
+function seenFrom(tutorialSeenAt: string | null | undefined, hasProfile: boolean): boolean | null {
+  if (!hasProfile) return null;
+  return tutorialSeenAt != null;
+}
 
-// Whether this app run began with the tutorial unseen — i.e. whether this is
-// a first launch.
+// Whether this app run began with the tutorial unseen — i.e. whether this
+// person is brand new.
 //
-// Captured at the moment storage first answers, and never updated after,
-// which is the entire point. `cached` flips to true the instant someone
-// finishes or skips the tutorial, so by the time the home screen mounts it
-// can no longer tell a brand-new install from a returning one. This can.
+// Captured the first time a profile answers, and never updated after, which is
+// the entire point: the flag flips the instant someone finishes or skips, so
+// by the time the home screen mounts it can no longer tell a new account from
+// a returning one. This can.
 //
 // Read by the home screen to open on Discover rather than on the following
-// feed: a person who has been in the app for ninety seconds follows nobody,
-// so their feed is empty, and an empty feed is the worst possible first
-// impression of a place that is meant to be full of postcards.
+// feed: a person who has been here ninety seconds follows nobody, and an empty
+// feed is the worst possible first impression of a place meant to be full of
+// postcards.
 let launchedFresh = false;
+let captured = false;
 
 export function isFirstLaunch(): boolean {
   return launchedFresh;
-}
-
-function publish(value: boolean | null) {
-  cached = value;
-  for (const listener of listeners) listener(value);
 }
 
 export function useTutorialSeen(): {
   seen: boolean | null;
   markSeen: () => void;
 } {
-  const [seen, setSeen] = useState<boolean | null>(cached);
+  const { session, profile, refreshProfile } = useAuth();
+  // Mirrors the profile, but can be flipped locally the moment someone
+  // finishes — see markSeen.
+  const [optimisticallySeen, setOptimisticallySeen] = useState(false);
+
+  const fromProfile = seenFrom(profile?.tutorial_seen_at, profile != null);
 
   useEffect(() => {
-    listeners.add(setSeen);
-    // Read once per app run, however many hooks are mounted.
-    if (!hasRead) {
-      hasRead = true;
-      void hasSeenTutorial().then((value) => {
-        // Only here, on the one read per app run, and before publish lets
-        // anything flip it. A storage failure reports "seen", so it lands on
-        // false and the home screen opens on the feed as it always did.
-        launchedFresh = value === false;
-        publish(value);
-      });
-    }
-    return () => {
-      listeners.delete(setSeen);
-    };
-  }, []);
+    if (captured || fromProfile === null) return;
+    captured = true;
+    launchedFresh = fromProfile === false;
+  }, [fromProfile]);
 
   const markSeen = useCallback(() => {
-    // Published first so the gate closes on this frame; the write catches up.
-    // Waiting on storage would leave the tutorial on screen after the person
-    // has already said they are done with it.
-    publish(true);
-    void markTutorialSeen();
-  }, []);
+    // Flipped locally first so the gate closes on this frame. Waiting on the
+    // network would leave the tutorial on screen after the person has already
+    // said they are done with it — and on a bad connection, for a long time.
+    setOptimisticallySeen(true);
+    if (!session) return;
+    void (async () => {
+      const { error } = await supabase
+        .from('users')
+        .update({ tutorial_seen_at: new Date().toISOString() })
+        .eq('id', session.user.id);
+      // A failed write means it is offered again next launch. That is the
+      // right way to fail for this: the alternative is someone never being
+      // shown it because one request lost. Skip is on screen from the first
+      // frame, so a repeat is a second's annoyance rather than a trap.
+      if (!error) await refreshProfile();
+    })();
+  }, [session, refreshProfile]);
 
-  return { seen, markSeen };
+  return {
+    seen: optimisticallySeen ? true : fromProfile,
+    markSeen,
+  };
 }
