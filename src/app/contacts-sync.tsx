@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FindFriendsStep, useFindFriendsStep } from '@/components/find-friends-step';
@@ -28,7 +28,12 @@ export default function ContactsSyncScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <BackLink seed="contacts-sync" />
-        <FindFriendsStep step={step} />
+        {/* The step centres in the room left over rather than sitting under
+            the back link. A short form pinned to the top of a tall screen
+            reads as the top of something longer that failed to load. */}
+        <View style={styles.center}>
+          <FindFriendsStep step={step} />
+        </View>
       </SafeAreaView>
     </ThemedView>
   );
@@ -37,6 +42,14 @@ export default function ContactsSyncScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: Spacing.four,
+    // Lifted off dead centre: the keyboard takes the lower half the moment
+    // the field is touched, and true centring puts the field under it.
+    paddingBottom: Spacing.six,
   },
   safeArea: {
     flex: 1,

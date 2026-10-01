@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FindFriendsStep, useFindFriendsStep } from '@/components/find-friends-step';
@@ -87,7 +87,11 @@ export default function FindFriendsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <FindFriendsStep step={step} />
+        {/* Centres in the room above Skip, rather than stacking from the
+            top of a tall screen. */}
+        <View style={styles.center}>
+          <FindFriendsStep step={step} />
+        </View>
 
         {/* Always reachable, from the first frame and on both steps — the
             same rule the tutorial follows. */}
@@ -118,6 +122,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four,
     gap: Spacing.four,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: Spacing.four,
+    // See contacts-sync: off dead centre so the keyboard does not cover the
+    // field it just opened for.
+    paddingBottom: Spacing.six,
   },
   skip: {
     alignSelf: 'center',

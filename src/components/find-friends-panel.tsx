@@ -250,12 +250,8 @@ export function FindFriendsPanel({
     // stale on — only setters and module-level functions.
   }, [status, isSearching]);
 
-  return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.body}
-      keyboardShouldPersistTaps="handled"
-    >
+  const content = (
+    <>
 
         {showContacts && status === "idle" && (
           <>
@@ -424,6 +420,28 @@ export function FindFriendsPanel({
             </View>
           </>
         )}
+    </>
+  );
+
+  // A ScrollView stretches to fill its parent whether or not its content
+  // needs the room — the content sits at the top of a box that quietly took
+  // every spare pixel. That is invisible until something tries to centre
+  // this, at which point the centring silently does nothing.
+  //
+  // So the half that cannot overflow does not get one. The contacts half
+  // keeps it: two lists as long as an address book genuinely do need to
+  // scroll, and there it earns the space it takes.
+  if (!showContacts) {
+    return <View style={styles.body}>{content}</View>;
+  }
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.body}
+      keyboardShouldPersistTaps="handled"
+    >
+      {content}
     </ScrollView>
   );
 }
