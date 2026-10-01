@@ -3,6 +3,7 @@ import { ReactNode, useMemo } from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -22,13 +23,35 @@ export function AuthScreen({ title, children }: { title: string; children: React
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        {/* Tinted cream rather than shipped in its source colour — see
-            brand-logo.ts. */}
-        <Image source={{ uri: logoUri }} style={styles.logo} contentFit="contain" />
-        <ThemedText type="title" style={styles.centred}>
-          {title}
-        </ThemedText>
-        {children}
+        {/* SCROLLABLE, and centred only while it fits.
+
+            This column used to be a plain centred View, which silently clips
+            whatever does not fit: with a mark, a title, two fields, the
+            social buttons and a footer link, a shorter handset -- or any
+            handset once the keyboard is up -- runs past the screen, and
+            `justifyContent: center` sheds the overflow at BOTH ends. The
+            logo is the top of the column, so the logo is what goes.
+
+            flexGrow:1 with centring on the CONTENT container keeps the
+            short-screen case identical to before: when it fits, it is
+            centred; when it does not, it scrolls instead of being cut.
+            Content that can scroll cannot be clipped.
+
+            KeyboardAwareScroll rather than a plain one because this screen is
+            a form -- the same drop-in the other form screens use, so a
+            focused field lifts above the keyboard here too. */}
+        <KeyboardAwareScroll
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled">
+          {/* Tinted cream rather than shipped in its source colour — see
+              brand-logo.ts. */}
+          <Image source={{ uri: logoUri }} style={styles.logo} contentFit="contain" />
+          <ThemedText type="title" style={styles.centred}>
+            {title}
+          </ThemedText>
+          {children}
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );
@@ -40,11 +63,18 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    justifyContent: 'center',
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
+  },
+  // The centring and the column spacing move here, onto the scroll's content,
+  // so they still apply when it fits and simply stop mattering when it does
+  // not.
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.four,
     gap: Spacing.five,
   },
   centred: {

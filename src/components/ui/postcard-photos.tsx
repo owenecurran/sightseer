@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { PhotoLightbox } from '@/components/photo-lightbox';
@@ -63,14 +63,30 @@ export function PostcardPhotos({
   // Which tiles have their picture. A ref rather than state because nothing
   // here re-renders on it — the card above is the only thing that cares, and
   // it is told once, when the last one lands.
-  const loaded = useRef<Set<number>>(new Set());
-  const announced = useRef(false);
+  // Identifies the current set of pictures, so a card reused for a different
+  // review can be told apart from the one it was showing before.
   const key = urls.join(',');
-  useEffect(() => {
-    // A different review reusing this component starts over.
-    loaded.current = new Set();
-    announced.current = false;
-  }, [key]);
+
+  // Which tiles have their picture, and which set of pictures that is for.
+  //
+  // One ref holding both, and the key is checked when a tile REPORTS rather
+  // than reset in an effect. That ordering is the whole point: an effect runs
+  // after the commit, and a picture already in expo-image's memory cache can
+  // report itself loaded within that same commit -- which is exactly what
+  // happens when somebody leaves a tab and comes back. The tile called
+  // reportLoaded, then the effect wiped the set it had just written to. Those
+  // images never fire onLoad again, so the count could never reach tileCount,
+  // onReady was never called, and the card sat invisible until the
+  // four-second timeout in VisitCard rescued it.
+  //
+  // Checking at report time cannot lose a report, whatever order the commit
+  // and the cache hit happen in. A ref rather than state because nothing here
+  // re-renders on it: the card above is told once, when the last one lands.
+  const progress = useRef<{ key: string; loaded: Set<number>; announced: boolean }>({
+    key: '',
+    loaded: new Set(),
+    announced: false,
+  });
 
   if (urls.length === 0) return null;
 
@@ -85,9 +101,17 @@ export function PostcardPhotos({
   const tileCount = Math.min(urls.length, 4);
 
   const reportLoaded = (index: number) => {
-    loaded.current.add(index);
-    if (announced.current || loaded.current.size < tileCount) return;
-    announced.current = true;
+    const p = progress.current;
+    // A different review reusing this component starts over, decided here so
+    // the first report of a new set cannot land in the previous one's tally.
+    if (p.key !== key) {
+      p.key = key;
+      p.loaded = new Set();
+      p.announced = false;
+    }
+    p.loaded.add(index);
+    if (p.announced || p.loaded.size < tileCount) return;
+    p.announced = true;
     onReady?.();
   };
 
