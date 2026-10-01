@@ -184,6 +184,26 @@ export async function clearContactHashes(): Promise<void> {
 // show an error.
 export const PHONE_NOT_VERIFIED = 'P0002';
 
+// Raised by sync_contact_hashes and match_contacts_by_hash when an account
+// has gone past its hourly budget, or sent more than 5000 hashes at once.
+//
+// Both functions answer "which of these belong to an account", which is the
+// feature and is also an oracle — without a cap, an account could work
+// through a dictionary of every plausible number to learn who is here. The
+// limits are set well clear of a real address book sync, so meeting one
+// means something unusual, and the screen should say so plainly rather than
+// showing a database message.
+export const CONTACT_RATE_LIMITED = 'P0004';
+
+export function isContactRateLimited(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === CONTACT_RATE_LIMITED
+  );
+}
+
 export function isPhoneNotVerified(error: unknown): boolean {
   return (
     typeof error === 'object' &&

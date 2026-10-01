@@ -18,6 +18,7 @@ import { useAuth } from "@/lib/auth-context";
 import {
   getDeviceContactsHashed,
   syncContactHashes,
+  isContactRateLimited,
   isPhoneNotVerified,
   widenContactAccess,
   type ContactAccess,
@@ -172,6 +173,13 @@ export function FindFriendsPanel({
       setUnmatched(unmatchedRows);
       setStatus("loaded");
     } catch (err) {
+      if (isContactRateLimited(err)) {
+        setError(
+          'That is a lot of lookups in a short time. Give it an hour and try again.',
+        );
+        setStatus('error');
+        return;
+      }
       if (isPhoneNotVerified(err)) {
         // Not a failure so much as a precondition. The panel below already
         // explains it; an error line on top would just say it twice.
