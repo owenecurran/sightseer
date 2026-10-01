@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
@@ -41,25 +41,6 @@ function seenFrom(tutorialSeenAt: string | null | undefined, hasProfile: boolean
   return tutorialSeenAt != null;
 }
 
-// Whether this app run began with the tutorial unseen — i.e. whether this
-// person is brand new.
-//
-// Captured the first time a profile answers, and never updated after, which is
-// the entire point: the flag flips the instant someone finishes or skips, so
-// by the time the home screen mounts it can no longer tell a new account from
-// a returning one. This can.
-//
-// Read by the home screen to open on Discover rather than on the following
-// feed: a person who has been here ninety seconds follows nobody, and an empty
-// feed is the worst possible first impression of a place meant to be full of
-// postcards.
-let launchedFresh = false;
-let captured = false;
-
-export function isFirstLaunch(): boolean {
-  return launchedFresh;
-}
-
 export function useTutorialSeen(): {
   seen: boolean | null;
   markSeen: () => void;
@@ -70,12 +51,6 @@ export function useTutorialSeen(): {
   const [optimisticallySeen, setOptimisticallySeen] = useState(false);
 
   const fromProfile = seenFrom(profile?.tutorial_seen_at, profile != null);
-
-  useEffect(() => {
-    if (captured || fromProfile === null) return;
-    captured = true;
-    launchedFresh = fromProfile === false;
-  }, [fromProfile]);
 
   const markSeen = useCallback(() => {
     // Flipped locally first so the gate closes on this frame. Waiting on the
