@@ -58,6 +58,7 @@ import { searchUsers, type SearchUserResult } from '@/lib/search';
 import { supabase } from '@/lib/supabase';
 import { listTags, setVisitTags, MAX_VISIT_TAGS, type Tag } from '@/lib/visit-tags';
 import { goBack } from '@/lib/navigation';
+import { type PublicProfile } from '@/lib/public-profile';
 
 // Mirrors edit-visit/[id].tsx's own PhotoSlot pattern — needed only for
 // resuming a draft, which (unlike a fresh review) can arrive with photos
@@ -88,7 +89,9 @@ function swapAdjacent<T>(items: T[], index: number, direction: -1 | 1): T[] {
 const DEBOUNCE_MS = 300;
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
-type UserRow = Database['public']['Tables']['users']['Row'];
+// Narrowed to what the public column grant on `users` actually returns --
+// see 20260930130000_restrict_users_columns.sql.
+type UserRow = PublicProfile;
 
 // Local date, not toISOString() (which is UTC and rolls over to "tomorrow"
 // in the evening for any timezone behind UTC).

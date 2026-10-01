@@ -19,8 +19,11 @@ import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
 import { searchUsers } from '@/lib/search';
 import { addCollaborator, createTravelBook } from '@/lib/travel-books';
+import { type PublicProfile } from '@/lib/public-profile';
 
-type UserRow = Database['public']['Tables']['users']['Row'];
+// Narrowed to what the public column grant on `users` actually returns --
+// see 20260930130000_restrict_users_columns.sql.
+type UserRow = PublicProfile;
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
 const DEBOUNCE_MS = 300;
