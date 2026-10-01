@@ -30,8 +30,11 @@ import { parseDefaultCamera } from '@/lib/map-layers';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { supabase } from '@/lib/supabase';
+import { PUBLIC_USER_COLUMNS, type PublicProfile } from '@/lib/public-profile';
 
-type UserRow = Database['public']['Tables']['users']['Row'];
+// Narrowed to what the public column grant actually returns — see
+// PUBLIC_USER_COLUMNS.
+type UserRow = PublicProfile;
 type FollowStatus = Database['public']['Tables']['follows']['Row']['status'];
 
 function followLabel(status: FollowStatus | null): string {
@@ -72,7 +75,7 @@ export default function UserProfileScreen() {
         try {
           const { data: userData, error: userError } = await supabase
             .from('users')
-            .select('*')
+            .select(PUBLIC_USER_COLUMNS)
             .eq('id', id)
             .single();
           if (userError) throw userError;

@@ -17,7 +17,13 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function fetchProfile(userId: string) {
-  const { data, error } = await supabase.from('users').select('*').eq('id', userId).single();
+  // Through get_my_profile rather than a table read, because this row needs
+  // the columns the public grant no longer covers — the signup gates, the
+  // notify preferences, hashed_phone. A column grant cannot say "these
+  // columns, but only for your own row"; a definer function can.
+  // See 20260930130000_restrict_users_columns.sql.
+  void userId;
+  const { data, error } = await supabase.rpc('get_my_profile').single();
   if (error) {
     console.error('Failed to fetch profile', error);
     return null;

@@ -2019,6 +2019,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_my_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: Database['public']['Tables']['users']['Row']
+      }
+      admin_list_banned: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          id: string
+          name: string | null
+          handle: string | null
+          banned_at: string | null
+          ban_reason: string | null
+        }[]
+      }
       area_rating_shrinkage_k: { Args: never; Returns: number }
       can_view_user_content: {
         Args: { owner_id: string; viewer_id: string }
