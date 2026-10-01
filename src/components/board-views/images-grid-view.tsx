@@ -83,7 +83,11 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: GAP,
+    // NO `gap` HERE, deliberately. The gutter is the tiles' own padding, and
+    // a gap as well is not a doubled gutter but a broken grid: three tiles at
+    // 100/3% each already come to exactly 100%, so any gap between them puts
+    // the row over the line width and the third tile wraps. The symptom is a
+    // three-column grid rendering two across, which is what it did.
   },
   empty: {
     flex: 1,
@@ -92,6 +96,11 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
   },
   tile: {
+    // Percent, so the row divides exactly however wide the screen is. Half a
+    // gutter on every side of every tile makes a full GAP between neighbours
+    // and half of one against the grid's own edges, which is the usual
+    // Instagram-grid trade: the alternative keeps the outer edge flush but
+    // needs the container measured first, for one pixel nobody can see.
     width: `${100 / COLUMNS}%`,
     aspectRatio: 1,
     padding: GAP / 2,
