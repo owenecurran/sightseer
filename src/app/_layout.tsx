@@ -134,6 +134,13 @@ function RootNavigator() {
     warmTutorialCard(session.user.id);
   }, [session, hasFinishedSignup, tutorialSeen]);
 
+  // See useTabRetapEffect. Held here with the rest of the pager state so it
+  // reaches the tab screens the same way activeIndex does.
+  const [retap, setRetap] = useState({ index: -1, nonce: 0 });
+  function signalRetap(index: number) {
+    setRetap((prev) => ({ index, nonce: prev.nonce + 1 }));
+  }
+
   function setActivePage(index: number) {
     if (Platform.OS === 'web') {
       router.navigate(TAB_ROUTES[index]);
@@ -263,7 +270,14 @@ function RootNavigator() {
     <NavBarVisibilityProvider>
       <SiteMeta />
       <TabPagerProvider
-        value={{ pagerRef, activeIndex, setActiveIndexInternal: setActiveIndex, setActivePage }}
+        value={{
+          pagerRef,
+          activeIndex,
+          setActiveIndexInternal: setActiveIndex,
+          setActivePage,
+          signalRetap,
+          retap,
+        }}
       >
         <View style={{ flex: 1 }}>
           <Stack screenOptions={{ headerShown: false }}>

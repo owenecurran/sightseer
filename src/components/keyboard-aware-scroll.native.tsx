@@ -1,5 +1,6 @@
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import type { ScrollViewProps } from 'react-native';
+import type { Ref } from 'react';
+import type { ScrollView, ScrollViewProps } from 'react-native';
 
 // Native-only (no web build for react-native-keyboard-controller — kept out
 // of any route/layout file per this session's established pager-view
@@ -29,8 +30,18 @@ import type { ScrollViewProps } from 'react-native';
 // leaves the button under the keyboard on a short screen, so the thing you
 // are meant to press next is the one thing hidden. Those screens pass their
 // own, measured to include the button.
-export type KeyboardAwareScrollProps = ScrollViewProps & { bottomOffset?: number };
+export type KeyboardAwareScrollProps = ScrollViewProps & {
+  bottomOffset?: number;
+  // Forwarded so callers can drive the list imperatively — scrolling home
+  // when the tab is tapped again, for one. React 19 passes ref as an
+  // ordinary prop, so there is no forwardRef wrapper to add.
+  ref?: Ref<ScrollView>;
+};
 
-export function KeyboardAwareScroll({ bottomOffset = 24, ...props }: KeyboardAwareScrollProps) {
-  return <KeyboardAwareScrollView bottomOffset={bottomOffset} {...props} />;
+export function KeyboardAwareScroll({ bottomOffset = 24, ref, ...props }: KeyboardAwareScrollProps) {
+  // Cast because the library's handle is a ScrollView PLUS its own
+  // assureFocusedInputVisible, and TS will not accept a Ref to the narrower
+  // type where a Ref to the wider one is expected. Every method a caller can
+  // reach through ScrollView is genuinely there.
+  return <KeyboardAwareScrollView ref={ref as never} bottomOffset={bottomOffset} {...props} />;
 }

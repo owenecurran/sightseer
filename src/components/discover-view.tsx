@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
@@ -71,7 +71,11 @@ function distanceLabel(km: number | null): string | null {
   return `${Math.round(km)} km away`;
 }
 
-export function DiscoverView() {
+// What the Home tab can ask of Discover when it is tapped while already
+// showing it: go back to the top and fetch the shelves again.
+export type DiscoverViewHandle = { refresh: () => void };
+
+export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
   const bottomInset = useBottomTabInset();
   const scrollHandler = useHideOnScrollHandler();
   const { session } = useAuth();
@@ -87,6 +91,20 @@ export function DiscoverView() {
   const [featuredBoards, setFeaturedBoards] = useState<BoardRow[]>([]);
   const [boardThumbnailUrls, setBoardThumbnailUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+
+  const scrollRef = useRef<ScrollView>(null);
+  // A counter rather than a second copy of the loader. Everything below
+  // already runs on viewerId changing, and cancels itself properly when it
+  // is superseded; adding the nonce to that effect's inputs re-runs exactly
+  // that, with none of it written twice.
+  const [reloadNonce, setReloadNonce] = useState(0);
+
+  useImperativeHandle(ref, () => ({
+    refresh: () => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      setReloadNonce((n) => n + 1);
+    },
+  }));
 
   useEffect(() => {
     if (!viewerId) return;
@@ -148,7 +166,7 @@ export function DiscoverView() {
     return () => {
       cancelled = true;
     };
-  }, [viewerId]);
+  }, [viewerId, reloadNonce]);
 
   const handleToggleLike = useCallback(
     async (visit: FeedVisit) => {
@@ -186,6 +204,7 @@ export function DiscoverView() {
 
   return (
     <Animated.ScrollView
+      ref={scrollRef as never}
       contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
       showsVerticalScrollIndicator={false}
       onScroll={scrollHandler}

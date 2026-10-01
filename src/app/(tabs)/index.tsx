@@ -1,14 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import type { ScrollView } from "react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { DiscoverView } from "@/components/discover-view";
+import { DiscoverView, type DiscoverViewHandle } from "@/components/discover-view";
 import { KeyboardAwareScroll } from "@/components/keyboard-aware-scroll";
 import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
@@ -30,7 +31,7 @@ import {
 } from "@/constants/theme";
 import { useBottomTabInset } from "@/hooks/use-bottom-tab-inset";
 import { useHideOnScrollHandler, useNavBarHidden } from "@/hooks/use-hide-on-scroll";
-import { useTabFocusEffect } from "@/hooks/use-tab-pager";
+import { useTabFocusEffect, useTabRetapEffect } from "@/hooks/use-tab-pager";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/lib/auth-context";
 import { getAvatarViewUrls } from "@/lib/avatar";
@@ -254,6 +255,25 @@ export default function HomeScreen() {
     setIsRefreshing(false);
   }
 
+  const feedScrollRef = useRef<ScrollView>(null);
+  const discoverRef = useRef<DiscoverViewHandle>(null);
+
+  // Tapping Home while already on Home: back to the top, and fetch again.
+  //
+  // Both refs are addressed without asking which half is showing, because
+  // the two are rendered in an either/or below — whichever is not on screen
+  // is not mounted, so its ref is null and its line here does nothing. That
+  // is one fewer copy of the feed/discover decision to keep in step with the
+  // real one.
+  //
+  // The feed is reloaded either way. It is the Home tab's own data, and
+  // having it already fresh behind Discover is the point of asking.
+  useTabRetapEffect(0, () => {
+    feedScrollRef.current?.scrollTo({ y: 0, animated: true });
+    discoverRef.current?.refresh();
+    void handleRefresh();
+  });
+
   async function handleToggleLike(visit: FeedVisit) {
     if (!session) return;
     setError(null);
@@ -431,7 +451,7 @@ export default function HomeScreen() {
 
         {viewMode === "discover" ? (
           <View style={[styles.discoverWrap, styles.gutter]}>
-            <DiscoverView />
+            <DiscoverView ref={discoverRef} />
           </View>
         ) : (
           <>
@@ -471,6 +491,7 @@ export default function HomeScreen() {
                 keyboard straight over the field being typed into. This is
                 the same drop-in the form screens already use. */}
             <KeyboardAwareScroll
+              ref={feedScrollRef}
               contentContainerStyle={[
                 styles.list,
                 { paddingBottom: bottomInset },
