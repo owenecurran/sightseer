@@ -17,6 +17,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Avatar } from "@/components/ui/avatar";
 import { FeedRatingStamp, STAMP_SIZE } from "@/components/ui/feed-rating-stamp";
 import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
+import { ImageLoadingIcon } from "@/components/ui/image-loading-icon";
 import { PostcardFlip } from "@/components/ui/postcard-flip";
 import { PostcardMap } from "@/components/ui/postcard-map";
 import { LayeredHeadline } from "@/components/ui/layered-headline";
@@ -1023,14 +1024,46 @@ export function VisitCard({
           OPACITY rather than not rendering it: the card has to be mounted to
           load anything at all, and it has to occupy its height the whole time
           or the feed shoves itself around as each one arrives. */}
-      <Animated.View style={fadeSettled ? styles.settled : revealStyle}>
-        <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
-      </Animated.View>
+      <View>
+        <Animated.View style={fadeSettled ? styles.settled : revealStyle}>
+          <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
+        </Animated.View>
+
+        {/* Something to look at while the card is still at opacity 0.
+            Without it the byline sits above a tall blank gap, which reads as
+            a broken card rather than one that has not arrived — and with
+            several on screen the feed looks like a half-painted page.
+
+            ABSOLUTELY POSITIONED, so it contributes no height of its own and
+            the card keeps the exact size it will have when it appears. The
+            shape is already right before any picture loads: the orientation
+            comes from the photo dimensions stored on the row, so nothing
+            moves when the photograph finally lands.
+
+            Not a skeleton of the card either. A grey rectangle pretending to
+            be a postcard is a worse lie than an honest spinner — it promises
+            a specific layout, and when the real card arrives with a
+            different headline and stamp, everything it implied was wrong. */}
+        {!revealed && (
+          <View style={styles.loadingOverlay} pointerEvents="none">
+            <ImageLoadingIcon />
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // A plain, non-animated opacity. Replaces revealStyle the moment the fade
   // is over so no animated node is left driving this layer — see fadeSettled.
   settled: {
