@@ -382,9 +382,25 @@ export function VisitCard({
   // this fires into a no-op.
   useEffect(() => {
     if (!revealed || fadeSettled) return;
-    const timer = setTimeout(() => setFadeSettled(true), REVEAL_FADE_MS + REVEAL_SETTLE_SLACK_MS);
+    const timer = setTimeout(() => {
+      // PIN THE SHARED VALUE, not just the flag.
+      //
+      // This is the ordering that can strand a card half-faded. Two layers
+      // write this view's opacity: React, via the style prop, and Reanimated,
+      // which writes straight to the native view and skips the shadow tree.
+      // Swapping the style to the static one stops React driving it, but a
+      // Reanimated write already in flight can still land AFTER that commit,
+      // and then the node detaches — leaving whatever mid-fade value it wrote
+      // sitting on the view with nothing left that would ever correct it. A
+      // card you can just about see, for good.
+      //
+      // Both layers now say the same thing, so it no longer matters which of
+      // them writes last.
+      revealProgress.value = 1;
+      setFadeSettled(true);
+    }, REVEAL_FADE_MS + REVEAL_SETTLE_SLACK_MS);
     return () => clearTimeout(timer);
-  }, [revealed, fadeSettled]);
+  }, [revealed, fadeSettled, revealProgress]);
 
   // The author's choice wins; otherwise the photos decide, which is what
   // every review written before the choice existed still does.
