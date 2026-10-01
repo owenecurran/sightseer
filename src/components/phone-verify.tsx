@@ -43,9 +43,14 @@ type PhoneVerifyProps = {
   onVerified: () => void;
   // Shown above the number field. Callers phrase this for their own screen.
   caption?: string;
+  // What the button under the number field says. 'Send code' everywhere it is
+  // one panel among others; 'Continue' where the number has a screen to
+  // itself and the code has the next one, so the label describes the move
+  // rather than the mechanism.
+  sendLabel?: string;
 };
 
-export function PhoneVerify({ mode, onVerified, caption }: PhoneVerifyProps) {
+export function PhoneVerify({ mode, onVerified, caption, sendLabel = 'Send code' }: PhoneVerifyProps) {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [stage, setStage] = useState<'number' | 'code'>('number');
@@ -145,7 +150,7 @@ export function PhoneVerify({ mode, onVerified, caption }: PhoneVerifyProps) {
             {error}
           </ThemedText>
         )}
-        <Button label="Send code" onPress={() => void send()} loading={isBusy} />
+        <Button label={sendLabel} onPress={() => void send()} loading={isBusy} />
       </View>
     );
   }

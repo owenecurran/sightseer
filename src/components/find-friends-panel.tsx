@@ -43,9 +43,37 @@ type FindFriendsPanelProps = {
   // Hides the "let friends find you" prompt's section label during sign-up,
   // where the whole screen is already that question.
   compact?: boolean;
+  // Which half to render.
+  //
+  // 'both' is Settings, where someone has arrived deliberately and wants the
+  // whole thing on one page. Sign-up passes 'phone' and then 'contacts', one
+  // per screen, because there the two are a sequence rather than a menu —
+  // and a sequence in the only order that works: sync_contact_hashes refuses
+  // an unverified caller (P0002), so the contacts half cannot do anything at
+  // all until the phone half is done.
+  section?: 'both' | 'phone' | 'contacts';
+  // What the button under the number field says. See PhoneVerify.
+  sendLabel?: string;
+  // Overrides the contacts explainer above the Sync button. Passing '' drops
+  // it, for a screen that has already explained itself — see the sign-up
+  // step, where the same words in a panel above would be the second copy.
+  contactsCaption?: string;
+  // Overrides the phone caption. The default carries the whole explanation
+  // because on the Settings page it is the only thing that does; a screen
+  // whose heading and subtitle already say why is passed a shorter one, so
+  // the two do not say it twice in a row.
+  phoneCaption?: string;
 };
 
-export function FindFriendsPanel({ compact = false }: FindFriendsPanelProps) {
+export function FindFriendsPanel({
+  compact = false,
+  section = 'both',
+  sendLabel,
+  contactsCaption = "Sightseer can check your contacts against people already using the app, and let you invite the ones who aren't. Your contacts never leave your device unhashed.",
+  phoneCaption = 'Checking your contacts needs a verified number, and it is what lets people who have yours find you. We text you a code. The number is scrambled before it is stored and never kept as a number.',
+}: FindFriendsPanelProps) {
+  const showPhone = section !== 'contacts';
+  const showContacts = section !== 'phone';
   const { session, profile, refreshProfile } = useAuth();
   const [status, setStatus] = useState<
     "idle" | "loading" | "denied" | "loaded" | "error"
@@ -221,20 +249,20 @@ export function FindFriendsPanel({ compact = false }: FindFriendsPanelProps) {
       keyboardShouldPersistTaps="handled"
     >
 
-        {status === "idle" && (
+        {showContacts && status === "idle" && (
           <>
-            <ThemedText type="small" themeColor="textSecondary">
-              Sightseer can check your contacts against people already using the
-              app, and let you invite the ones who aren&apos;t. Your contacts
-              never leave your device unhashed.
-            </ThemedText>
+            {contactsCaption ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                {contactsCaption}
+              </ThemedText>
+            ) : null}
             <Button label="Sync contacts" onPress={handleSync} />
           </>
         )}
 
-        {status === "loading" && <PageLoader />}
+        {showContacts && status === "loading" && <PageLoader />}
 
-        {status === "denied" && (
+        {showContacts && status === "denied" && (
           <ThemedText type="small" themeColor="textSecondary">
             Contacts permission was denied. You can allow it from your
             device&apos;s system settings for Sightseer, then come back and try
@@ -252,14 +280,15 @@ export function FindFriendsPanel({ compact = false }: FindFriendsPanelProps) {
             sync. Someone who has just been told none of their contacts are
             here is exactly the person who should be asked whether their own
             friends can find THEM. */}
-        {!isFindable && (
+        {showPhone && !isFindable && (
           <View style={styles.section}>
             {!compact && (
               <ThemedText type="sectionLabel">Verify your number</ThemedText>
             )}
             <PhoneVerify
               mode="link"
-              caption="Checking your contacts needs a verified number, and it is what lets people who have yours find you. We text you a code. The number is scrambled before it is stored and never kept as a number."
+              caption={phoneCaption}
+              sendLabel={sendLabel}
               onVerified={() => {
                 // Re-read the profile so hashed_phone lands, which is what
                 // flips this block out of the way and unlocks the sync.
@@ -274,7 +303,7 @@ export function FindFriendsPanel({ compact = false }: FindFriendsPanelProps) {
             handful of people who were shared with it, so "none of your
             contacts are on Sightseer" would be a claim about four people
             dressed up as a claim about the whole address book. */}
-        {status === "loaded" && access === "limited" && (
+        {showContacts && status === "loaded" && access === "limited" && (
           <View style={styles.section}>
             <ThemedText type="small" themeColor="textSecondary">
               You have shared only some of your contacts with Sightseer, so this
@@ -295,7 +324,7 @@ export function FindFriendsPanel({ compact = false }: FindFriendsPanelProps) {
             name, iOS finds it among contacts this app cannot see, and one tap
             shares that person and nobody else. On anything below iOS 18 the
             whole block renders nothing. */}
-        {canShareOneContact && (
+        {showContacts && canShareOneContact && (
           <View style={styles.section}>
             <ThemedText type="sectionLabel">Find one person</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
@@ -313,7 +342,7 @@ export function FindFriendsPanel({ compact = false }: FindFriendsPanelProps) {
           </View>
         )}
 
-        {status === "loaded" && (
+        {showContacts && status === "loaded" && (
           <>
             <View style={styles.section}>
               <ThemedText type="sectionLabel">Already on Sightseer</ThemedText>
