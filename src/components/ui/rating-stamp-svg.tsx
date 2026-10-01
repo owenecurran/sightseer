@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { OutlinedText } from '@/components/ui/outlined-text';
@@ -28,6 +28,9 @@ type RatingStampSvgProps = {
 };
 
 const DEFAULT_SIZE = 52;
+
+// How long the number will wait for its artwork before showing regardless.
+const ARTWORK_TIMEOUT_MS = 1000;
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(Math.max(n, min), max);
@@ -62,6 +65,36 @@ export function RatingStampSvg({ rating, size = DEFAULT_SIZE, seed, tags, placeI
     [rating, size, seed, tagKey, placeId]
   );
 
+  // THE NUMBER WAITS FOR ITS STAMP.
+  //
+  // The artwork is a data URI, so there is no network wait -- but expo-image
+  // still decodes it off the main thread, and the number is a real text node
+  // that lays out immediately. For the frames in between, a rating rendered
+  // as bare white text floating on whatever was behind it: on a Discover
+  // tile still loading its photo, that is "8.5" alone in the middle of an
+  // empty box.
+  //
+  // Showing them together costs a few frames of no rating at all, which is
+  // the same trade the postcards make -- a thing that appears whole reads as
+  // arriving, a thing that assembles itself reads as broken.
+  // Which drawing is ready, rather than a boolean that has to be reset.
+  //
+  // A new rating or size is a new URI and therefore a new wait, and this gets
+  // that for free: artworkReady simply stops being true the moment `uri`
+  // changes. A boolean would need an effect to clear it, which is both a
+  // render-phase state write and one more thing to forget.
+  const [readyUri, setReadyUri] = useState<string | null>(null);
+  const artworkReady = readyUri === uri;
+
+  // A stamp that never decodes must not hide the rating for good: the number
+  // is the information, the artwork is only the frame around it. Errors count
+  // as ready for the same reason.
+  useEffect(() => {
+    if (artworkReady) return;
+    const timer = setTimeout(() => setReadyUri(uri), ARTWORK_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [artworkReady, uri]);
+
   return (
     <View style={{ width: size, height }}>
       {/* The SVG's aspect ratio is the stamp's own, so filling the box is
@@ -74,9 +107,12 @@ export function RatingStampSvg({ rating, size = DEFAULT_SIZE, seed, tags, placeI
         contentFit="fill"
         cachePolicy="memory"
         transition={0}
+        onLoad={() => setReadyUri(uri)}
+        onError={() => setReadyUri(uri)}
       />
       {/* Positioned over the WINDOW, not the whole stamp, so the number
           centres against the coloured fill rather than the cream frame. */}
+      {artworkReady && (
       <View
         style={[
           styles.valueWrap,
@@ -99,6 +135,7 @@ export function RatingStampSvg({ rating, size = DEFAULT_SIZE, seed, tags, placeI
           {rating.toFixed(1)}
         </OutlinedText>
       </View>
+      )}
     </View>
   );
 }
