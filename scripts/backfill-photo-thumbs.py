@@ -53,11 +53,10 @@ REGION = "auto"
 SERVICE = "s3"
 
 
-def load_env(path=".env.local"):
-    """Read the R2 credentials. Values are never printed."""
-    env = {}
+def _read_env_file(path, env):
+    """Merge KEY=VALUE lines from `path` into `env`. Values are never printed."""
     if not os.path.exists(path):
-        sys.exit(f"{path} not found — run this from the project root.")
+        return False
     with io.open(path, encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
@@ -65,13 +64,39 @@ def load_env(path=".env.local"):
                 continue
             key, _, value = line.partition("=")
             env[key.strip()] = value.strip().strip('"').strip("'")
-    missing = [
-        k
-        for k in ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT", "R2_BUCKET_NAME")
-        if not env.get(k)
-    ]
+    return True
+
+
+def load_env(path=".env.local", secrets_path=".secrets.env"):
+    """Read config from .env.local and credentials from .secrets.env.
+
+    Two files, not one, and the split is the point: Expo's CLI loads every
+    .env.local key into its own environment and writes that whole object —
+    values and all — into .expo/dev/logs/*.log each time the dev server
+    starts. The R2 credentials are not used by the app at all, only by this
+    script, so they live somewhere Expo does not read. Values are never
+    printed by anything here.
+    """
+    env = {}
+    found = _read_env_file(path, env)
+    found_secrets = _read_env_file(secrets_path, env)
+    if not found:
+        sys.exit(f"{path} not found — run this from the project root.")
+    if not found_secrets:
+        sys.exit(
+            f"{secrets_path} not found — the R2 credentials moved there out of "
+            f"{path}; see that file's header."
+        )
+    missing = [k for k in (
+        "R2_ACCESS_KEY_ID",
+        "R2_SECRET_ACCESS_KEY",
+        "R2_ENDPOINT",
+        "R2_BUCKET_NAME",
+    ) if not env.get(k)]
     if missing:
-        sys.exit("missing from .env.local: " + ", ".join(missing))
+        sys.exit(
+            "missing from %s / %s: %s" % (path, secrets_path, ", ".join(missing))
+        )
     return env
 
 
