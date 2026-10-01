@@ -5,7 +5,7 @@ import { Turnstile, isTurnstileConfigured } from '@/components/auth/turnstile';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { CodeInput } from '@/components/ui/code-input';
-import { TextField } from '@/components/ui/text-field';
+import { PhoneField } from '@/components/ui/phone-field';
 import { Spacing } from '@/constants/theme';
 import {
   confirmPhoneLink,
@@ -131,17 +131,11 @@ export function PhoneVerify({ mode, onVerified, caption, sendLabel = 'Send code'
             {caption}
           </ThemedText>
         )}
-        <TextField
-          placeholder="Phone number"
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          // Lets iOS offer the SIM's own number from the keyboard bar. The
-          // closest thing to reading it automatically — Apple will not hand
-          // the number to an app, sign-in with Apple included.
-          textContentType="telephoneNumber"
-          autoComplete="tel"
-        />
+        {/* PhoneField hands back E.164 or '' — never a partial number — so
+            the button below can be disabled on falsiness alone and cannot
+            submit half of one. It owns the country code, the (xxx) xxx-xxxx
+            mask and the digits-only keypad; see its own notes. */}
+        <PhoneField onChange={setPhone} />
         {needsCaptcha && (
           <Turnstile onToken={setCaptchaToken} action="phone-otp" resetSignal={captchaReset} />
         )}
@@ -150,7 +144,12 @@ export function PhoneVerify({ mode, onVerified, caption, sendLabel = 'Send code'
             {error}
           </ThemedText>
         )}
-        <Button label={sendLabel} onPress={() => void send()} loading={isBusy} />
+        <Button
+          label={sendLabel}
+          onPress={() => void send()}
+          loading={isBusy}
+          disabled={phone.length === 0}
+        />
       </View>
     );
   }

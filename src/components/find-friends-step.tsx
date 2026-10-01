@@ -39,18 +39,14 @@ export function useFindFriendsStep(): FindFriendsStepName {
 
 type Assurance = { icon: keyof typeof Ionicons.glyphMap; text: string };
 
-// WHY THESE ARE A LIST. Both steps ask for something people are right to
-// hesitate over: a phone number, and an address book. The answer to that
-// hesitation used to be a four-line paragraph, and a paragraph is the one
-// shape nobody reads while they are deciding whether to hand something over.
-// Three short lines, each with its own mark, can be taken in without being
-// read — which is the whole job.
-const PHONE_ASSURANCES: Assurance[] = [
-  { icon: 'chatbubble-ellipses-outline', text: 'We text you a 6-digit code.' },
-  { icon: 'lock-closed-outline', text: 'Your number is scrambled on your device.' },
-  { icon: 'eye-off-outline', text: 'It is never stored as a number.' },
-];
-
+// WHY THE CONTACTS STEP HAS A LIST AND THE PHONE STEP DOES NOT.
+//
+// Handing over an address book is a decision about OTHER people, and the
+// three lines are what somebody needs to make it. A phone number is a
+// decision about yourself, the subtitle already says what it is for, and the
+// mechanics — a code arrives, the number is hashed — are things the next
+// screen demonstrates a second later. Saying them first was reassurance
+// nobody had asked for yet, between the question and the field.
 const CONTACTS_ASSURANCES: Assurance[] = [
   { icon: 'people-outline', text: 'See which of your contacts are already here.' },
   { icon: 'paper-plane-outline', text: 'Invite the ones who are not.' },
@@ -88,8 +84,6 @@ export function FindFriendsStep({ step }: { step: FindFriendsStepName }) {
             So people who already have it can find you here.
           </ThemedText>
         </View>
-
-        <AssuranceList items={PHONE_ASSURANCES} seed="find-friends-phone" />
 
         {/* PhoneVerify's own caption is dropped: the panel above carries the
             same three facts and carries them better. It owns the only action
