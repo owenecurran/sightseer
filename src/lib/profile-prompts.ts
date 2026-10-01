@@ -2,6 +2,7 @@ import { getCachedUrls } from '@/lib/media-url-cache';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
+import { PROMPT_PHOTOS_CAP, reportIfCapped } from '@/lib/query-caps';
 
 export type AttachmentType = Database['public']['Tables']['profile_prompt_attachments']['Row']['attachment_type'];
 
@@ -294,8 +295,10 @@ export async function getVisitPhotoOptions(visitId: string): Promise<VisitPhotoO
     .from('photos')
     .select('id, position')
     .eq('visit_id', visitId)
-    .order('position');
+    .order('position')
+    .limit(PROMPT_PHOTOS_CAP);
   if (error) throw error;
+  reportIfCapped('getVisitPhotoOptions', data, PROMPT_PHOTOS_CAP);
   if (data.length === 0) return [];
 
   const urls = await getPhotoViewUrls(data.map((p) => p.id));
