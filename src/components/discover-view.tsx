@@ -1,9 +1,9 @@
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { LoadableImage } from '@/components/ui/loadable-image';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
@@ -228,15 +228,23 @@ export function DiscoverView() {
                 onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}>
                 <ThemedView type="backgroundElement" style={styles.placeCard}>
                   <View style={styles.placePhotoWrap}>
-                    {placePhotoUrls[place.id] ? (
-                      <Image
-                        source={{ uri: placePhotoUrls[place.id] }}
-                        style={styles.placePhoto}
-                        contentFit="cover"
-                      />
-                    ) : (
-                      <View style={[styles.placePhoto, styles.placePhotoEmpty]} />
-                    )}
+                    {/* One treatment for both waits. A tile whose url has
+                        not resolved and one whose bytes are still arriving
+                        looked identical -- a postcard-shaped grey box with a
+                        rating stamp floating on it -- and that box is the
+                        most glaring placeholder on the screen, because it is
+                        the size of the thing it is failing to be.
+                        LoadableImage covers both with the same walking icon
+                        the postcards below now use. */}
+                    <LoadableImage
+                      source={
+                        placePhotoUrls[place.id]
+                          ? { uri: placePhotoUrls[place.id] }
+                          : undefined
+                      }
+                      style={styles.placePhoto}
+                      contentFit="cover"
+                    />
                     {place.avgRating != null && (
                       <View style={styles.placeStamp} pointerEvents="none">
                         <RatingGlassBadgeGated
@@ -301,11 +309,10 @@ export function DiscoverView() {
                 router.push({ pathname: '/article/[id]', params: { id: article.id } })
               }>
               <ThemedView type="backgroundElement" style={styles.row}>
-                {article.coverPhotoUrl ? (
-                  <Image source={{ uri: article.coverPhotoUrl }} style={styles.thumbnail} />
-                ) : (
-                  <View style={styles.thumbnailPlaceholder} />
-                )}
+                <LoadableImage
+                  source={article.coverPhotoUrl ? { uri: article.coverPhotoUrl } : undefined}
+                  style={styles.thumbnail}
+                />
                 <View style={styles.rowLeading}>
                   <ThemedText type="headlineWrapped">{article.title}</ThemedText>
                   {article.subtitle && (
@@ -328,11 +335,10 @@ export function DiscoverView() {
               key={board.id}
               onPress={() => router.push({ pathname: '/board/[id]', params: { id: board.id } })}>
               <ThemedView type="backgroundElement" style={styles.row}>
-                {boardThumbnailUrls[board.id] ? (
-                  <Image source={{ uri: boardThumbnailUrls[board.id] }} style={styles.thumbnail} />
-                ) : (
-                  <View style={styles.thumbnailPlaceholder} />
-                )}
+                <LoadableImage
+                  source={boardThumbnailUrls[board.id] ? { uri: boardThumbnailUrls[board.id] } : undefined}
+                  style={styles.thumbnail}
+                />
                 <View style={styles.rowLeading}>
                   <ThemedText type="headlineWrapped">{board.name}</ThemedText>
                 </View>
@@ -381,9 +387,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  placePhotoEmpty: {
-    backgroundColor: 'rgba(234,231,207,0.08)',
-  },
   // Overlapping the photograph's bottom edge, the way a stamp sits on a card
   // rather than in a column of its own.
   placeStamp: {
@@ -414,11 +417,5 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: Spacing.two,
-  },
-  thumbnailPlaceholder: {
-    width: 56,
-    height: 56,
-    borderRadius: Spacing.two,
-    backgroundColor: 'rgba(234,231,207,0.08)',
   },
 });
