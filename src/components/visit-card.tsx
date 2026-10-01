@@ -4,6 +4,7 @@ import { guardCardPress } from "@/lib/card-drag-guard";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -114,6 +115,10 @@ const DOUBLE_TAP_GUARD_MS = 500;
 const REVEAL_TIMEOUT_MS = 4000;
 // The fade in, once it is ready.
 const REVEAL_FADE_MS = 180;
+// How long after the fade should have ended before the card is forced solid
+// anyway. Long enough that the animation's own completion callback is normally
+// what settles it, short enough to go unnoticed when it is not.
+const REVEAL_SETTLE_SLACK_MS = 400;
 // How much of the name's band the region line is pulled back into, to sit
 // against the lettering rather than off it. See the call site.
 const REGION_TUCK_SHARE = 0.16;
@@ -323,11 +328,34 @@ export function VisitCard({
     return () => clearTimeout(timer);
   }, [expectsPhotos, photosReady]);
 
-  const revealStyle = useAnimatedStyle(() => ({
-    // Faded rather than switched on: a card snapping from invisible to solid
-    // reads as a glitch, where a short fade reads as it arriving.
-    opacity: withTiming(revealed ? 1 : 0, { duration: REVEAL_FADE_MS }),
-  }));
+  // Faded rather than switched on: a card snapping from invisible to solid
+  // reads as a glitch, where a short fade reads as it arriving.
+  //
+  // The animation is started from an effect rather than written inside
+  // useAnimatedStyle. Both work -- Reanimated's plugin collects the worklet's
+  // closure, so the style is only re-evaluated when `revealed` itself
+  // changes, and a re-rendering parent does NOT restart the timing (measured,
+  // by re-rendering a card every frame and watching it still fade in
+  // normally). What the effect buys is not a fix for that; it is a completion
+  // callback, which is what lets the settle below stop being a second timer
+  // racing this one.
+  //
+  // It only ever moves UPWARD. Nothing here animates a card back to
+  // invisible: a review that has already been shown and then has its
+  // readiness retracted -- a recycled row, a refetch -- stays on the screen.
+  // Of the two ways to be wrong, showing a card a moment early is the
+  // recoverable one and quietly emptying the feed is not.
+  const revealProgress = useSharedValue(0);
+  const [fadeSettled, setFadeSettled] = useState(false);
+
+  useEffect(() => {
+    if (!revealed) return;
+    revealProgress.value = withTiming(1, { duration: REVEAL_FADE_MS }, (finished) => {
+      if (finished) runOnJS(setFadeSettled)(true);
+    });
+  }, [revealed, revealProgress]);
+
+  const revealStyle = useAnimatedStyle(() => ({ opacity: revealProgress.value }));
 
   // Once the fade has finished, STOP driving opacity from an animated style.
   //
@@ -343,10 +371,18 @@ export function VisitCard({
   // Swapping the STYLE rather than the component keeps PostcardFlip mounted:
   // remounting it would reset which side is showing and start every image
   // loading again, which is the thing this whole gate exists to avoid.
-  const [fadeSettled, setFadeSettled] = useState(false);
+  //
+  // Settling is driven by the animation's own completion callback above. The
+  // timer here is only a BACKSTOP behind it, and it is kept for what it
+  // cannot do: every path through it ends with the card fully visible, and
+  // none of them hides one. If the callback is never delivered -- the screen
+  // detached under us, the animation interrupted -- this still ends in a
+  // solid card rather than a hole in the feed. It is deliberately slower than
+  // the fade, so in the normal case the callback has already settled it and
+  // this fires into a no-op.
   useEffect(() => {
     if (!revealed || fadeSettled) return;
-    const timer = setTimeout(() => setFadeSettled(true), REVEAL_FADE_MS);
+    const timer = setTimeout(() => setFadeSettled(true), REVEAL_FADE_MS + REVEAL_SETTLE_SLACK_MS);
     return () => clearTimeout(timer);
   }, [revealed, fadeSettled]);
 
