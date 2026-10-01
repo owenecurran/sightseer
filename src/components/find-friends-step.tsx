@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, View } from 'react-native';
 
 import { FindFriendsPanel } from '@/components/find-friends-panel';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { ThemedText } from '@/components/themed-text';
 import { PaperPanel } from '@/components/ui/paper-panel';
 import { BrandColors, Spacing } from '@/constants/theme';
@@ -75,7 +76,29 @@ function AssuranceList({ items, seed }: { items: Assurance[]; seed: string }) {
 export function FindFriendsStep({ step }: { step: FindFriendsStepName }) {
   if (step === 'phone') {
     return (
-      <>
+      // SCROLLABLE, because this step has the only text field in the flow.
+      //
+      // The centring here was first done with a plain View, and that quietly
+      // removed the last thing on screen capable of moving: tapping the
+      // number field opened the keyboard over it and nothing shifted, because
+      // there was no scroll container left to shift. Centring and keyboard
+      // avoidance are the same problem, and this solves both — flexGrow with
+      // justifyContent centres while it fits, and the keyboard-aware scroll
+      // lifts the focused field above the keyboard when it does not.
+      //
+      // The contacts step below deliberately does NOT get one: its panel
+      // already owns a ScrollView for the results lists, and nesting two
+      // vertical scrolls is the arbitration this codebase has been bitten by
+      // before. It also has no field to avoid a keyboard for.
+      <KeyboardAwareScroll
+        style={styles.fill}
+        // Enough for the field AND the Continue button under it. At the
+        // default 24 the button sits behind the keyboard on a short screen,
+        // which hides the only thing there is to do next.
+        bottomOffset={96}
+        contentContainerStyle={styles.phoneContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
         <View style={styles.heading}>
           <ThemedText type="displaySerif" style={styles.centered}>
             Your number
@@ -91,12 +114,12 @@ export function FindFriendsStep({ step }: { step: FindFriendsStepName }) {
             two stages reads "Continue" rather than "Send code" because with a
             screen to itself it is a step forward rather than a mechanism. */}
         <FindFriendsPanel compact section="phone" sendLabel="Continue" phoneCaption="" />
-      </>
+      </KeyboardAwareScroll>
     );
   }
 
   return (
-    <>
+    <View style={styles.contactsFill}>
       <View style={styles.heading}>
         <ThemedText type="displaySerif" style={styles.centered}>
           Your contacts
@@ -109,11 +132,29 @@ export function FindFriendsStep({ step }: { step: FindFriendsStepName }) {
       <AssuranceList items={CONTACTS_ASSURANCES} seed="find-friends-contacts" />
 
       <FindFriendsPanel compact section="contacts" contactsCaption="" />
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: {
+    flex: 1,
+  },
+  // Centred while it fits, scrolled when it does not — the same shape the
+  // auth screens use. The bottom padding is optical rather than functional:
+  // it sits the block slightly above true centre, where a short form looks
+  // placed rather than stranded. Clearing the keyboard is the scroll view's
+  // job, not this padding's.
+  phoneContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    gap: Spacing.four,
+    paddingBottom: Spacing.six,
+  },
+  contactsFill: {
+    flex: 1,
+    gap: Spacing.four,
+  },
   // Title and subtitle are one unit, tighter to each other than to what comes
   // after — otherwise three evenly spaced blocks read as three topics.
   heading: {

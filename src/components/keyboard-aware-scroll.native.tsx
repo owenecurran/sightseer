@@ -22,6 +22,15 @@ import type { ScrollViewProps } from 'react-native';
 // implementations, not something reverting has been re-tested to confirm
 // yet. If interactive swipe-to-dismiss is wanted again, it needs a mechanism
 // this library actually supports, not raw ScrollViewProps passthrough.
-export function KeyboardAwareScroll(props: ScrollViewProps) {
-  return <KeyboardAwareScrollView bottomOffset={24} {...props} />;
+// bottomOffset is how much room is kept clear BELOW the focused field. The
+// default of 24 clears the field itself and nothing else, which is right for
+// a long form where the next field is the next thing wanted. It is wrong for
+// a short form whose submit button sits directly under its only input — 24
+// leaves the button under the keyboard on a short screen, so the thing you
+// are meant to press next is the one thing hidden. Those screens pass their
+// own, measured to include the button.
+export type KeyboardAwareScrollProps = ScrollViewProps & { bottomOffset?: number };
+
+export function KeyboardAwareScroll({ bottomOffset = 24, ...props }: KeyboardAwareScrollProps) {
+  return <KeyboardAwareScrollView bottomOffset={bottomOffset} {...props} />;
 }

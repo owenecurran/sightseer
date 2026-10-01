@@ -87,9 +87,9 @@ export default function FindFriendsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        {/* Centres in the room above Skip, rather than stacking from the
-            top of a tall screen. */}
-        <View style={styles.center}>
+        {/* Just the room above Skip. The step centres itself inside it —
+            see contacts-sync for why that cannot live out here. */}
+        <View style={styles.fill}>
           <FindFriendsStep step={step} />
         </View>
 
@@ -123,13 +123,8 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.four,
     gap: Spacing.four,
   },
-  center: {
+  fill: {
     flex: 1,
-    justifyContent: 'center',
-    gap: Spacing.four,
-    // See contacts-sync: off dead centre so the keyboard does not cover the
-    // field it just opened for.
-    paddingBottom: Spacing.six,
   },
   skip: {
     alignSelf: 'center',
