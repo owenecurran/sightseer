@@ -9,6 +9,7 @@ import Animated, {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { DiscoverView } from "@/components/discover-view";
+import { KeyboardAwareScroll } from "@/components/keyboard-aware-scroll";
 import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
 import { PaperPanel } from "@/components/ui/paper-panel";
@@ -41,7 +42,6 @@ import {
   type FeedVisit,
 } from "@/lib/feed";
 import { listHomeLocations } from "@/lib/home-locations";
-import { isFirstLaunch } from "@/lib/tutorial";
 import { getUnreadNotificationCount } from "@/lib/notifications";
 import { prefetchThumbnails } from "@/lib/image-prefetch";
 import { getPhotoThumbUrls, getPhotoViewUrls } from "@/lib/photo-view";
@@ -64,17 +64,14 @@ export default function HomeScreen() {
   const { session, profile } = useAuth();
   const theme = useTheme();
   const bottomInset = useBottomTabInset();
-  // Discover on a first launch, the feed on every one after.
+  // Which tab this launch opens on is DERIVED below, from whether the feed
+  // actually has anything new in it. This holds only an explicit choice.
   //
-  // A brand-new account follows nobody, so the feed it would otherwise open
-  // on is empty — the one screen guaranteed to have nothing in it, shown at
-  // the only moment that decides whether someone stays. Discover is full
-  // from the start. Lazily initialised so the flag is read once, at mount,
-  // rather than on every render; see isFirstLaunch in src/lib/tutorial.ts
-  // for why the value has to be captured at app start rather than read live.
-  const [viewMode, setViewMode] = useState<FeedMode>(() =>
-    isFirstLaunch() ? "discover" : "feed",
-  );
+  // Null until the switcher is touched, so the derived answer keeps applying
+  // until somebody overrules it — and once they have, their choice stands for
+  // the rest of the session rather than being quietly re-decided underneath
+  // them on the next reload.
+  const [pickedMode, setPickedMode] = useState<FeedMode | null>(null);
   const [items, setItems] = useState<FeedItem[]>([]);
   // "You've been in X a while — is this home now?" Null unless the viewer's
   // own ongoing trip has run long enough to be worth asking about.
@@ -343,6 +340,33 @@ export default function HomeScreen() {
 
   if (!hasLoadedOnce) return <PageLoader />;
 
+  // Discover only when the people you follow have nothing new.
+  //
+  // It used to open on Discover whenever the tutorial had not been seen,
+  // which stood in for "brand new account". That proxy drifted: an account
+  // that skipped the tutorial, or predates the flag, never sets it — so the
+  // app opened on Discover more or less every launch, for people with a feed
+  // full of posts they had not read.
+  //
+  // The real question is the one the feed can answer directly: is there
+  // anything here I have not seen? Same test the divider below uses, so the
+  // tab that opens and the line marking where you left off can never
+  // disagree.
+  //
+  // Decided after the load rather than at mount, which costs nothing: the
+  // screen is already behind PageLoader until hasLoadedOnce, so the answer
+  // arrives before either tab has been drawn. No flash, no switch.
+  //
+  // A viewer who has never opened the feed has no boundary to compare
+  // against, so "anything at all" is the test — a brand-new account follows
+  // nobody, gets an empty feed, and still lands on Discover, which is what
+  // the old rule was really for.
+  const hasUnseenFromFollows =
+    previousViewedAt == null
+      ? items.length > 0
+      : items.some((item) => item.sortKey > previousViewedAt);
+  const viewMode: FeedMode = pickedMode ?? (hasUnseenFromFollows ? "feed" : "discover");
+
   // Splice a divider in right before the first item posted before this
   // viewer's last feed visit — skipped entirely on a first-ever visit
   // (previousViewedAt null) or when nothing's new since last time (boundary
@@ -391,7 +415,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.gutter}>
-          <FeedSwitcher active={viewMode} onChange={setViewMode} />
+          <FeedSwitcher active={viewMode} onChange={setPickedMode} />
         </View>
         </Animated.View>
 
@@ -441,7 +465,12 @@ export default function HomeScreen() {
               // not an infinite-scroll timeline); worth revisiting if the
               // feed ever needs to hold hundreds+ of items at once.
             }
-            <Animated.ScrollView
+            {/* KeyboardAwareScroll, not Animated.ScrollView: the comment
+                composer sits at the bottom of a card in the middle of this
+                list, and with a plain scroll view focusing it put the
+                keyboard straight over the field being typed into. This is
+                the same drop-in the form screens already use. */}
+            <KeyboardAwareScroll
               contentContainerStyle={[
                 styles.list,
                 { paddingBottom: bottomInset },
@@ -554,7 +583,7 @@ export default function HomeScreen() {
                   )}
                 </View>
               ))}
-            </Animated.ScrollView>
+            </KeyboardAwareScroll>
           </>
         )}
       </SafeAreaView>

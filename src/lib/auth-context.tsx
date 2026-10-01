@@ -16,13 +16,37 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function fetchProfile(userId: string) {
-  const { data, error } = await supabase.from('users').select('*').eq('id', userId).single();
+async function fetchProfile(userId: string): Promise<Profile | null> {
+  // Through get_my_profile rather than a table read, because this row needs
+  // the columns the public grant no longer covers — the signup gates, the
+  // notify preferences, hashed_phone. A column grant cannot say "these
+  // columns, but only for your own row"; a definer function can.
+  // See 20260930130000_restrict_users_columns.sql.
+  const { data, error } = await supabase.rpc('get_my_profile');
+
   if (error) {
+    // This is the single worst thing that can fail in the app: a null profile
+    // reads as "has not finished signing up", so every gate in _layout.tsx
+    // opens and the person is walked back through onboarding. Loud on
+    // purpose.
     console.error('Failed to fetch profile', error);
     return null;
   }
-  return data;
+
+  // Deliberately tolerant of BOTH shapes, rather than calling .single().
+  //
+  // get_my_profile returns `public.users`, a composite rather than a set, and
+  // PostgREST returns a composite unwrapped — so the result is an object, not
+  // a one-element array. .single() asks for the object representation and is
+  // very likely fine, but "very likely" is not a good enough bet on the one
+  // call that decides whether anybody is signed in. Accepting either costs
+  // two lines and cannot be wrong.
+  const row = Array.isArray(data) ? (data[0] ?? null) : data;
+  if (!row) {
+    console.error('Failed to fetch profile', `get_my_profile returned nothing for ${userId}`);
+    return null;
+  }
+  return row as Profile;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

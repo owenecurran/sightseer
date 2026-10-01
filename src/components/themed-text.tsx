@@ -154,3 +154,14 @@ const styles = StyleSheet.create({
     fontWeight: 400,
   },
 });
+
+// The same table the component above renders from, exposed so a caller can
+// ask what size a `type` actually is.
+//
+// Only StretchText needs this, and it needs it for a specific reason: that
+// component draws text at a size it computes, not the one the type declares,
+// and it cannot compute a size without knowing what it is starting from. A
+// second hard-coded copy of these numbers would drift the first time one of
+// them was tuned, so the real object is exported rather than a duplicate of
+// its values.
+export const TextTypeStyles = styles;

@@ -149,8 +149,8 @@ export function ReviewPromptCard({
   // showNote true keeps the stamp fixed to the right — the reach/reserve
   // math above (and the note's own paddingTop reserve below) both assume a
   // right corner, and generalizing them to a left-landing stamp would mean
-  // redoing the note's own text alignment the way feed-place-photo-block.tsx
-  // does for the feed, which isn't warranted here: this note already
+  // redoing the note's own text alignment the way the feed card used to,
+  // which isn't warranted here: this note already
   // reserves the stamp's full height above it regardless of side, so a
   // left/right flip wouldn't change how much room the note needs, just
   // complicate the reserve math for no visible benefit. showNote false has

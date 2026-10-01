@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
+import { SAVED_COLLECTIONS_CAP, reportIfCapped } from '@/lib/query-caps';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 type TravelBookRow = Database['public']['Tables']['travel_books']['Row'];
@@ -12,8 +13,10 @@ export async function listSavedBoards(userId: string): Promise<SavedBoard[]> {
     .from('saved_boards')
     .select('notify_on_new_items, boards!board_id(*)')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(SAVED_COLLECTIONS_CAP);
   if (error) throw error;
+  reportIfCapped('listSavedBoards', data, SAVED_COLLECTIONS_CAP);
 
   type Row = { notify_on_new_items: boolean; boards: BoardRow | null };
   return (data as unknown as Row[])
@@ -26,8 +29,10 @@ export async function listSavedTravelBooks(userId: string): Promise<SavedTravelB
     .from('saved_travel_books')
     .select('notify_on_new_items, travel_books!travel_book_id(*)')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(SAVED_COLLECTIONS_CAP);
   if (error) throw error;
+  reportIfCapped('listSavedTravelBooks', data, SAVED_COLLECTIONS_CAP);
 
   type Row = { notify_on_new_items: boolean; travel_books: TravelBookRow | null };
   return (data as unknown as Row[])

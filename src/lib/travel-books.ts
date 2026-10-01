@@ -4,6 +4,7 @@ import { getVisitsTaggedIn, type TaggedVisit } from '@/lib/tagged-visits';
 import { supabase } from '@/lib/supabase';
 import type { Trip } from '@/lib/trips';
 import type { Database } from '@/lib/database.types';
+import { OWN_VISITS_CAP, reportIfCapped } from '@/lib/query-caps';
 
 export type TravelBookRow = Database['public']['Tables']['travel_books']['Row'];
 
@@ -248,8 +249,10 @@ async function getOwnVisitsAsTaggedVisit(userId: string): Promise<TaggedVisit[]>
       FEED_VISIT_SELECT
     )
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(OWN_VISITS_CAP);
   if (error) throw error;
+  reportIfCapped('getOwnVisitsAsTaggedVisit', data, OWN_VISITS_CAP);
   const raw = data as unknown as RawFeedVisit[];
   const likedIds = await getMyLikedVisitIds(raw.map((v) => v.id), userId);
   return raw.map((visit) => mapRawFeedVisit(visit, userId, undefined, likedIds));

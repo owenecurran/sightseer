@@ -46,15 +46,14 @@ export type BannedUser = {
 // the moment it is actioned, taking the last reference to that account with
 // it.
 //
-// Readable by anyone under users_select, so this is not a privilege boundary
-// — the screen that shows it is admin-only, and setUserBanned is what
-// actually checks. Nothing here is more sensitive than a profile already is.
+// Admin-gated server-side: see admin_list_banned. ban_reason and banned_at
+// are no longer part of the public column grant on users.
 export async function listBannedUsers(): Promise<BannedUser[]> {
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, name, handle, banned_at, ban_reason')
-    .not('banned_at', 'is', null)
-    .order('banned_at', { ascending: false });
+  // Through admin_list_banned, which checks is_admin server-side. banned_at
+  // and ban_reason left the public column grant, and the comment above used
+  // to say this was "not a privilege boundary" because anyone could read them
+  // anyway. That was true, and it was the bug.
+  const { data, error } = await supabase.rpc('admin_list_banned');
   if (error) throw error;
   return (data ?? []).map((u) => ({
     id: u.id,

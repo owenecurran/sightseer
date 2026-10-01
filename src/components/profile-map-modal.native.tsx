@@ -1,10 +1,24 @@
 import { Camera, FillLayer, LineLayer, MapView, PointAnnotation, ShapeSource, type MapState } from '@rnmapbox/maps';
 import type { FeatureCollection, Polygon } from 'geojson';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Mapbox layer ids here are prefixed `modal-`, and the preview's are
+// prefixed `preview-` (profile-map.native.tsx). That is load-bearing.
+//
+// Both components add country and state layers to the same Mapbox style, and
+// they used to use identical ids. Mapbox keeps one layer registry per style,
+// so whichever mounted second found the first's layers already there and
+// logged a console error:
+//
+//   RNMBXLayer | Layer countries-line seems to refer to an existing layer
+//   but existing flag is not specified, this is deprecated
+//
+// A collision, not a coincidence. Namespacing makes the two sets distinct.
 import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { MAPBOX_STYLE_URL } from '@/constants/mapbox.native';
 import { BrandColors, Spacing } from '@/constants/theme';
@@ -74,6 +88,10 @@ export function ProfileMapModal({
   isOwnProfile,
   onCameraLocked,
 }: ProfileMapModalProps) {
+  // Per instance, for the reason set out in profile-map.native.tsx: a
+  // fixed id collides with any other MapView alive at the same moment,
+  // including an earlier mount of this same component.
+  const layerId = useId();
   const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(defaultLayers));
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>>>([]);
   const [regions, setRegions] = useState<VisitedRegion[]>([]);
@@ -158,15 +176,15 @@ export function ProfileMapModal({
           <Camera defaultSettings={{ centerCoordinate, zoomLevel: initialZoom }} />
 
           {activeLayers.has('countries') && (
-            <ShapeSource id="countries-source" shape={countryFeatures}>
-              <FillLayer id="countries-fill" style={{ fillColor: COUNTRY_FILL, fillOpacity: COUNTRY_FILL_OPACITY }} />
-              <LineLayer id="countries-line" style={{ lineColor: COUNTRY_LINE, lineWidth: 2 }} />
+            <ShapeSource id={`${layerId}-countries-source`} shape={countryFeatures}>
+              <FillLayer id={`${layerId}-countries-fill`} style={{ fillColor: COUNTRY_FILL, fillOpacity: COUNTRY_FILL_OPACITY }} />
+              <LineLayer id={`${layerId}-countries-line`} style={{ lineColor: COUNTRY_LINE, lineWidth: 2 }} />
             </ShapeSource>
           )}
           {activeLayers.has('states') && (
-            <ShapeSource id="states-source" shape={stateFeatures}>
-              <FillLayer id="states-fill" style={{ fillColor: STATE_FILL, fillOpacity: STATE_FILL_OPACITY }} />
-              <LineLayer id="states-line" style={{ lineColor: STATE_LINE, lineWidth: 2 }} />
+            <ShapeSource id={`${layerId}-states-source`} shape={stateFeatures}>
+              <FillLayer id={`${layerId}-states-fill`} style={{ fillColor: STATE_FILL, fillOpacity: STATE_FILL_OPACITY }} />
+              <LineLayer id={`${layerId}-states-line`} style={{ lineColor: STATE_LINE, lineWidth: 2 }} />
             </ShapeSource>
           )}
           {activeLayers.has('pins') &&
@@ -192,7 +210,14 @@ export function ProfileMapModal({
             </ThemedText>
           </Pressable>
 
-          <View style={styles.bottomBar}>
+          {/* The controls sit ON a paper panel now, not bare on the map.
+              Two reasons, and the second is not cosmetic: every other
+              surface in this app that holds controls is a PaperPanel, and a
+              chip row floating directly over map tiles had no contrast
+              guarantee at all — it was legible over dark ocean and nearly
+              invisible over pale desert, depending entirely on where the
+              person happened to have panned. */}
+          <PaperPanel seed="map-controls" style={styles.bottomBar}>
             <View style={styles.chipRow}>
               {LAYER_OPTIONS.map((option) => {
                 const active = activeLayers.has(option.key);
@@ -207,21 +232,35 @@ export function ProfileMapModal({
                 );
               })}
             </View>
+            {/* Buttons rather than bare sage text. These two WRITE something
+                — they change what every visitor to this profile sees — and
+                they read as less consequential than the layer chips above
+                them, which only change the current view.
+                
+                Relabelled as well: "Set as default" never said default WHAT,
+                and "Lock this view" sounded like it stopped the map moving.
+                One saves the layer selection, the other saves the camera, so
+                they now say so — and they fit on one line, which the old
+                labels did not once they became buttons. */}
             {isOwnProfile && (
               <View style={styles.ownerActionsRow}>
-                <Pressable onPress={handleSaveDefault} disabled={isSavingDefault}>
-                  <ThemedText type="small" themeColor="sage">
-                    {isSavingDefault ? 'Saving…' : 'Set as default'}
-                  </ThemedText>
-                </Pressable>
-                <Pressable onPress={handleLockView} disabled={isLockingView}>
-                  <ThemedText type="small" themeColor="sage">
-                    {isLockingView ? 'Locking…' : 'Lock this view'}
-                  </ThemedText>
-                </Pressable>
+                <Button
+                  label={isSavingDefault ? 'Saving…' : 'Save layers'}
+                  variant="secondary"
+                  onPress={handleSaveDefault}
+                  loading={isSavingDefault}
+                  style={styles.ownerAction}
+                />
+                <Button
+                  label={isLockingView ? 'Saving…' : 'Save view'}
+                  variant="secondary"
+                  onPress={handleLockView}
+                  loading={isLockingView}
+                  style={styles.ownerAction}
+                />
               </View>
             )}
-          </View>
+          </PaperPanel>
         </View>
       </View>
     </Modal>
@@ -253,6 +292,9 @@ const styles = StyleSheet.create({
   bottomBar: {
     gap: Spacing.two,
     marginBottom: Spacing.four,
+  },
+  ownerAction: {
+    flex: 1,
   },
   ownerActionsRow: {
     flexDirection: 'row',

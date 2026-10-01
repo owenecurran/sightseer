@@ -1,10 +1,11 @@
 import { Camera, FillLayer, LineLayer, MapView, PointAnnotation, ShapeSource } from '@rnmapbox/maps';
 import type { FeatureCollection, Polygon } from 'geojson';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ProfileMapModal } from '@/components/profile-map-modal';
 import { ThemedText } from '@/components/themed-text';
+import { StickerArrow } from '@/components/ui/sticker-arrow';
 import { MAPBOX_STYLE_URL } from '@/constants/mapbox.native';
 import { BrandColors, Spacing } from '@/constants/theme';
 import {
@@ -55,6 +56,21 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): FeatureCollection
 // says to show, same layer set/rendering as the full-screen modal, just at
 // preview size. Tap still expands into `ProfileMapModal` for ad hoc toggling.
 export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile, onCameraLocked }: ProfileMapProps) {
+  // Unique per mounted component, which the layer ids below need to be.
+  //
+  // Mapbox keeps ONE layer registry per style and these ids are added to it.
+  // A fixed id collides the moment two of these exist at once — and one
+  // always does the moment `defaultCamera` resolves, because the MapView
+  // below is deliberately keyed on it and remounts. The old mount's layers
+  // are still registered when the new one adds its own, and rnmapbox logs
+  //
+  //   RNMBXLayer | Layer preview-countries-fill seems to refer to an
+  //   existing layer but existing flag is not specified
+  //
+  // Prefixing by component was not enough — that only separated this from
+  // the modal, not this from ITSELF a moment earlier. useId is per instance,
+  // so a remount gets a fresh set.
+  const layerId = useId();
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>> | null>(null);
   const [regions, setRegions] = useState<VisitedRegion[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -85,9 +101,25 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
 
   return (
     <View style={styles.container}>
-      <ThemedText type="small" themeColor="textSecondary">
-        📍 {places.length} place{places.length === 1 ? '' : 's'} visited — tap to explore
-      </ThemedText>
+      {/* Composed like the other profile sections (see TeaserCard): a
+          sectionLabel, the thing itself on the row below, and an arrow
+          sticker hanging off the edge to say it opens something.
+          
+          No separator punctuation. The count and the instruction used to be
+          one sentence joined by a dash or a middot, which read as a caption
+          rather than as a section — and with the arrow there, "tap to
+          explore" was saying in words what the sticker already says. */}
+      <View style={styles.captionRow}>
+        <View style={styles.captionText}>
+          <ThemedText type="sectionLabel">Places I&apos;ve been</ThemedText>
+          <ThemedText type="default">
+            {places.length} place{places.length === 1 ? '' : 's'}
+          </ThemedText>
+        </View>
+        <View style={styles.stickerHang}>
+          <StickerArrow direction="right" seed="profile-map" />
+        </View>
+      </View>
       <Pressable onPress={() => setIsExpanded(true)}>
         {/* Keyed on whether a locked camera is resolved yet — Camera's
             defaultSettings only ever applies once per mount, so if this
@@ -108,15 +140,15 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
             }}
           />
           {layers.has('countries') && (
-            <ShapeSource id="countries-source" shape={countryFeatures}>
-              <FillLayer id="countries-fill" style={{ fillColor: COUNTRY_FILL, fillOpacity: COUNTRY_FILL_OPACITY }} />
-              <LineLayer id="countries-line" style={{ lineColor: COUNTRY_LINE, lineWidth: 2 }} />
+            <ShapeSource id={`${layerId}-countries-source`} shape={countryFeatures}>
+              <FillLayer id={`${layerId}-countries-fill`} style={{ fillColor: COUNTRY_FILL, fillOpacity: COUNTRY_FILL_OPACITY }} />
+              <LineLayer id={`${layerId}-countries-line`} style={{ lineColor: COUNTRY_LINE, lineWidth: 2 }} />
             </ShapeSource>
           )}
           {layers.has('states') && (
-            <ShapeSource id="states-source" shape={stateFeatures}>
-              <FillLayer id="states-fill" style={{ fillColor: STATE_FILL, fillOpacity: STATE_FILL_OPACITY }} />
-              <LineLayer id="states-line" style={{ lineColor: STATE_LINE, lineWidth: 2 }} />
+            <ShapeSource id={`${layerId}-states-source`} shape={stateFeatures}>
+              <FillLayer id={`${layerId}-states-fill`} style={{ fillColor: STATE_FILL, fillOpacity: STATE_FILL_OPACITY }} />
+              <LineLayer id={`${layerId}-states-line`} style={{ lineColor: STATE_LINE, lineWidth: 2 }} />
             </ShapeSource>
           )}
           {layers.has('pins') &&
@@ -149,6 +181,20 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
 const styles = StyleSheet.create({
   container: {
     gap: Spacing.two,
+  },
+  captionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  captionText: {
+    flex: 1,
+  },
+  // Pulled past the panel's own edge so it reads as stuck on rather than
+  // tucked in — the same trick TeaserCard uses for its arrow.
+  stickerHang: {
+    alignSelf: 'center',
+    marginRight: -Spacing.two,
   },
   map: {
     width: '100%',

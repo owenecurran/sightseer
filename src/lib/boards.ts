@@ -1,6 +1,7 @@
 import { resolveStateCountries } from '@/lib/places-cache';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
+import { OWN_VISITS_CAP, reportIfCapped } from '@/lib/query-caps';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 type BoardUpdate = Database['public']['Tables']['boards']['Update'];
@@ -262,8 +263,10 @@ export async function getMyVisitItems(userId: string): Promise<BoardVisitItem[]>
       'id, rating, note, visited_on, created_at, user_id, place_id, users!user_id(handle, name), places!place_id(name, lat, lng), photos(id, position, width, height)'
     )
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(OWN_VISITS_CAP);
   if (error) throw error;
+  reportIfCapped('getMyVisitItems', data, OWN_VISITS_CAP);
 
   const rows = data as unknown as OwnVisitRow[];
   const stateCountryMap = await resolveStateCountries(rows.map((row) => row.place_id));

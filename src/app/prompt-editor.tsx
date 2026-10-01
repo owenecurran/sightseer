@@ -44,6 +44,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { listUserTravelBooks } from '@/lib/travel-books';
 import { goBack } from '@/lib/navigation';
+import { OWN_VISITS_CAP } from '@/lib/query-caps';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -176,7 +177,8 @@ export default function PromptEditorScreen() {
           .from('visits')
           .select('id, rating, note, places!place_id(name)')
           .eq('user_id', session.user.id)
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .limit(OWN_VISITS_CAP),
       ]);
 
       const existing = promptId ? prompts.find((p) => p.id === promptId) : undefined;

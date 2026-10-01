@@ -21,6 +21,7 @@ import { initDeferredLinks } from '@/lib/deferred-links';
 import { addPushTapListener, getPushPermissionState, registerForPush } from '@/lib/push';
 import { TERMS_VERSION } from '@/lib/terms';
 import { useTutorialSeen } from '@/lib/tutorial';
+import { warmTutorialCard } from '@/lib/tutorial-card';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -107,6 +108,31 @@ function RootNavigator() {
     hasSetPrivacy &&
     hasPassedInviteGate;
   const showNavBar = hasFinishedSignup && isOnMainTab;
+
+  // Start assembling the tutorial's postcard as soon as the tutorial is the
+  // gate this account is HEADING FOR — not when a particular screen happens
+  // to mount.
+  //
+  // This condition is the tutorial's own guard minus the tutorial itself (see
+  // the Stack.Protected below), so it is true for exactly the people who are
+  // going to see that screen, and true from the moment that becomes known.
+  // Usually that is while they are still on find-friends, which is three
+  // round trips and a photograph of head start — measured at 3.8s on a real
+  // device, which is the whole difference between the card being there and
+  // the card arriving.
+  //
+  // Driven from the gate rather than from find-friends, which is where it
+  // started: anyone whose has_seen_find_friends is already true skips that
+  // screen entirely and would have got no warm-up at all. A preload hung off
+  // one screen only helps the people who pass through that screen; hung off
+  // the gate, it helps everyone the gate applies to.
+  //
+  // warmTutorialCard is memoised and single-flight, so re-running this effect
+  // on any profile change costs nothing after the first call.
+  useEffect(() => {
+    if (!session || !hasFinishedSignup || tutorialSeen !== false) return;
+    warmTutorialCard(session.user.id);
+  }, [session, hasFinishedSignup, tutorialSeen]);
 
   function setActivePage(index: number) {
     if (Platform.OS === 'web') {

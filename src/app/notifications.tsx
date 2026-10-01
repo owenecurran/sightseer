@@ -80,6 +80,17 @@ function describe(notification: AppNotification, actors: { name: string }[]): st
     // Named from their own profile, never from whatever you saved them as —
     // the server stores a peppered hash of the number and nothing else, so
     // your label for them never left your phone.
+    case 'close_friend_posts': {
+      const missed = notification.digestReviewCount ?? 0;
+      // Names the most recent poster and counts the rest, rather than
+      // listing every name — the point is that there is something worth
+      // opening the feed for, not a manifest.
+      return missed <= 1
+        ? `${notification.actorName} posted something you have not seen`
+        : `${notification.actorName} and others posted ${missed} reviews you have not seen`;
+    }
+    case 'review_nudge':
+      return 'Been anywhere lately? Write it down before you forget it';
     case 'contact_joined':
       return `${notification.actorName} is on Sightseer — they're in your contacts`;
     case 'friend_review_digest': {
@@ -215,6 +226,12 @@ export default function NotificationsScreen() {
         if (notification.actorUserId) {
           router.push({ pathname: '/user/[id]', params: { id: notification.actorUserId } });
         }
+        break;
+      case 'close_friend_posts':
+      case 'review_nudge':
+        // Both are about the feed as a whole rather than one review, and the
+        // nudge is about making one. Neither has a single destination, so
+        // the tap just marks it read — same as nearby_review_digest below.
         break;
       case 'nearby_review_digest':
         // Multi-place aggregate — no single natural destination to jump to.

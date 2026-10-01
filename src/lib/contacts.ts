@@ -1,4 +1,5 @@
 import * as Contacts from 'expo-contacts';
+import { Contact, ContactField } from 'expo-contacts';
 import * as Crypto from 'expo-crypto';
 import { Platform } from 'react-native';
 
@@ -24,6 +25,14 @@ async function hashPhone(raw: string): Promise<string> {
   return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, normalizePhone(raw));
 }
 
+// Must match private.normalize_email in
+// 20260922150000_verified_phone_and_email.sql byte for byte: lowercase and
+// trimmed, and deliberately NOT folding Gmail's dots or +suffixes, which is
+// right for one domain and wrong for every other.
+async function hashEmail(raw: string): Promise<string> {
+  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, raw.trim().toLowerCase());
+}
+
 export type DeviceContact = { name: string; hash: string };
 
 // How much of the address book we were actually given.
@@ -42,6 +51,16 @@ export type DeviceContactsResult =
 // Follows this app's established permission convention
 // (src/lib/image-picker.ts, src/lib/current-location.ts): call the Expo
 // permission API directly, no custom pre-permission explainer.
+//
+// Reads through Contact.getAllDetails, the class-based API. The old
+// getContactsAsync is not merely deprecated — expo-contacts' own type says
+// "This method will throw in runtime" — and it was warning on every sync.
+// requestPermissionsAsync is NOT deprecated and stays as it is; only the
+// reading and picking moved.
+//
+// getAllDetails rather than getAll on purpose: it returns plain field
+// objects instead of constructing a Contact instance per entry, which for an
+// address book of any size is the difference between a pause and a freeze.
 export async function getDeviceContactsHashed(): Promise<DeviceContactsResult> {
   const permission = await Contacts.requestPermissionsAsync();
   if (!permission.granted) return 'denied';
@@ -50,13 +69,36 @@ export async function getDeviceContactsHashed(): Promise<DeviceContactsResult> {
   // there is no such thing as partial access — granted means everything.
   const access: ContactAccess = permission.accessPrivileges === 'limited' ? 'limited' : 'all';
 
-  const { data } = await Contacts.getContactsAsync({ fields: [Contacts.Fields.PhoneNumbers] });
+  // Emails as well as numbers, now that an account carries a hashed_email
+  // too. A contact card saved with only an address used to be invisible to
+  // matching however many of them were on Sightseer.
+  const entries = await Contact.getAllDetails([
+    ContactField.FULL_NAME,
+    ContactField.PHONES,
+    ContactField.EMAILS,
+  ]);
 
   const contacts: DeviceContact[] = [];
-  for (const contact of data) {
-    const number = contact.phoneNumbers?.[0]?.number;
-    if (!number || !contact.name) continue;
-    contacts.push({ name: contact.name, hash: await hashPhone(number) });
+  for (const entry of entries) {
+    const name = entry.fullName;
+    if (!name) continue;
+
+    // EVERY number and address, not just the first. Somebody saved under a
+    // mobile and a landline is reachable on either, and the one that matches
+    // an account is as likely to be the second as the first — taking
+    // phones[0] quietly missed those.
+    const seen = new Set<string>();
+    for (const phone of entry.phones ?? []) {
+      if (!phone?.number) continue;
+      seen.add(await hashPhone(phone.number));
+    }
+    for (const email of entry.emails ?? []) {
+      // `address`, not `email` — the field is named for the postal sense of
+      // the word, matching ExistingAddress alongside it.
+      if (!email?.address) continue;
+      seen.add(await hashEmail(email.address));
+    }
+    for (const hash of seen) contacts.push({ name, hash });
   }
   return { contacts, access };
 }
@@ -70,7 +112,10 @@ export async function getDeviceContactsHashed(): Promise<DeviceContactsResult> {
 export async function widenContactAccess(): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
   try {
-    const added = await Contacts.presentAccessPickerAsync();
+    // Contact.presentAccessPicker, not presentAccessPickerAsync — the latter
+    // is on the same deprecation list as getContactsAsync and throws at
+    // runtime. It hands back the Contacts that were shared rather than ids.
+    const added = await Contact.presentAccessPicker();
     return added.length > 0;
   } catch {
     // Older iOS throws rather than returning empty. Nothing was added, and
@@ -138,6 +183,26 @@ export async function clearContactHashes(): Promise<void> {
 // condition, asked before the attempt, so the screen can explain rather than
 // show an error.
 export const PHONE_NOT_VERIFIED = 'P0002';
+
+// Raised by sync_contact_hashes and match_contacts_by_hash when an account
+// has gone past its hourly budget, or sent more than 5000 hashes at once.
+//
+// Both functions answer "which of these belong to an account", which is the
+// feature and is also an oracle — without a cap, an account could work
+// through a dictionary of every plausible number to learn who is here. The
+// limits are set well clear of a real address book sync, so meeting one
+// means something unusual, and the screen should say so plainly rather than
+// showing a database message.
+export const CONTACT_RATE_LIMITED = 'P0004';
+
+export function isContactRateLimited(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === CONTACT_RATE_LIMITED
+  );
+}
 
 export function isPhoneNotVerified(error: unknown): boolean {
   return (

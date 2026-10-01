@@ -3,6 +3,7 @@ import { downscaleForUpload, makeThumbForUpload } from '@/lib/photo-downscale';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 import type { EditablePhoto } from '@/lib/visit-edit';
+import { DRAFTS_CAP, reportIfCapped } from '@/lib/query-caps';
 
 type DraftVisitRow = Database['public']['Tables']['draft_visits']['Row'];
 type PlaceRow = Database['public']['Tables']['places']['Row'];
@@ -28,8 +29,10 @@ export async function listMyDrafts(userId: string): Promise<DraftListItem[]> {
     .from('draft_visits')
     .select('id, created_at, places!place_id(name), photos(id, position)')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(DRAFTS_CAP);
   if (error) throw error;
+  reportIfCapped('listMyDrafts', data, DRAFTS_CAP);
 
   const rows = data as unknown as RawListRow[];
   const coverPhotoIds = rows

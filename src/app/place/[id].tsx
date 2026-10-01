@@ -222,7 +222,7 @@ export default function PlaceDetailScreen() {
   // place itself. Without this the page opens on a bare title, which reads
   // as broken rather than as empty.
   //
-  // Sized to the hero's own fixed height rather than PlaceMapImage's 16:9,
+  // Sized to the hero's own fixed height rather than a 16:9 map image,
   // and deliberately not that component: its whole affordance is tapping
   // through to the place page, which is the page you are already on.
   //

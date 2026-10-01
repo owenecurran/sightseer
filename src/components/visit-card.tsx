@@ -17,6 +17,7 @@ import { ThemedView } from "@/components/themed-view";
 import { Avatar } from "@/components/ui/avatar";
 import { FeedRatingStamp, STAMP_SIZE } from "@/components/ui/feed-rating-stamp";
 import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
+import { ImageLoadingIcon } from "@/components/ui/image-loading-icon";
 import { PostcardFlip } from "@/components/ui/postcard-flip";
 import { PostcardMap } from "@/components/ui/postcard-map";
 import { LayeredHeadline } from "@/components/ui/layered-headline";
@@ -327,6 +328,27 @@ export function VisitCard({
     // reads as a glitch, where a short fade reads as it arriving.
     opacity: withTiming(revealed ? 1 : 0, { duration: REVEAL_FADE_MS }),
   }));
+
+  // Once the fade has finished, STOP driving opacity from an animated style.
+  //
+  // An animated opacity sitting above PostcardFlip is not free: the faces
+  // below carry perspective/rotateY and overlap as absolutely-positioned
+  // layers, and an animating group opacity over a 3D-transformed subtree
+  // makes Core Animation composite the whole group offscreen. That buffer is
+  // not guaranteed to be allocated at the screen's scale, and in a release
+  // build it came out at 1x — which is why a card's headline, its shadow AND
+  // its photographs all went soft together while every other pixel on the
+  // screen stayed sharp. One layer, rendered once, at the wrong size.
+  //
+  // Swapping the STYLE rather than the component keeps PostcardFlip mounted:
+  // remounting it would reset which side is showing and start every image
+  // loading again, which is the thing this whole gate exists to avoid.
+  const [fadeSettled, setFadeSettled] = useState(false);
+  useEffect(() => {
+    if (!revealed || fadeSettled) return;
+    const timer = setTimeout(() => setFadeSettled(true), REVEAL_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [revealed, fadeSettled]);
 
   // The author's choice wins; otherwise the photos decide, which is what
   // every review written before the choice existed still does.
@@ -688,7 +710,21 @@ export function VisitCard({
                     own note. Lettered differently per card, and struck in more
                     than one colour on most of them — see headlineTreatmentFor
                     and LayeredHeadline. */}
-                <View style={{ height: frame.height * CAPTION_HEIGHT_SHARE }}>
+                {/* overflow visible, explicitly.
+                    
+                    fillHeight scales the name to FILL_HEIGHT_OVERSHOOT
+                    (1.25) times this box on purpose — the type is MEANT to
+                    stand a little proud of its band. Android clips an
+                    overflowing child by default where iOS does not, so that
+                    deliberate overshoot came out as the bottom of every
+                    letter sliced off by a straight horizontal edge, whatever
+                    the name and wherever it sat on the card. */}
+                <View
+                  style={{
+                    height: frame.height * CAPTION_HEIGHT_SHARE,
+                    overflow: 'visible',
+                  }}
+                >
                   <LayeredHeadline
                     fillHeight
                     style={headline.style}
@@ -988,14 +1024,51 @@ export function VisitCard({
           OPACITY rather than not rendering it: the card has to be mounted to
           load anything at all, and it has to occupy its height the whole time
           or the feed shoves itself around as each one arrives. */}
-      <Animated.View style={revealStyle}>
-        <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
-      </Animated.View>
+      <View>
+        <Animated.View style={fadeSettled ? styles.settled : revealStyle}>
+          <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
+        </Animated.View>
+
+        {/* Something to look at while the card is still at opacity 0.
+            Without it the byline sits above a tall blank gap, which reads as
+            a broken card rather than one that has not arrived — and with
+            several on screen the feed looks like a half-painted page.
+
+            ABSOLUTELY POSITIONED, so it contributes no height of its own and
+            the card keeps the exact size it will have when it appears. The
+            shape is already right before any picture loads: the orientation
+            comes from the photo dimensions stored on the row, so nothing
+            moves when the photograph finally lands.
+
+            Not a skeleton of the card either. A grey rectangle pretending to
+            be a postcard is a worse lie than an honest spinner — it promises
+            a specific layout, and when the real card arrives with a
+            different headline and stamp, everything it implied was wrong. */}
+        {!revealed && (
+          <View style={styles.loadingOverlay} pointerEvents="none">
+            <ImageLoadingIcon />
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // A plain, non-animated opacity. Replaces revealStyle the moment the fade
+  // is over so no animated node is left driving this layer — see fadeSettled.
+  settled: {
+    opacity: 1,
+  },
   card: {
     gap: Spacing.two,
   },

@@ -87,6 +87,33 @@ function mapMessage(error: unknown, fallback: string): string {
   //   process in Trust Hub to gain access.
   //
   // Accurate, actionable, and addressed to entirely the wrong person.
+  //
+  // BEFORE the provider catch-all below, and that order is the whole point.
+  // Twilio wraps a bad number in the same "Error sending phone_change OTP to
+  // provider" envelope it uses for an outage, so the broader test matched
+  // first and a mistyped number was reported as "text messages are not
+  // available right now". Somebody then waits for a service that was never
+  // down, with no idea the number was the problem.
+  //
+  // Observed verbatim:
+  //
+  //   Error sending phone_change OTP to provider: Invalid parameter `To`:
+  //   +11234567890 More information: https://www.twilio.com/docs/errors/60200
+  //
+  // 60200 is Twilio's "invalid parameter", and for this call the parameter is
+  // always the number.
+  if (
+    lower.includes('invalid phone') ||
+    lower.includes('not a valid phone') ||
+    lower.includes('invalid parameter `to`') ||
+    lower.includes('errors/60200') ||
+    lower.includes('is not a valid phone number')
+  ) {
+    return 'That number does not look right. Check it and try again.';
+  }
+  // Genuinely the provider, rather than what was handed to it: a compliance
+  // hold, an unconfigured service, an outage. Nothing the person holding the
+  // phone can do, so it says so instead of implying they mistyped.
   if (
     lower.includes('compliance profile') ||
     lower.includes('trust hub') ||
@@ -95,9 +122,6 @@ function mapMessage(error: unknown, fallback: string): string {
     lower.includes('unsupported phone provider')
   ) {
     return 'Text messages are not available right now. Please try another way to sign in.';
-  }
-  if (lower.includes('invalid phone') || lower.includes('not a valid phone')) {
-    return 'That does not look like a phone number. Include the country code, like +1.';
   }
   if (lower.includes('token has expired') || lower.includes('expired or is invalid')) {
     return 'That code has expired. Ask for a new one.';

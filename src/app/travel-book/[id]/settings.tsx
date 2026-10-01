@@ -11,7 +11,6 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
-import type { Database } from '@/lib/database.types';
 import { searchUsers } from '@/lib/search';
 import {
   addCollaborator,
@@ -21,8 +20,11 @@ import {
   type TravelBookCollaborator,
   type TravelBookRow,
 } from '@/lib/travel-books';
+import { type PublicProfile } from '@/lib/public-profile';
 
-type UserRow = Database['public']['Tables']['users']['Row'];
+// Narrowed to what the public column grant on `users` actually returns --
+// see 20260930130000_restrict_users_columns.sql.
+type UserRow = PublicProfile;
 
 const DEBOUNCE_MS = 300;
 

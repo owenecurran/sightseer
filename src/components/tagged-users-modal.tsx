@@ -11,8 +11,11 @@ import { getAvatarViewUrls } from '@/lib/avatar';
 import { followUser, rankByConnection, unfollowOrCancelRequest, type RankedUser } from '@/lib/follows';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
+import { PUBLIC_USER_COLUMNS, type PublicProfile } from '@/lib/public-profile';
 
-type UserRow = Database['public']['Tables']['users']['Row'];
+// Narrowed to what the public column grant actually returns — see
+// PUBLIC_USER_COLUMNS.
+type UserRow = PublicProfile;
 type FollowStatus = Database['public']['Tables']['follows']['Row']['status'];
 
 function followLabel(status: FollowStatus | null): string {
@@ -48,7 +51,7 @@ export function TaggedUsersModal({ visible, onClose, userIds }: TaggedUsersModal
     setError(null);
     (async () => {
       try {
-        const { data, error: fetchError } = await supabase.from('users').select('*').in('id', userIds);
+        const { data, error: fetchError } = await supabase.from('users').select(PUBLIC_USER_COLUMNS).in('id', userIds);
         if (fetchError) throw fetchError;
         const [ranked, avatars] = await Promise.all([
           rankByConnection(data, session.user.id),

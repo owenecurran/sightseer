@@ -1,7 +1,11 @@
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
+import { PUBLIC_USER_COLUMNS, type PublicProfile } from '@/lib/public-profile';
 
-type UserRow = Database['public']['Tables']['users']['Row'];
+// Narrowed to what the public column grant on `users` actually returns.
+// Anything outside PUBLIC_USER_COLUMNS now needs a definer function --
+// see 20260930130000_restrict_users_columns.sql.
+type UserRow = PublicProfile;
 type FollowStatus = Database['public']['Tables']['follows']['Row']['status'];
 
 export type OtherUser = UserRow & { followStatus: FollowStatus | null };
@@ -9,7 +13,7 @@ export type OtherUser = UserRow & { followStatus: FollowStatus | null };
 export async function listOtherUsersWithFollowStatus(myUserId: string): Promise<OtherUser[]> {
   const [{ data: users, error: usersError }, { data: myFollows, error: followsError }] =
     await Promise.all([
-      supabase.from('users').select('*').neq('id', myUserId),
+      supabase.from('users').select(PUBLIC_USER_COLUMNS).neq('id', myUserId),
       supabase.from('follows').select('followee_id, status').eq('follower_id', myUserId),
     ]);
   if (usersError) throw usersError;

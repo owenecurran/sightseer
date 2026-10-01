@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { COMMENTS_CAP, reportIfCapped } from '@/lib/query-caps';
 
 export type Comment = {
   id: string;
@@ -21,8 +22,10 @@ export async function listComments(visitId: string): Promise<Comment[]> {
     .from('comments')
     .select('id, user_id, body, created_at, users!user_id(handle, name)')
     .eq('visit_id', visitId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .limit(COMMENTS_CAP);
   if (error) throw error;
+  reportIfCapped('listComments', data, COMMENTS_CAP);
 
   return (data as unknown as RawComment[]).map((c) => ({
     id: c.id,

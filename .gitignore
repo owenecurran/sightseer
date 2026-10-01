@@ -53,3 +53,7 @@ firebase-service-account*.json
 # Python bytecode from scripts/
 __pycache__/
 *.pyc
+
+# Credentials used by scripts only. Deliberately not a .env* name Expo
+# loads — see the file's own header.
+.secrets.env

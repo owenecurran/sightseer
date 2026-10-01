@@ -1,10 +1,14 @@
 import { rankByConnection, type RankedUser } from '@/lib/follows';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
+import { PUBLIC_USER_COLUMNS, type PublicProfile } from '@/lib/public-profile';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 type TravelBookRow = Database['public']['Tables']['travel_books']['Row'];
-type UserRow = Database['public']['Tables']['users']['Row'];
+// Narrowed to what the public column grant on `users` actually returns.
+// Anything outside PUBLIC_USER_COLUMNS now needs a definer function --
+// see 20260930130000_restrict_users_columns.sql.
+type UserRow = PublicProfile;
 
 export type SearchUserResult = RankedUser<UserRow>;
 export type SearchBoardResult = BoardRow & { creatorName: string };
@@ -34,7 +38,7 @@ export async function searchAll(
   const [usersResult, boardsResult, travelBooksResult] = await Promise.all([
     supabase
       .from('users')
-      .select('*')
+      .select(PUBLIC_USER_COLUMNS)
       .neq('id', myUserId)
       .or(`handle.ilike.${pattern},name.ilike.${pattern}`)
       .limit(RESULT_LIMIT),
@@ -79,7 +83,7 @@ export async function searchUsers(query: string, myUserId: string): Promise<Sear
 
   const { data, error } = await supabase
     .from('users')
-    .select('*')
+    .select(PUBLIC_USER_COLUMNS)
     .neq('id', myUserId)
     .or(`handle.ilike.${pattern},name.ilike.${pattern}`)
     .limit(RESULT_LIMIT);
