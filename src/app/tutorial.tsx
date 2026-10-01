@@ -7,6 +7,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { ChoiceCard } from '@/components/ui/choice-card';
+import { ImageLoadingIcon } from '@/components/ui/image-loading-icon';
 import { PostcardFlip } from '@/components/ui/postcard-flip';
 import { PostcardPaper } from '@/components/ui/postcard-paper';
 import { VisitCard } from '@/components/visit-card';
@@ -15,9 +16,12 @@ import { BrandColors, MaxContentWidth, Spacing } from '@/constants/theme';
 import { headlineTreatmentFor } from '@/lib/headline-style';
 import { POSTCARD_FRAME_RATIO } from '@/lib/postcard-orientation';
 import { useAuth } from '@/lib/auth-context';
-import { getVisitsByIds, type FeedVisit } from '@/lib/feed';
-import { getAvatarViewUrls } from '@/lib/avatar';
-import { getPhotoViewUrls } from '@/lib/photo-view';
+import { type FeedVisit } from '@/lib/feed';
+import {
+  loadTutorialCard,
+  peekTutorialCard,
+  TUTORIAL_VISIT_ID,
+} from '@/lib/tutorial-card';
 import { useTutorialSeen } from '@/lib/tutorial';
 import { sheetFor } from '@/lib/postcard-stock';
 
@@ -44,24 +48,8 @@ const HINT_AFTER_MS = 6000;
 // Fixed, so the fallback card looks the same on every install.
 const DEMO_SEED = 'tutorial-card';
 
-// The review the first page teaches on.
-//
-// A REAL one, fetched by id, rather than a replica assembled here. The page
-// is trying to say "this is what every review in the app is", and a mock-up
-// that drifts from the real card teaches the wrong thing the moment the real
-// one changes. Fetching it also means the back carries a real note, a real
-// rating and real tags, which is exactly the thing people were not finding.
-//
-// This one is @owen's Pike Place Market review. It has to be a review every
-// viewer is allowed to see, because the people meeting it have had an
-// account for about a minute: RLS decides, and a private or blocked author
-// returns nothing at all. That account is public, so the visits_select
-// policy's `is_private = false` branch lets a brand-new user read it
-// without following anybody.
-//
-// Empty falls back to the printed demo card below, so changing or clearing
-// this is safe — the tutorial keeps working either way.
-const TUTORIAL_VISIT_ID = '9433a6cd-4d06-4299-9461-2af1914b0419';
+// The review the first page teaches on, and its pre-loading, both live in
+// lib/tutorial-card.ts — it is started a screen earlier, on find-friends.
 
 type Page = 'flip' | 'review' | 'collect';
 const PAGES: Page[] = ['flip', 'review', 'collect'];
@@ -78,42 +66,34 @@ export default function TutorialScreen() {
   // visible to this viewer, or the request failed — and either way the
   // printed demo card below takes over.
   const { session } = useAuth();
+  // Seeded from the preload started on find-friends. When that finished — the
+  // normal case — this is already the finished card on the very first render
+  // and nothing below ever runs.
+  const preloaded = peekTutorialCard();
   const [realVisit, setRealVisit] = useState<FeedVisit | null | undefined>(
-    TUTORIAL_VISIT_ID ? undefined : null
+    TUTORIAL_VISIT_ID ? (preloaded === undefined ? undefined : (preloaded?.visit ?? null)) : null
   );
-  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
-  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>(
+    preloaded?.photoUrls ?? {}
+  );
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(preloaded?.avatarUrl);
 
   useEffect(() => {
-    if (!TUTORIAL_VISIT_ID || !session) return;
+    if (!TUTORIAL_VISIT_ID || !session || realVisit !== undefined) return;
     let cancelled = false;
-    (async () => {
-      try {
-        const [found] = await getVisitsByIds([TUTORIAL_VISIT_ID], session.user.id);
-        if (cancelled) return;
-        if (!found) {
-          setRealVisit(null);
-          return;
-        }
-        const [photos, avatars] = await Promise.all([
-          found.photoIds.length > 0 ? getPhotoViewUrls(found.photoIds) : Promise.resolve({}),
-          getAvatarViewUrls([found.user_id]),
-        ]);
-        if (cancelled) return;
-        setPhotoUrls(photos);
-        setAvatarUrl(avatars[found.user_id]);
-        setRealVisit(found);
-      } catch {
-        // A tutorial that fails to load must still be a tutorial. The demo
-        // card is a complete lesson on its own, so this degrades rather
-        // than showing an error on the first screen of the app.
-        if (!cancelled) setRealVisit(null);
-      }
-    })();
+    // The same single-flight promise find-friends already started, so this
+    // joins that work rather than repeating it. Only reached when somebody
+    // arrived faster than the network, or skipped find-friends outright.
+    void loadTutorialCard(session.user.id).then((card) => {
+      if (cancelled) return;
+      setPhotoUrls(card?.photoUrls ?? {});
+      setAvatarUrl(card?.avatarUrl);
+      setRealVisit(card?.visit ?? null);
+    });
     return () => {
       cancelled = true;
     };
-  }, [session]);
+  }, [session, realVisit]);
 
   // VisitCard owns its own flip; this is how the page hears about it, so the
   // hint and the confirmation below work identically for the real card and
@@ -169,7 +149,22 @@ export default function TutorialScreen() {
               </ThemedText>
 
               <View style={styles.cardWrap}>
-                {realVisit ? (
+                {realVisit === undefined ? (
+                  // UNDEFINED IS NOT NULL, and conflating them is what made
+                  // this look sloppy. `undefined` means the answer has not
+                  // arrived; `null` means there is no usable review and the
+                  // printed card below IS the lesson. Drawing the fallback for
+                  // both meant the first thing anybody saw was a card that
+                  // then silently turned into a different one.
+                  //
+                  // Holding the postcard's own proportion rather than
+                  // collapsing to the icon's size: the real card is about to
+                  // occupy exactly this space, so nothing below it moves when
+                  // it arrives.
+                  <View style={styles.cardLoading}>
+                    <ImageLoadingIcon />
+                  </View>
+                ) : realVisit ? (
                   // The real thing, with every action inert: the callbacks
                   // are no-ops and isOwner is false, so nothing on this
                   // screen can like, share or delete somebody's review.
@@ -378,6 +373,12 @@ const styles = StyleSheet.create({
   },
   cardWrap: {
     width: '100%',
+  },
+  cardLoading: {
+    width: '100%',
+    aspectRatio: POSTCARD_FRAME_RATIO.horizontal,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   demoName: {
     fontSize: 30,
