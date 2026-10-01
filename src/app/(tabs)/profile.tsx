@@ -301,6 +301,39 @@ ${latestCard.note ?? ''}`.trim());
               </ThemedText>
             </Pressable>
 
+            {/* Shown once they have posted something and not before.
+
+                A profile is worth setting up when it has something on it —
+                before the first review this page is empty and "add a photo and
+                a line about yourself" is one more chore between somebody and
+                the thing they came to do. After it, the page is theirs and
+                there is a reason to care what it looks like.
+
+                Here rather than on the review screen itself, which is where
+                this started: a prompt on the post-save panel arrives while
+                they are still finishing one job and reads as the app asking
+                for another. This one is waiting for them when they get back,
+                next to the thing it is talking about, pointing at the same
+                Edit profile link directly above it.
+
+                No flag and nothing to dismiss: the condition IS the
+                completion. Add an avatar or a bio and it goes, because the
+                thing it was asking for has happened. */}
+            {totalVisits > 0 && !profile?.avatar_r2_key && !profile?.bio && (
+              <PaperPanel seed="profile-setup" accentIndex={1} style={styles.setupPrompt}>
+                <ThemedText type="sectionLabel">Make it yours</ThemedText>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Add a photo and a line about yourself so people who find your reviews know
+                  whose they are.
+                </ThemedText>
+                <Button
+                  label="Set up my profile"
+                  variant="secondary"
+                  onPress={() => router.push('/edit-profile')}
+                />
+              </PaperPanel>
+            )}
+
             {error && <ThemedText type="small">{error}</ThemedText>}
 
             {sectionOrder.map((key) => sectionMap[key])}
@@ -351,6 +384,9 @@ ${latestCard.note ?? ''}`.trim());
 }
 
 const styles = StyleSheet.create({
+  setupPrompt: {
+    gap: Spacing.two,
+  },
   container: {
     flex: 1,
   },
