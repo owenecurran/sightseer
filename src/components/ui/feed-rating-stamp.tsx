@@ -73,9 +73,8 @@ function mulberry32(seed: number) {
 // text run right up to where the stamp actually starts on whichever posts'
 // random draw happened to land closer to the edge, not stopping short by the
 // same amount on every post regardless of where its own stamp landed. Still
-// an approximation of "wrap around the stamp," not true dynamic reflow — see
-// the reserve's own call site in feed-place-photo-block.tsx for why that's
-// the real ceiling on this (React Native has no CSS `shape-outside`/float
+// an approximation of "wrap around the stamp," not true dynamic reflow, and
+// that is the real ceiling on this (React Native has no CSS `shape-outside`/float
 // equivalent). `size` defaults to the main feed's own STAMP_SIZE but takes
 // the same ratio a smaller caller's stamp (e.g. collections-list.tsx's
 // ROW_STAMP_SIZE) actually renders at — must stay in lockstep with
@@ -98,8 +97,8 @@ export function getStampTextReserve(
 // draw sequence in order the way getStampTextReserve's "same first draw"
 // trick does — it's simply its own independent coin flip keyed off the same
 // seed, always landing the same way for a given post. Callers that align
-// text around the stamp (see feed-place-photo-block.tsx) call this once to
-// decide both which edge to reserve space on and which way to align text.
+// text around the stamp call this once to decide both which edge to reserve
+// space on and which way to align text.
 export function getStampSide(seed: string): "left" | "right" {
   const next = mulberry32(hashSeed(seed));
   return next() < 0.5 ? "left" : "right";
