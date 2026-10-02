@@ -9,7 +9,6 @@ import { BackLink } from '@/components/ui/back-link';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { PaperPanel } from '@/components/ui/paper-panel';
 import { EmailLink } from '@/components/email-link';
-import { PhoneVerify } from '@/components/phone-verify';
 import { SettingsRow } from '@/components/ui/settings-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -225,10 +224,28 @@ export default function SettingsScreen() {
                 Your number is verified. Friends who have it in their contacts can find you.
               </ThemedText>
             ) : (
-              <PhoneVerify
-                mode="link"
-                caption="Verify your phone number so friends who sync their contacts can find you. We text you a code. The number is hashed before it is stored and never kept as plain text."
-                onVerified={() => void refreshProfile()}
+              // A ROW OUT, not a form in.
+              //
+              // This used to hold PhoneVerify inline, with a four-line
+              // paragraph above it explaining the hashing. That was the same
+              // question the find-friends step asks, asked a second way: a
+              // plain number field and a wall of reassurance, next to a flow
+              // that had since grown a country picker, an as-you-type mask
+              // and a line that goes green when the number is dialable. Two
+              // screens for one feature, and the one nobody was looking at
+              // was the one that drifted.
+              //
+              // The destination is the same route the contacts row above
+              // uses, which is not a duplicate so much as the same door
+              // reached from the two questions that lead to it. It derives
+              // its own step from hashed_phone, so arriving here without a
+              // number lands exactly on the number screen. It writes no
+              // has_seen_find_friends either, so coming through Settings
+              // cannot re-fire a tutorial somebody has already finished.
+              <SettingsRow
+                label="Verify your phone number"
+                description="So people who already have it can find you here"
+                onPress={() => router.push('/contacts-sync')}
               />
             )}
             <CheckboxRow
