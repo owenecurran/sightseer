@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 import { Pressable, StyleSheet, TextInput, View, type NativeSyntheticEvent, type TextInputContentSizeChangeEventData, type TextInputProps } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
@@ -19,7 +19,12 @@ import { useTheme } from '@/hooks/use-theme';
 // to handle it.
 const MIN_MULTILINE_HEIGHT = 96;
 
-export function TextField({ style, multiline, onContentSizeChange, secureTextEntry, ...rest }: TextInputProps) {
+// `ref` is forwarded so a caller can measure or focus the real input. React
+// 19 passes it as an ordinary prop, so there is no forwardRef wrapper to add
+// — it only has to be declared, because TextInputProps does not include it.
+export type TextFieldProps = TextInputProps & { ref?: Ref<TextInput> };
+
+export function TextField({ style, multiline, onContentSizeChange, secureTextEntry, ref, ...rest }: TextFieldProps) {
   const theme = useTheme();
   const [contentHeight, setContentHeight] = useState(MIN_MULTILINE_HEIGHT);
   // Only meaningful when a caller actually requests secureTextEntry — this
@@ -36,6 +41,7 @@ export function TextField({ style, multiline, onContentSizeChange, secureTextEnt
 
   const input = (
     <TextInput
+      ref={ref}
       placeholderTextColor={theme.textSecondary}
       style={[
         styles.input,

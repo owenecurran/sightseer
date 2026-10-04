@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, type TextInput } from 'react-native';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ActionSticker } from '@/components/ui/action-sticker';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
+import { KeyboardFocusProbe } from '@/components/dev/keyboard-focus-probe';
 import { TextField } from '@/components/ui/text-field';
 import { BrandColors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
@@ -86,6 +87,8 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [newComment, setNewComment] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Only the probe below uses this — it needs the real input to measure.
+  const composerRef = useRef<TextInput>(null);
   // Captured at mount, not read live: once a comment is added the count
   // changes, and this must keep meaning "what was known when the thread
   // opened" rather than re-deciding and re-fetching on every change.
@@ -205,8 +208,16 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
           "Post" button below), matching how a chat/comment composer reads
           elsewhere (e.g. iMessage, most social apps) more than this app's
           own full-form Button did here. */}
+      {/* Scaffolding, not behaviour. Reads where the keyboard library thinks
+          this field is against where it actually is, because the composer
+          sits inside PostcardFlip's transformed back face and every
+          explanation for it not lifting was a guess. Dev builds only, and it
+          comes out once the number is known. */}
+      <KeyboardFocusProbe label="comment-composer" inputRef={composerRef} />
+
       <View style={styles.addRow}>
         <TextField
+          ref={composerRef}
           placeholder="Write your comment..."
           value={newComment}
           onChangeText={setNewComment}
