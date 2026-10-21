@@ -2,7 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { BackLink } from '@/components/ui/back-link';
 import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated from "react-native-reanimated";
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -174,7 +174,7 @@ export default function TaggedInScreen() {
           )}
         </View>
 
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -206,7 +206,7 @@ export default function TaggedInScreen() {
             />
             </View>
           ))}
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );

@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { ThemedText } from '@/components/themed-text';
@@ -203,8 +203,8 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
     featuredBoards.length === 0;
 
   return (
-    <Animated.ScrollView
-      ref={scrollRef as never}
+    <KeyboardAwareScroll
+      ref={scrollRef}
       contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
       showsVerticalScrollIndicator={false}
       onScroll={scrollHandler}
@@ -366,7 +366,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
           ))}
         </View>
       )}
-    </Animated.ScrollView>
+    </KeyboardAwareScroll>
   );
 }
 

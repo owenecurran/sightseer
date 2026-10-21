@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileMap } from '@/components/profile-map';
@@ -261,7 +261,7 @@ ${latestCard.note ?? ''}`.trim());
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + Spacing.four }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -377,7 +377,7 @@ ${latestCard.note ?? ''}`.trim());
               <Button label="Settings" variant="secondary" onPress={() => router.push('/settings')} />
             </View>
           </View>
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );
