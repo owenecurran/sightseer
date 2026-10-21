@@ -315,7 +315,44 @@ export function VisitCard({
   // of them, which is the exact flicker this exists to remove.
   const expectsPhotos = visit.photoIds.length > 0;
   const [photosReady, setPhotosReady] = useState(false);
-  const revealed = !expectsPhotos || photosReady;
+
+  // Whether the url pass has run at all.
+  //
+  // Both feeds load in TWO passes -- the rows first, the presigned photo
+  // urls second, deliberately, so a tab is not held blank on pictures. A
+  // card therefore mounts knowing it has photoIds but with none of them
+  // resolved yet, and `photos` below is empty in that window.
+  //
+  // One resolved url anywhere in the batch means that second pass has
+  // landed. If this card's own ids are not in it by then, they are not
+  // coming: the photographs are gone, or expired, and no further waiting
+  // will produce them.
+  const urlsResolved = Object.keys(photoUrls).length > 0;
+
+  // Still waiting to be worth looking at.
+  //
+  // Keyed on WHAT THIS CARD ACTUALLY DRAWS, which is the fix. It used to be
+  // `!expectsPhotos || photosReady`, reading readiness off photoIds -- and
+  // photoIds is right about intent but wrong about the render. When the ids
+  // resolve to nothing the picture falls back to the place map, which means
+  // PostcardPhotos is never mounted, which means onReady can never fire.
+  // Those cards sat at opacity 0 for the full four seconds of the rescue
+  // timeout below and read as empty gaps in the feed, every time somebody
+  // switched between Feed and Discover. Cards WITH photographs never showed
+  // it, because their images report the moment they land.
+  //
+  // So: a card drawing photographs waits for them. A card drawing the map
+  // has nothing left to wait for and is shown. The anti-flicker reason the
+  // gate was keyed on photoIds survives -- while the urls are genuinely
+  // still in flight, urlsResolved is false and the card still waits rather
+  // than flashing a map it is about to replace.
+  // photosReady is honoured in BOTH branches so the rescue timer below still
+  // works. If the whole batch resolves to nothing, urlsResolved stays false
+  // and this would otherwise wait for ever -- the timeout sets photosReady,
+  // and that has to be able to end the wait whichever branch is drawing.
+  const waitingOnPictures =
+    photos.length > 0 ? !photosReady : expectsPhotos && !urlsResolved && !photosReady;
+  const revealed = !waitingOnPictures;
 
   useEffect(() => {
     if (!expectsPhotos || photosReady) return;
