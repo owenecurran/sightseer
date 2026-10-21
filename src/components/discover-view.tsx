@@ -303,7 +303,6 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
                 key={visit.id}
                 visit={visit}
                 photoUrls={reviewPhotoUrls}
-                showNoteExcerpt
                 isOwner={false}
                 isCopied={false}
                 onToggleLike={() => void handleToggleLike(visit)}

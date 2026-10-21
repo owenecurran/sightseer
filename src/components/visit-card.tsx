@@ -187,12 +187,6 @@ type VisitCardProps = {
   // the lesson there, so it has to be a real one rather than a replica that
   // can drift.
   onFlipChange?: (isFlipped: boolean) => void;
-  // Show the opening of the author's message under the card.
-  //
-  // Opt-in, and only the browsing screens take it. On visit/[id] the whole
-  // message is already on screen, and a truncated copy of what you are
-  // looking at is just noise.
-  showNoteExcerpt?: boolean;
 };
 
 // The feed's own visit card — a postcard with two sides.
@@ -218,7 +212,6 @@ export function VisitCard({
   onDeleted,
   onUntagSelf,
   onFlipChange,
-  showNoteExcerpt = false,
   maxStampRise,
   onPhotoLayout,
   initialCommentsOpen = false,
@@ -476,10 +469,6 @@ export function VisitCard({
   // carry the sender's name on the picture, and keeping the byline outside
   // the flip means it stays put while the card turns — the card changes
   // sides, not owners.
-  // Collapsed to one paragraph: a message written with hard line breaks
-  // would otherwise spend both its lines on two words each.
-  const noteExcerpt = visit.note?.replace(/\s+/g, ' ').trim() || null;
-
   const byline = (
     <View style={styles.byline}>
       <Pressable
@@ -1150,37 +1139,11 @@ export function VisitCard({
           </View>
         )}
       </View>
-
-      {/* The author's own words, in the feed.
-          BELOW the card, not on it. The split above is deliberate -- the
-          front is what you scroll past, the back is what you stop for, and
-          the card only ever shows one side. Putting the message on the front
-          would break that. But it left the feed with no prose in it at all:
-          a column of photographs, place names and stamps, where the most
-          interesting thing anybody had written was invisible until you
-          turned every card over one at a time.
-          So this is feed furniture, like the byline above it, rather than
-          part of the postcard. Two lines, and it steps out of the way once
-          the card is turned and the real message is showing. Pressing it
-          turns the card, because the obvious thing to want after reading
-          half a sentence is the rest of it. */}
-      {showNoteExcerpt && !isFlipped && noteExcerpt != null && (
-        <Pressable onPress={() => setFlipped(true)} style={styles.excerpt}>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
-            {noteExcerpt}
-          </ThemedText>
-        </Pressable>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  excerpt: {
-    // Indented to the byline above rather than to the card, so the two read
-    // as the same voice speaking either side of the picture.
-    paddingHorizontal: Spacing.one,
-  },
   loadingOverlay: {
     position: 'absolute',
     top: 0,

@@ -594,7 +594,6 @@ export default function HomeScreen() {
                     <VisitCard
                       visit={item.visit}
                       photoUrls={photoUrls}
-                      showNoteExcerpt
                       avatarUrl={avatarUrls[item.visit.user_id]}
                       isOwner={session?.user.id === item.visit.user_id}
                       isCopied={copiedVisitId === item.visit.id}
