@@ -10,6 +10,7 @@ import Animated, {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { DiscoverView, type DiscoverViewHandle } from "@/components/discover-view";
+import { FeedDivider } from "@/components/ui/feed-divider";
 import { KeyboardAwareScroll } from "@/components/keyboard-aware-scroll";
 import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
@@ -567,6 +568,14 @@ export default function HomeScreen() {
                   style={{ zIndex: displayItems.length - index }}
                   collapsable={false}
                 >
+                  {/* A tear line between posts. Not before the first, and
+                      not around the "Already seen" label, which is a
+                      boundary in its own right and does not want a second
+                      rule stacked on it. */}
+                  {index > 0 &&
+                    item.type !== "divider" &&
+                    displayItems[index - 1]?.type !== "divider" && <FeedDivider />}
+
                   {item.type === "divider" ? (
                     <ThemedText type="sectionLabel" style={styles.dividerText}>
                       Already seen

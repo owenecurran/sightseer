@@ -14,6 +14,7 @@ export type ThemedTextProps = TextProps & {
     | 'linkPrimary'
     | 'code'
     | 'displaySerif'
+    | 'postcardMessage'
     | 'headline'
     | 'headlineWrapped'
     | 'statLine'
@@ -42,6 +43,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'linkPrimary' && styles.linkPrimary,
         type === 'code' && styles.code,
         type === 'displaySerif' && styles.displaySerif,
+        type === 'postcardMessage' && styles.postcardMessage,
         type === 'headline' && styles.headline,
         type === 'headlineWrapped' && styles.headlineWrapped,
         type === 'statLine' && styles.statLine,
@@ -104,6 +106,30 @@ const styles = StyleSheet.create({
   displaySerif: {
     fontFamily: BrandFonts.serifDisplay,
     fontSize: 32,
+  },
+  // What somebody wrote on the card.
+  //
+  // `body` carries no fontFamily at all, so the review -- the one piece of
+  // the postcard that is actually a person's voice -- was set in the system
+  // UI face, next to a hand-lettered place name and a printed stamp. It read
+  // as a caption in an app rather than as writing on a card.
+  //
+  // The display serif, which is the only face in the loaded set that reads
+  // as WRITING rather than as interface. A grotesque was tried first and was
+  // barely distinguishable from the system font it replaced -- the point is
+  // for the message to look like it was put on the card, and a sans does not
+  // do that next to a hand-lettered place name and a printed stamp.
+  //
+  // Set two points larger than body, because a serif at the same size reads
+  // smaller, and given its own line height rather than inheriting body's.
+  //
+  // Worth knowing: the genuinely right face here is a typewriter or a hand,
+  // and neither is in assets/fonts. This is the best of what is loaded, not
+  // the best answer.
+  postcardMessage: {
+    fontFamily: BrandFonts.serifDisplay,
+    fontSize: 18,
+    lineHeight: 26,
   },
   headline: {
     fontFamily: BrandFonts.condensedHeavy,

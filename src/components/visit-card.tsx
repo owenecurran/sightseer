@@ -141,6 +141,10 @@ const CAPTION_HEIGHT_SHARE = 0.25;
 // the strip straight on top of the like button.
 const BACK_FLIP_REACH = 26;
 
+// How much of the photograph's colour reaches the written side. A tint in
+// the stock rather than a coloured panel -- see panelWash.
+const PANEL_WASH_OPACITY = 0.2;
+
 // `visitNumber` optional (not required the way FeedVisit itself demands) —
 // tagged-in.tsx's own TaggedVisit type (Omit<FeedVisit, 'visitNumber'>)
 // doesn't compute it (a viewer's "Nth visit to this place" isn't a
@@ -948,6 +952,39 @@ export function VisitCard({
     />
   ) : null;
 
+  // The written side's panel, cut and coloured per card.
+  //
+  // CORNERS. One radius on all four made the panel a machined rectangle
+  // dropped on a torn sheet -- the junction between it and the card's border
+  // was the one straight edge on an object that is otherwise all deckle and
+  // wear. Each corner now takes its own radius from the review's id, so the
+  // panel reads as cut by hand. Seeded, so a given card keeps its shape
+  // instead of reshuffling every time it is drawn.
+  const panelCorners = {
+    borderTopLeftRadius: Spacing.two + (hashSeed(`${visit.id}:tl`) % 7),
+    borderTopRightRadius: Spacing.two + (hashSeed(`${visit.id}:tr`) % 7),
+    borderBottomLeftRadius: Spacing.two + (hashSeed(`${visit.id}:bl`) % 7),
+    borderBottomRightRadius: Spacing.two + (hashSeed(`${visit.id}:br`) % 7),
+  };
+
+  // COLOUR. The panel was one flat green on every card in the app. It takes
+  // a wash of the review's OWN photograph now -- the same colour the place
+  // name is lettered in, via useImageAccent -- so the message side of a
+  // card about a sunset is warm and one about a forest is not, and two
+  // cards in a row never look like the same sheet twice.
+  //
+  // Held very low on purpose. This is a tint in the stock, not a coloured
+  // panel: much past this and the cream border stops reading as the same
+  // object as what is printed on it. Null while the picture is still being
+  // sampled, which simply means no wash yet rather than a flash of colour.
+  // `complement` rather than `dominant`. The dominant colour of a forest
+  // photograph is green, and a green wash over a green panel is no wash at
+  // all -- measured on a card whose picture was a hillside, where the tint
+  // was invisible. The complement is by definition the colour the picture is
+  // NOT, so it always reads, and it keeps the pairing a decision the
+  // photograph made rather than a swatch picked off a list.
+  const panelWash = accent?.complement ?? null;
+
   const back = (
     // The same sheet of card, seeded identically — turning a postcard over
     // does not change what it is printed on, so the shade and the worn edge
@@ -962,7 +999,22 @@ export function VisitCard({
       // The written side is a dark panel, not bare card.
       turnMarkInk={TURN_MARK_PANEL_INK}
     >
-    <ThemedView type="backgroundElement" style={styles.back} collapsable={false}>
+    <ThemedView
+      type="backgroundElement"
+      style={[styles.back, panelCorners]}
+      collapsable={false}>
+      {/* The wash, under everything and catching nothing. Clipped by the
+          panel's own corners, so it withers with them. */}
+      {panelWash != null && (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            panelCorners,
+            { backgroundColor: panelWash, opacity: PANEL_WASH_OPACITY },
+          ]}
+        />
+      )}
       {/* Where it was, and the way back to the picture. The overflow menu
           lives here rather than on the front, where the stamp already owns
           the top corner. */}
@@ -1011,7 +1063,7 @@ export function VisitCard({
       <View style={styles.backBody}>
         <View style={styles.message}>
           {visit.note ? (
-            <ThemedText type="body">{visit.note}</ThemedText>
+            <ThemedText type="postcardMessage">{visit.note}</ThemedText>
           ) : (
             <ThemedText type="small" themeColor="textSecondary" style={styles.noMessage}>
               No message
@@ -1282,9 +1334,11 @@ const styles = StyleSheet.create({
 
   // --- written side ---
   back: {
-    borderRadius: Spacing.three,
+    // Radii come from panelCorners, per card.
     padding: Spacing.three,
     gap: Spacing.two,
+    // So the wash is cut by the same corners the panel is.
+    overflow: 'hidden',
   },
   backHeader: {
     flexDirection: "row",
