@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -89,31 +90,43 @@ export function TagPickerModal({
                   <ThemedText type="small" themeColor="textSecondary" style={styles.sectionHeading}>
                     {section.category}
                   </ThemedText>
-                  {section.tags.map((tag) => {
-                    const isSelected = selectedSlugs.includes(tag.slug);
-                    // Once the limit is reached the rest recede rather than
-                    // vanish — a list that reflows as you use it makes the
-                    // next tap land on something you didn't aim at.
-                    const isDisabled = !isSelected && isFull;
-                    return (
-                      <Pressable
-                        key={tag.slug}
-                        onPress={() => onToggle(tag.slug)}
-                        disabled={isDisabled}
-                        style={[
-                          styles.row,
-                          isSelected && styles.rowSelected,
-                          isDisabled && styles.rowDisabled,
-                        ]}>
-                        <TagSticker slug={tag.slug} label={tag.label} />
-                        {isSelected && (
-                          <ThemedText type="small" themeColor="sage">
-                            ✓
-                          </ThemedText>
-                        )}
-                      </Pressable>
-                    );
-                  })}
+                  {/* A GRID of equal tiles, two across. It was one sticker
+                      per full-width row, which made seventeen tags a long
+                      scroll of mostly empty lines, and left every sticker
+                      floating against the left edge at a different width.
+                      Equal tiles with the sticker centred give the sheet a
+                      structure the stickers themselves cannot, since each
+                      one is as wide as its word. */}
+                  <View style={styles.grid}>
+                    {section.tags.map((tag) => {
+                      const isSelected = selectedSlugs.includes(tag.slug);
+                      // Once the limit is reached the rest recede rather than
+                      // vanish — a list that reflows as you use it makes the
+                      // next tap land on something you didn't aim at.
+                      const isDisabled = !isSelected && isFull;
+                      return (
+                        <Pressable
+                          key={tag.slug}
+                          onPress={() => onToggle(tag.slug)}
+                          disabled={isDisabled}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: isSelected, disabled: isDisabled }}
+                          accessibilityLabel={tag.label}
+                          style={[
+                            styles.tile,
+                            isSelected && styles.tileSelected,
+                            isDisabled && styles.tileDisabled,
+                          ]}>
+                          <TagSticker slug={tag.slug} label={tag.label} size="large" block />
+                          {isSelected && (
+                            <View style={styles.check}>
+                              <Ionicons name="checkmark" size={13} color={BrandColors.background} />
+                            </View>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
               ))}
             </ScrollView>
@@ -164,6 +177,7 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+    paddingBottom: Spacing.two,
   },
   // Uppercased rather than made bigger: the headings have to be clearly
   // subordinate to the stickers, which are the thing being chosen.
@@ -172,20 +186,43 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     paddingTop: Spacing.two,
   },
-  row: {
+  grid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.two,
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  tile: {
+    // Two across with the gap between them. A fixed basis rather than
+    // flex: 1, so a section with an odd tag out leaves its last tile at
+    // half width instead of stretching it across the whole row.
+    flexBasis: '48%',
+    flexGrow: 0,
+    // The sticker IS the tile -- it fills it (see TagSticker's `block`).
+    // This padding is only the gap the selection ring draws in, so choosing
+    // a tag rings it without moving or shrinking it.
+    padding: 4,
+    minHeight: 60,
     borderRadius: Spacing.three,
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  rowSelected: {
+  tileSelected: {
     borderColor: BrandColors.sage,
   },
-  rowDisabled: {
-    opacity: 0.45,
+  tileDisabled: {
+    opacity: 0.4,
+  },
+  // In the corner rather than beside the sticker, so choosing a tag never
+  // moves it.
+  check: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: BrandColors.sage,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

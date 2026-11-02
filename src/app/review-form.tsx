@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -767,17 +767,19 @@ export default function ReviewFormScreen() {
         )}
 
         <PaperPanel seed="form-0" accentIndex={0}>
-          <ThemedText type="sectionLabel">Place</ThemedText>
+          <SectionHeader title="Place" />
 
           {selectedPlace ? (
             <Pressable onPress={() => setIsPickerOpen(true)} style={styles.placeRow}>
               <View style={styles.placeRowText}>
                 <ThemedText type="smallBold">{selectedPlace.name}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {breadcrumb}
-                </ThemedText>
+                {regionFromBreadcrumb(breadcrumb) !== '' && (
+                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                    {regionFromBreadcrumb(breadcrumb)}
+                  </ThemedText>
+                )}
               </View>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="smallBold" themeColor="sage">
                 Change
               </ThemedText>
             </Pressable>
@@ -787,7 +789,7 @@ export default function ReviewFormScreen() {
 
           {selectedPlace && !savedVisitId && (
             <View style={styles.section}>
-              <ThemedText type="sectionLabel">Tag specific spots (optional)</ThemedText>
+              <SectionHeader title="Specific spots" aside="Optional" />
               {taggedPlaces.length > 0 && (
                 <View style={styles.tagRow}>
                   {taggedPlaces.map((place) => (
@@ -806,23 +808,37 @@ export default function ReviewFormScreen() {
 
         {selectedPlace &&
           (!savedVisitId ? (
+            <>
+            {/* Three panels where there was one. Everything from the rating
+                to the save button used to run down a single card, so the
+                review itself, the facts around it and how the card is
+                printed all read as one undifferentiated list. Grouped by
+                what each part IS: what you thought, when and with whom, and
+                what it will look like. */}
             <PaperPanel seed="form-1" accentIndex={1}>
               <View style={styles.section}>
-                <View style={styles.row}>
-                  <ThemedText type="sectionLabel">Rating</ThemedText>
-                  {rating != null && (
-                    <Pressable onPress={() => setRating(null)}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Remove rating
-                      </ThemedText>
-                    </Pressable>
-                  )}
-                </View>
+                <SectionHeader
+                  title="Rating"
+                  aside={
+                    rating != null ? (
+                      <Pressable onPress={() => setRating(null)} hitSlop={8}>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          Clear
+                        </ThemedText>
+                      </Pressable>
+                    ) : (
+                      'Optional'
+                    )
+                  }
+                />
                 <RatingSliderWithPreview value={rating} onChange={setRating} />
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Photos</ThemedText>
+                <SectionHeader
+                  title="Photos"
+                  aside={`${currentDraftId ? photoSlots.length : totalPhotoCount} of ${MAX_VISIT_PHOTOS}`}
+                />
                 {currentDraftId ? (
                   <>
                     {photoSlots.length > 0 && (
@@ -864,7 +880,7 @@ export default function ReviewFormScreen() {
                     )}
                     {photoSlots.length < MAX_VISIT_PHOTOS && (
                       <Button
-                        label={`Add photo (${photoSlots.length}/${MAX_VISIT_PHOTOS})`}
+                        label="Add photo"
                         variant="secondary"
                         onPress={handleAddDraftPhoto}
                       />
@@ -916,7 +932,7 @@ export default function ReviewFormScreen() {
                     )}
                     {totalPhotoCount < MAX_VISIT_PHOTOS && (
                       <Button
-                        label={`Add photo (${totalPhotoCount}/${MAX_VISIT_PHOTOS})`}
+                        label="Add photo"
                         variant="secondary"
                         onPress={handlePickPhoto}
                       />
@@ -931,7 +947,7 @@ export default function ReviewFormScreen() {
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Review</ThemedText>
+                <SectionHeader title="Review" aside="Optional" />
                 <TextField
                   placeholder="Review (optional)"
                   value={note}
@@ -942,12 +958,12 @@ export default function ReviewFormScreen() {
 
               {tagVocabulary.length > 0 && (
                 <View style={styles.section}>
-                  <ThemedText type="sectionLabel">
-                    Tags (optional, up to {MAX_VISIT_TAGS})
-                  </ThemedText>
+                  <SectionHeader
+                    title="Tags"
+                    aside={`${selectedTags.length} of ${MAX_VISIT_TAGS}`}
+                  />
                   <ThemedText type="small" themeColor="textSecondary">
-                    What was this place good for? These are how other people
-                    find it.
+                    What was it good for?
                   </ThemedText>
                   {/* The chosen ones stay on the form as the stickers they
                       will be; the whole vocabulary lives in its own sheet
@@ -955,27 +971,37 @@ export default function ReviewFormScreen() {
                   {selectedTags.length > 0 && (
                     <View style={styles.tagRow}>
                       {selectedTags.map((tag) => (
-                        <Pressable key={tag.slug} onPress={() => handleToggleTag(tag.slug)}>
-                          <TagSticker slug={tag.slug} label={tag.label} />
+                        <Pressable
+                          key={tag.slug}
+                          onPress={() => handleToggleTag(tag.slug)}
+                          accessibilityLabel={`Remove ${tag.label}`}>
+                          <TagSticker slug={tag.slug} label={tag.label} size="large" />
                         </Pressable>
                       ))}
                     </View>
                   )}
-                  <Pressable onPress={() => setIsTagSheetOpen(true)} hitSlop={6}>
-                    <ThemedText type="small" themeColor="sage">
-                      {selectedTags.length > 0 ? 'Edit tags' : 'Add tags'}
-                    </ThemedText>
-                  </Pressable>
+                  {/* The same outlined button as "Add photo" and "Search
+                      for a spot". This was a line of green text, the one
+                      add-something action on the form that did not look
+                      like the others. */}
+                  <Button
+                    label={selectedTags.length > 0 ? 'Edit tags' : 'Add tags'}
+                    variant="secondary"
+                    onPress={() => setIsTagSheetOpen(true)}
+                  />
                 </View>
               )}
 
+            </PaperPanel>
+
+            <PaperPanel seed="form-details" accentIndex={2}>
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Date visited</ThemedText>
+                <SectionHeader title="Date visited" />
                 <DateCarousel value={visitedOn} onChange={setVisitedOn} />
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Tag people (optional)</ThemedText>
+                <SectionHeader title="Who you were with" aside="Optional" />
                 {taggedUsers.length > 0 && (
                   <View style={styles.tagRow}>
                     {taggedUsers.map((user) => (
@@ -1017,11 +1043,11 @@ export default function ReviewFormScreen() {
                   chips under one heading that described both of them at
                   once, several sections away from the only thing on the form
                   that shows what they do. */}
+            </PaperPanel>
+
+            <PaperPanel seed="form-card" accentIndex={3}>
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Postcard</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  How your card is printed.
-                </ThemedText>
+                <SectionHeader title="Postcard" />
 
                 <View style={styles.subSection}>
                   <ThemedText type="smallBold">Which way up</ThemedText>
@@ -1078,10 +1104,7 @@ export default function ReviewFormScreen() {
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Preview</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  How this will look on the feed.
-                </ThemedText>
+                <SectionHeader title="Preview" aside="As it will appear" />
                 {/* The real feed card, not a lookalike.
                     This used to be a headline block and a photo grid
                     assembled to resemble one, which stopped being true the
@@ -1109,6 +1132,7 @@ export default function ReviewFormScreen() {
                 loading={isSavingVisit}
               />
             </PaperPanel>
+            </>
           ) : (
             <PaperPanel seed="form-2" accentIndex={2}>
               <ThemedText type="small">Visit saved.</ThemedText>
@@ -1198,7 +1222,55 @@ export default function ReviewFormScreen() {
   );
 }
 
+// One header for every section on the form.
+//
+// The titles used to carry their own small print -- "Tags (optional, up to
+// 3)", "Tag specific spots (optional)", "Tag people (optional)" -- set in the
+// wide display face, where "(optional)" was as loud as the word it qualified
+// and two of them ran to a second line. The title is now only the name of the
+// thing, and anything ABOUT it (optional, a count, a way to clear it) sits
+// small on the right, in the same place every time.
+function SectionHeader({ title, aside }: { title: string; aside?: ReactNode }) {
+  return (
+    <View style={styles.sectionHeader}>
+      <ThemedText type="sectionLabel" style={styles.sectionTitle} numberOfLines={1}>
+        {title}
+      </ThemedText>
+      {typeof aside === 'string' ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {aside}
+        </ThemedText>
+      ) : (
+        aside
+      )}
+    </View>
+  );
+}
+
+// "Minnesota, United States" out of the stored breadcrumb, which runs from the
+// continent down to the place itself: "North America > United States >
+// Minnesota > Minneapolis". That wrapped to two lines and opened by repeating
+// the bold name directly above it. The two nearest parents, nearest first, are
+// what the postcard prints under a place name, so the form now says the same
+// thing the card will.
+function regionFromBreadcrumb(crumb: string): string {
+  const parts = crumb
+    .split('>')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.slice(0, -1).reverse().slice(0, 2).join(', ');
+}
+
 const styles = StyleSheet.create({
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  sectionTitle: {
+    flexShrink: 1,
+  },
   container: {
     flex: 1,
   },
@@ -1314,8 +1386,12 @@ const styles = StyleSheet.create({
   },
   tagRow: {
     flexDirection: 'row',
-    gap: Spacing.two,
+    gap: Spacing.two + 2,
     flexWrap: 'wrap',
+    // The large stickers are tilted, and a tilted sticker's corner pokes past
+    // its own box -- the padding keeps a corner from touching the line above
+    // or the button below.
+    paddingVertical: Spacing.half,
   },
   // Tag-people suggestions specifically — an avatar-led row (name over
   // @handle), unlike the plain-text suggestionRow place suggestions use.

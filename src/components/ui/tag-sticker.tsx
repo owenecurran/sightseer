@@ -51,6 +51,19 @@ type TagStickerProps = {
   // does NOT use this — see below.
   placementSeed?: string;
   onPress?: () => void;
+  // 'small' is the sticker as it sits on a postcard, where three of them
+  // share the written side with the message and must stay out of its way.
+  // 'large' is the same sticker held up to be chosen -- the review form and
+  // the tag sheet, where it is the thing being picked rather than a detail
+  // on a card, and at 9pt it read as fine print.
+  size?: 'small' | 'large';
+  // Fill the parent instead of hugging the word, with the label centred.
+  // For a grid of tags: a sticker sized to its word floats small in a big
+  // cell when the word is short, and when the word is long enough to wrap it
+  // takes the full width anyway (a wrapping Text is as wide as its container,
+  // not as its longest line) -- so the grid came out half tiny stickers and
+  // half wall-to-wall ones. Filling every cell makes them one size.
+  block?: boolean;
 };
 
 // A descriptive tag on a review, as a die-cut sticker.
@@ -69,7 +82,7 @@ type TagStickerProps = {
 // are placed in PERCENTAGES of the sticker, so nothing has to measure it
 // first — these size themselves to their label and a measurement pass would
 // mean a visible pop.
-export function TagSticker({ slug, label, placementSeed, onPress }: TagStickerProps) {
+export function TagSticker({ slug, label, placementSeed, onPress, size = 'small', block = false }: TagStickerProps) {
   const { accent, rotate, specks, scratch, gloss } = useMemo(() => {
     // Colour comes from the SLUG alone, so "Local secret" is the same colour
     // on every review and every place page. That consistency is the point:
@@ -165,6 +178,8 @@ export function TagSticker({ slug, label, placementSeed, onPress }: TagStickerPr
     <View
       style={[
         styles.sticker,
+        size === 'large' && styles.stickerLarge,
+        block && styles.stickerBlock,
         { backgroundColor: accent, transform: [{ rotate: `${rotate}deg` }] },
       ]}>
       {/* Fixed, not rotated with the sticker: a specular highlight comes
@@ -221,7 +236,9 @@ export function TagSticker({ slug, label, placementSeed, onPress }: TagStickerPr
 
       {/* Dark ink on a mid-tone accent, the same contrast pairing the arrow
           stickers use for their glyph. */}
-      <ThemedText type="sectionLabel" style={styles.label}>
+      <ThemedText
+        type="sectionLabel"
+        style={[styles.label, size === 'large' && styles.labelLarge, block && styles.labelBlock]}>
         {label}
       </ThemedText>
     </View>
@@ -250,6 +267,43 @@ const styles = StyleSheet.create({
     // Clips the gloss and the wear marks to the rounded rim; nothing here
     // needs to overflow.
     overflow: 'hidden',
+  },
+  // Everything scaled together -- rim, corner, padding and type -- so the
+  // large sticker is the same object closer up rather than the small one
+  // with a bigger word in it.
+  stickerLarge: {
+    paddingVertical: 5,
+    paddingHorizontal: Spacing.two + 2,
+    borderRadius: Spacing.two,
+    borderWidth: 2,
+  },
+  labelLarge: {
+    // 13 rather than 14, which is the line between fitting and not: this
+    // face is about an em per capital, and at 14 "WATERFRONT" needed ~147dp
+    // in a half-width grid cell that had ~142, so it broke as "WATERFRON /
+    // T". The longest single words in the vocabulary (SPECIALITIES,
+    // KID-FRIENDLY, WATERFRONT) all fit whole at 13.
+    fontSize: 13,
+    lineHeight: 17,
+    letterSpacing: 0.4,
+  },
+  stickerBlock: {
+    // Both ways: across the cell, and down to the height of the tallest
+    // sticker in its row, so a one-line tag beside a two-line one is the
+    // same size rather than a short strip next to a block.
+    alignSelf: 'stretch',
+    flexGrow: 1,
+    justifyContent: 'center',
+    // Half the padding the free-standing large sticker gets. A grid cell is
+    // only ~174dp, and every point of padding comes out of the label:
+    // "PET-FRIENDLY" broke as "PET-FRIENDL / Y" at a full Spacing.two each
+    // side, the one label of forty-four that did. The rim and the tilt
+    // still read as a sticker with this much less air inside it.
+    paddingHorizontal: Spacing.one,
+    paddingVertical: Spacing.two,
+  },
+  labelBlock: {
+    textAlign: 'center',
   },
   label: {
     color: BrandColors.background,
