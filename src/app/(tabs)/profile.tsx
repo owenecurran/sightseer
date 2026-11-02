@@ -277,7 +277,7 @@ ${latestCard.note ?? ''}`.trim());
 
               <View style={styles.headerInfo}>
                 <ThemedText type="displaySerif">{profile?.name ?? profile?.handle ?? 'Profile'}</ThemedText>
-                {profile?.handle && <ThemedText type="displaySerif" style={styles.handleText}>@{profile.handle}</ThemedText>}
+                {profile?.handle && <ThemedText type="default" themeColor="textSecondary" style={styles.handleText}>@{profile.handle}</ThemedText>}
                 <ThemedText type="roundedStat" themeColor="sage">
                   {totalVisits} sight{totalVisits === 1 ? '' : 's'} seen
                 </ThemedText>

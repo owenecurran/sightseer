@@ -462,8 +462,12 @@ export default function HomeScreen() {
                 themeColor="textSecondary"
                 style={styles.gutter}
               >
-                No visits yet from people you follow. Follow someone from the
-                People tab, or check back once they log a visit.
+                {/* "From the People tab" used to close this sentence, and
+                    there is no People tab -- the five are Home, Search,
+                    Create, Boards and Profile. People are found under
+                    Search. */}
+                No visits yet from people you follow. Find people to follow
+                in Search, or check back once they log a visit.
               </ThemedText>
             )}
 

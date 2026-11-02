@@ -264,7 +264,7 @@ export default function NotificationsScreen() {
           }
           ListEmptyComponent={
             <ThemedText type="small" themeColor="textSecondary">
-              No notifications yet. Save a board or travel book with notifications on to hear about new additions.
+              No notifications yet. Likes, comments, new followers and tags will show up here.
             </ThemedText>
           }
           renderItem={({ item }: { item: NotificationGroup }) => {

@@ -2,7 +2,7 @@ import * as Linking from 'expo-linking';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -151,7 +151,7 @@ export default function SettingsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -345,7 +345,7 @@ export default function SettingsScreen() {
                 past the terms of use to find the way to say so. */}
             <SettingsRow
               label="Report a bug"
-              description="Tell us what went wrong — your app version is included automatically"
+              description="Tell us what went wrong. Your app version is included automatically."
               onPress={() => router.push('/report-bug')}
             />
             <SettingsRow label="Terms of use" onPress={() => router.push('/terms')} />
@@ -377,7 +377,7 @@ export default function SettingsScreen() {
               onPress={() => setIsDeleteOpen(true)}
             />
           </PaperPanel>
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
         <DeleteAccountModal
           visible={isDeleteOpen}
           handle={profile?.handle ?? null}

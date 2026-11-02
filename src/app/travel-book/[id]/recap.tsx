@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -139,7 +139,7 @@ export default function TravelBookRecapScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -179,7 +179,7 @@ export default function TravelBookRecapScreen() {
               loading={isSaving}
             />
           )}
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
 
         <PhotoCropModal visible={cropSource != null} uri={cropSource} onCancel={() => setCropSource(null)} onConfirm={handleCropConfirm} />
       </SafeAreaView>

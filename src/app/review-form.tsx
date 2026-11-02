@@ -949,7 +949,7 @@ export default function ReviewFormScreen() {
               <View style={styles.section}>
                 <SectionHeader title="Review" aside="Optional" />
                 <TextField
-                  placeholder="Review (optional)"
+                  placeholder="What was it like?"
                   value={note}
                   onChangeText={setNote}
                   multiline

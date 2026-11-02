@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -82,7 +82,7 @@ export default function NewBoardScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -110,7 +110,7 @@ export default function NewBoardScreen() {
           <CheckboxRow
             accentIndex={3}
             checked={isPrivate}
-            label="Private — only you can see this board"
+            label="Private: only you can see this board"
             onPress={() => setIsPrivate((prev) => !prev)}
           />
 
@@ -127,7 +127,7 @@ export default function NewBoardScreen() {
           )}
 
           <Button label="Create board" onPress={handleCreate} loading={isCreating} disabled={!name.trim()} />
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );

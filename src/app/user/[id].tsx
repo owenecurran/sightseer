@@ -234,7 +234,7 @@ export default function UserProfileScreen() {
               <View style={styles.headerInfo}>
                 <ThemedText type="displaySerif">{user?.name ?? user?.handle ?? 'Profile'}</ThemedText>
                 {user?.handle && (
-                  <ThemedText type="displaySerif" style={styles.handleText}>
+                  <ThemedText type="default" themeColor="textSecondary" style={styles.handleText}>
                     @{user.handle}
                   </ThemedText>
                 )}

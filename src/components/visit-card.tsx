@@ -622,6 +622,9 @@ export function VisitCard({
         level={visit.placeLevel}
         size="block"
         ratio={POSTCARD_FRAME_RATIO[orientation]}
+        // The place name is lettered across this one, so the map's own
+        // names have to go or the two overprint each other.
+        labels={false}
       />
     ) : (
       // Neither photos nor coordinates: an empty frame, so the card still

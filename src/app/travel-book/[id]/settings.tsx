@@ -142,7 +142,7 @@ export default function TravelBookSettingsScreen() {
               <CheckboxRow
                 accentIndex={3}
                 checked={book?.is_private ?? false}
-                label="Private — only visible to people who can already see my content"
+                label="Private: only visible to people who can already see my content"
                 onPress={handleTogglePrivate}
               />
 

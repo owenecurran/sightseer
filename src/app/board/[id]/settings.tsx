@@ -123,7 +123,7 @@ export default function BoardSettingsScreen() {
                   <CheckboxRow
                     accentIndex={3}
                     checked={board?.is_private ?? false}
-                    label="Private — only visible to people who can already see my content"
+                    label="Private: only visible to people who can already see my content"
                     onPress={handleTogglePrivate}
                   />
                 </>
@@ -133,7 +133,7 @@ export default function BoardSettingsScreen() {
                 <CheckboxRow
                   accentIndex={1}
                   checked={board?.is_featured ?? false}
-                  label="Featured — shown on everyone's Discover tab"
+                  label="Featured: shown on everyone's Discover page"
                   onPress={handleToggleFeatured}
                 />
               )}

@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -117,7 +117,7 @@ export default function ArticleComposeScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -129,7 +129,7 @@ export default function ArticleComposeScreen() {
           <TextField placeholder="Title" value={title} onChangeText={setTitle} />
           <TextField placeholder="Subtitle (optional)" value={subtitle} onChangeText={setSubtitle} />
           <TextField
-            placeholder="Write the article — separate paragraphs with a blank line"
+            placeholder="Write the article. Separate paragraphs with a blank line."
             value={body}
             onChangeText={setBody}
             multiline
@@ -146,7 +146,7 @@ export default function ArticleComposeScreen() {
             <CheckboxRow
               accentIndex={2}
               checked={published}
-              label="Published — visible to everyone"
+              label="Published: visible to everyone"
               onPress={handleTogglePublished}
             />
           )}
@@ -168,7 +168,7 @@ export default function ArticleComposeScreen() {
               New articles start unpublished — publish it from the edit screen once it's ready.
             </ThemedText>
           )}
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );
