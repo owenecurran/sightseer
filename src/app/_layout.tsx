@@ -36,6 +36,14 @@ const AUTH_PATHS = [
   // not confirmed yet, so without this the redirect below bounces the
   // person straight back to /welcome and the code can never be entered.
   '/verify-email',
+  // Same reason. Someone who has forgotten their password is signed out by
+  // definition, and the session the screen needs only exists once it has
+  // exchanged the tokens in the link. Without this entry the redirect below
+  // replaces the screen with /welcome on arrival, while that exchange is
+  // already in flight -- which, going by the code, signs them in without
+  // ever showing the new-password form. Found by reading the guards, not
+  // seen on a device: testing it needs a signed-out phone and a real link.
+  '/reset-password',
 ];
 
 // Invite links are signed-out by definition and are NOT a fixed path, so

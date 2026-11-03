@@ -1,4 +1,5 @@
 import * as Linking from 'expo-linking';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +10,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 
 // Recovery tokens arrive in the URL fragment (#access_token=...&refresh_token=...),
@@ -24,6 +26,7 @@ function extractRecoveryTokens(fragment: string): { accessToken: string; refresh
 
 export default function ResetPasswordScreen() {
   const nativeUrl = Platform.OS === 'web' ? null : Linking.useURL();
+  const { session } = useAuth();
   const [sessionReady, setSessionReady] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +45,8 @@ export default function ResetPasswordScreen() {
 
       const tokens = extractRecoveryTokens(fragment);
       if (!tokens) {
-        setError('This reset link is invalid or has expired. Request a new one from the sign-in screen.');
+        // Just the fact: the buttons under it say what to do next.
+        setError('This reset link is invalid or has expired.');
         return;
       }
 
@@ -81,6 +85,11 @@ export default function ResetPasswordScreen() {
           <ThemedText type="lead" style={styles.title}>
             You&apos;re signed in with your new password.
           </ThemedText>
+          {/* Every state of this screen needs a way off it. It had none:
+              arriving from an email there is nothing under it in the stack,
+              and iOS has no back button, so "Password updated" was where
+              the app ended. */}
+          <Button label="Continue" onPress={() => router.replace('/')} />
         </SafeAreaView>
       </ThemedView>
     );
@@ -107,6 +116,22 @@ export default function ResetPasswordScreen() {
           <ThemedText type="small" themeColor="danger" style={styles.title}>
             {error}
           </ThemedText>
+        )}
+
+        {/* A link that did not work. Signed out -- the usual case -- the
+            useful thing is another link; already signed in, it is just the
+            way back into the app. */}
+        {error && !sessionReady && (
+          <ThemedView style={styles.form}>
+            {session ? (
+              <Button label="Back to the app" onPress={() => router.replace('/')} />
+            ) : (
+              <>
+                <Button label="Send a new link" onPress={() => router.replace('/forgot-password')} />
+                <Button label="Back to sign in" variant="secondary" onPress={() => router.replace('/sign-in')} />
+              </>
+            )}
+          </ThemedView>
         )}
 
         {sessionReady && (

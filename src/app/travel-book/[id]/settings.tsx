@@ -1,20 +1,23 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { BackLink } from '@/components/ui/back-link';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { ThemedText } from '@/components/themed-text';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
+import { SettingsRow } from '@/components/ui/settings-row';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { searchUsers } from '@/lib/search';
 import {
   addCollaborator,
+  deleteTravelBook,
   getTravelBookDetail,
   removeCollaborator,
   updateTravelBookPrivacy,
@@ -36,6 +39,8 @@ export default function TravelBookSettingsScreen() {
   const [collaborators, setCollaborators] = useState<TravelBookCollaborator[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [peopleQuery, setPeopleQuery] = useState('');
   const [peopleSuggestions, setPeopleSuggestions] = useState<UserRow[]>([]);
@@ -122,6 +127,27 @@ export default function TravelBookSettingsScreen() {
     }
   }
 
+  async function handleDelete() {
+    if (!book) return;
+    setIsDeleting(true);
+    try {
+      await deleteTravelBook(book.id);
+      setIsConfirmingDelete(false);
+      // Out past the book's own page as well as this one, which has nothing
+      // behind it now, to whichever tab this was opened from.
+      //
+      // Not then switched to the Boards tab. Doing that as well left the
+      // pager showing Home with the Boards icon lit (seen on Android), and
+      // from there tapping Boards did nothing, because a tap on the lit icon
+      // counts as a re-tap. Without it the pager stays where it was.
+      if (router.canDismiss()) router.dismissAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete this travel book.');
+      setIsConfirmingDelete(false);
+      setIsDeleting(false);
+    }
+  }
+
   if (!hasLoadedOnce) return <PageLoader />;
 
   const isOwner = Boolean(session && book && session.user.id === book.user_id);
@@ -181,6 +207,15 @@ export default function TravelBookSettingsScreen() {
                   </Pressable>
                 ))}
               </View>
+
+              {/* There was no way to delete a travel book anywhere in the
+                  app -- the database allowed it, nothing called it. */}
+              <SettingsRow
+                label="Delete travel book"
+                description="Removes the book, its recap and its collaborators. The reviews in it stay where they are."
+                tone="danger"
+                onPress={() => setIsConfirmingDelete(true)}
+              />
             </>
           )}
 
@@ -191,6 +226,14 @@ export default function TravelBookSettingsScreen() {
           )}
         </KeyboardAwareScroll>
       </SafeAreaView>
+
+      <ConfirmDeleteModal
+        visible={isConfirmingDelete}
+        message="Delete this travel book? Its recap goes with it. The reviews in it are not deleted. This cannot be undone."
+        isConfirming={isDeleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setIsConfirmingDelete(false)}
+      />
     </ThemedView>
   );
 }

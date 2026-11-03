@@ -334,6 +334,20 @@ export async function updateTravelBookPrivacy(bookId: string, isPrivate: boolean
   if (error) throw error;
 }
 
+// The book, its recap, its collaborators and its items all go (they cascade
+// in the schema); a trip that was turned into this book just loses the link
+// and can be made into a book again. The reviews in it are not touched --
+// that includes collaborators' reviews, which were only ever pointed at.
+//
+// Authorized by travel_books_delete_own. Selected back because a delete RLS
+// refuses is zero rows rather than an error, and would otherwise read as a
+// success.
+export async function deleteTravelBook(bookId: string): Promise<void> {
+  const { data, error } = await supabase.from('travel_books').delete().eq('id', bookId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Could not delete this travel book.');
+}
+
 // Creates the book, adds every visible visit from the trip to it, then
 // records the link so the feed shows "View travel book" instead of offering
 // to create a second one for the same trip.

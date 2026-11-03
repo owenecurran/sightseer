@@ -1,16 +1,18 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
+import { SettingsRow } from '@/components/ui/settings-row';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
-import { setBoardFeatured, updateBoardListStyle, updateBoardPrivacy } from '@/lib/boards';
+import { deleteBoard, setBoardFeatured, updateBoardListStyle, updateBoardPrivacy } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 
@@ -19,7 +21,7 @@ type ListStyle = 'collection' | 'ranked';
 
 const LIST_STYLES: { key: ListStyle; label: string; description: string }[] = [
   { key: 'collection', label: 'Collection', description: 'A regular saved list, in whatever order items were added.' },
-  { key: 'ranked', label: 'Ranked', description: 'A numbered ranking you can drag to reorder — opens to the ranked view.' },
+  { key: 'ranked', label: 'Ranked', description: 'A numbered ranking you can drag to reorder. Opens to the ranked view.' },
 ];
 
 export default function BoardSettingsScreen() {
@@ -28,6 +30,8 @@ export default function BoardSettingsScreen() {
   const [board, setBoard] = useState<BoardRow | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,6 +87,27 @@ export default function BoardSettingsScreen() {
     }
   }
 
+  async function handleDelete() {
+    if (!board) return;
+    setIsDeleting(true);
+    try {
+      await deleteBoard(board.id);
+      setIsConfirmingDelete(false);
+      // Out past the board's own page as well as this one, which has nothing
+      // behind it now, to whichever tab this was opened from.
+      //
+      // Not then switched to the Boards tab. Doing that as well left the
+      // pager showing Home with the Boards icon lit (seen on Android), and
+      // from there tapping Boards did nothing, because a tap on the lit icon
+      // counts as a re-tap. Without it the pager stays where it was.
+      if (router.canDismiss()) router.dismissAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete this board.');
+      setIsConfirmingDelete(false);
+      setIsDeleting(false);
+    }
+  }
+
   if (!hasLoadedOnce) return <PageLoader />;
 
   const isOwner = Boolean(session && board && session.user.id === board.user_id);
@@ -126,6 +151,16 @@ export default function BoardSettingsScreen() {
                     label="Private: only visible to people who can already see my content"
                     onPress={handleTogglePrivate}
                   />
+
+                  {/* There was no way to delete a board anywhere in the app.
+                      Owner only: an admin can feature a board but it is not
+                      theirs to remove. */}
+                  <SettingsRow
+                    label="Delete board"
+                    description="Removes the board. The reviews saved to it stay where they are."
+                    tone="danger"
+                    onPress={() => setIsConfirmingDelete(true)}
+                  />
                 </>
               )}
 
@@ -147,6 +182,14 @@ export default function BoardSettingsScreen() {
           )}
         </View>
       </SafeAreaView>
+
+      <ConfirmDeleteModal
+        visible={isConfirmingDelete}
+        message="Delete this board? The reviews saved to it are not deleted, only the board. This cannot be undone."
+        isConfirming={isDeleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setIsConfirmingDelete(false)}
+      />
     </ThemedView>
   );
 }
