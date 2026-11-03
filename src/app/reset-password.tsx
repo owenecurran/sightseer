@@ -75,7 +75,7 @@ export default function ResetPasswordScreen() {
     return (
       <ThemedView type="screen" style={styles.container}>
         <SafeAreaView style={[styles.safeArea, styles.content]}>
-          <ThemedText type="title" style={styles.title}>
+          <ThemedText type="displaySerif" style={styles.title}>
             Password updated
           </ThemedText>
           <ThemedText type="lead" style={styles.title}>
@@ -95,12 +95,16 @@ export default function ResetPasswordScreen() {
           contentContainerStyle={styles.content}
           bottomOffset={96}
           keyboardShouldPersistTaps="handled">
-        <ThemedText type="title" style={styles.title}>
+        {/* The display serif every other screen title is set in, as on
+            onboarding. This was the plain 48pt system title, which wrapped
+            to two lines and was the one heading in the flow that looked
+            like a default. */}
+        <ThemedText type="displaySerif" style={styles.title}>
           Set a new password
         </ThemedText>
 
         {error && (
-          <ThemedText type="small" themeColor="danger">
+          <ThemedText type="small" themeColor="danger" style={styles.title}>
             {error}
           </ThemedText>
         )}
