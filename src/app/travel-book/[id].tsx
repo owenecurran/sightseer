@@ -670,7 +670,7 @@ ${item.note ?? ''}`.trim());
                   {isLoadingEligible && <ThemedText type="small">Loading…</ThemedText>}
                   {!isLoadingEligible && eligibleVisits.length === 0 && (
                     <ThemedText type="caption">
-                      Nothing eligible to add — only your own reviews, or ones you're tagged in, can go in this book.
+                      Nothing eligible to add. Only your own reviews, or ones you're tagged in, can go in this book.
                     </ThemedText>
                   )}
                   {eligibleVisits.map((visit) => (
@@ -698,7 +698,7 @@ ${item.note ?? ''}`.trim());
               <PaperPanel seed="book-recap" accentIndex={2} style={styles.recapCard}>
                 <ThemedText type="headlineWrapped">{recap.title}</ThemedText>
                 <ThemedText type="meta">
-                  {recap.is_published ? 'Published to your feed' : 'Draft — not published yet'}
+                  {recap.is_published ? 'Published to your feed' : 'Draft, not published yet'}
                 </ThemedText>
               </PaperPanel>
             ) : (

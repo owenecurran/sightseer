@@ -25,7 +25,7 @@ import { SITE_ORIGIN } from '@/lib/site';
 // later; it needs the data rendered server-side, which is a larger job.
 
 export const SITE_NAME = 'Sightseer';
-export const SITE_TITLE = 'Sightseer — keep the places you have been';
+export const SITE_TITLE = 'Sightseer: keep the places you have been';
 export const SITE_DESCRIPTION =
   'Record where you have been, rate it, and share that with people you choose.';
 

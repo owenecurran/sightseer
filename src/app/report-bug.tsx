@@ -80,7 +80,7 @@ export default function ReportBugScreen() {
             <PaperPanel seed="report-bug" accentIndex={1} style={styles.panel}>
               <ThemedText type="caption">
                 What went wrong? Anything you can say about what you were doing when it happened
-                helps — even roughly.
+                helps, even roughly.
               </ThemedText>
               <TextField
                 placeholder="What happened?"

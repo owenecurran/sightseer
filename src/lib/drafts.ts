@@ -166,7 +166,7 @@ export async function uploadPhotoForDraft(params: UploadDraftPhotoParams): Promi
   // answer: an error the person can retry is recoverable, and a file that
   // silently will not render for anyone is not.
   if (!ALLOWED_CONTENT_TYPES.includes(scaled.mimeType)) {
-    throw new Error(`Cannot upload ${scaled.mimeType} — the image was not converted.`);
+    throw new Error(`Cannot upload ${scaled.mimeType}. The image was not converted.`);
   }
   const contentType = scaled.mimeType;
 

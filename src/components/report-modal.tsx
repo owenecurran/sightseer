@@ -93,7 +93,7 @@ export function ReportModal({
                 Report submitted
               </ThemedText>
               <ThemedText type="caption" style={styles.centerText}>
-                Thanks — our team will take a look.
+                Thanks. Our team will take a look.
               </ThemedText>
               <Pressable onPress={onClose} style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}>
                 <ThemedText type="smallBold" themeColor="background">

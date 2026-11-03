@@ -161,7 +161,7 @@ export default function ModerationScreen() {
               )}
               {!report.placeName && (
                 <ThemedText type="caption">
-                  Reported this user directly — no specific post.
+                  Reported this user directly, not a specific post.
                 </ThemedText>
               )}
 

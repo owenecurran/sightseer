@@ -57,8 +57,8 @@ const MAX_STOPS = 8;
 const SKSL = `
 uniform shader heightmap;
 uniform float2 resolution;
-// The canvas (resolution.x) is wider than the visible track itself now —
-// see xOffset's own comment below for why — so every track-relative
+// The canvas (resolution.x) is wider than the visible track itself now --
+// see xOffset's own comment below for why -- so every track-relative
 // calculation (the pill mask, the gradient sample position) needs to work
 // in *track-local* coordinates, not raw canvas ones.
 uniform float  xOffset;
@@ -72,12 +72,12 @@ uniform float  dispersion;
 uniform float3 colors[${MAX_STOPS}];
 uniform float  stops[${MAX_STOPS}];
 
-// SkSL requires array indices to be compile-time constants — colors[count - 1]
+// SkSL requires array indices to be compile-time constants -- colors[count - 1]
 // (count a runtime uniform) failed to compile with exactly that error. Since
 // the JS side always pads stops/colors to exactly MAX_STOPS entries (padding
 // stops repeat 1.0, padding colors repeat the last real color), every
 // padded tail segment is degenerate (zero-width or same-color) and harmless
-// to evaluate unconditionally — no need for the count-based early-exit or a
+// to evaluate unconditionally -- no need for the count-based early-exit or a
 // dynamically-indexed fallback at all, just a plain loop over all
 // MAX_STOPS-1 segments and a fixed final index.
 float3 track(float t) {
@@ -100,14 +100,14 @@ half4 main(float2 xy) {
   // extra height (see CANVAS_HEIGHT in rating-slider.tsx) lets the icon
   // overlay poke out above/below it, and the extra width (xOffset padding
   // on each side) lets it poke out past the *left/right* ends too, at the
-  // rating extremes — the icon (iconSize) is deliberately drawn bigger
+  // rating extremes -- the icon (iconSize) is deliberately drawn bigger
   // than the glass bulge/thumb it sits on (thumbSize), so at progress 0 or
   // 1 it used to hang off the edge of a canvas sized to exactly the
   // visible track and get clipped there (a real Skia Canvas always clips
-  // to its own pixel bounds — there's no overflow:visible equivalent for
+  // to its own pixel bounds -- there's no overflow:visible equivalent for
   // canvas content itself, unlike a plain RN View). The gradient pill
   // itself still has to stay confined to the true track bounds regardless
-  // of the padded canvas — standard rounded-rect/stadium SDF in
+  // of the padded canvas -- standard rounded-rect/stadium SDF in
   // track-local coordinates (xy.x - xOffset), clamped to trackWidth.
   float localX = xy.x - xOffset;
   float radius = trackHeight * 0.5;

@@ -165,7 +165,7 @@ export default function ArticleComposeScreen() {
           />
           {!id && (
             <ThemedText type="caption">
-              New articles start unpublished — publish it from the edit screen once it's ready.
+              New articles start unpublished. Publish it from the edit screen once it's ready.
             </ThemedText>
           )}
         </KeyboardAwareScroll>

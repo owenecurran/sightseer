@@ -60,11 +60,11 @@ export default function InviteGateScreen() {
 
     if (result === 'cancelled') return;
     if (result === 'unsupported') {
-      setError('Sharing is not supported in this browser — copy the link above instead.');
+      setError('Sharing is not supported in this browser. Copy the link above instead.');
       return;
     }
     if (result === 'error') {
-      setError('Could not copy the invite — please copy the link above and send it to a friend.');
+      setError('Could not copy the invite. Please copy the link above and send it to a friend.');
       return;
     }
 

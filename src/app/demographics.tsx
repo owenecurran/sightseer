@@ -174,13 +174,13 @@ export default function DemographicsScreen() {
         </ThemedText>
         <ThemedText type="lead" style={styles.title}>
           Your date of birth is required. Where you are based is optional and helps us build better
-          recommendations — you can add it later in Settings.
+          recommendations. You can add it later in Settings.
         </ThemedText>
 
         <View style={styles.section}>
           <ThemedText type="smallBold">Where are you based?</ThemedText>
           <ThemedText type="caption">
-            Reviews you post around here count as everyday life — anything further afield gets grouped
+            Reviews you post around here count as everyday life. Anything further afield gets grouped
             into a trip. You can add up to 5 places later in Settings.
           </ThemedText>
           <Pressable onPress={() => setIsPickerOpen(true)}>

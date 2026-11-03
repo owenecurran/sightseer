@@ -114,7 +114,7 @@ export default function EditProfileScreen() {
           ? 'None answered yet'
           : `${prompts.length} of ${PROMPT_SLOT_COUNT} answered`;
       case 'map':
-        return showMap ? 'Shown on your profile' : 'Hidden — turn it on above';
+        return showMap ? 'Shown on your profile' : 'Hidden until you turn it on above';
       case 'collections':
         return PROFILE_SECTION_HINTS.collections;
     }

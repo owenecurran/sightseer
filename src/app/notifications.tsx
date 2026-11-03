@@ -92,7 +92,7 @@ function describe(notification: AppNotification, actors: { name: string }[]): st
     case 'review_nudge':
       return 'Been anywhere lately? Write it down before you forget it';
     case 'contact_joined':
-      return `${notification.actorName} is on Sightseer — they're in your contacts`;
+      return `${notification.actorName}, from your contacts, is on Sightseer`;
     case 'friend_review_digest': {
       const missed = notification.digestReviewCount ?? 0;
       return `You missed ${missed} review${missed === 1 ? '' : 's'} from people you follow`;

@@ -60,7 +60,7 @@ export default function PrivacyChoiceScreen() {
           Choose your privacy
         </ThemedText>
         <ThemedText type="lead" style={styles.title}>
-          This app has real location data on it — where you’ve been, and when. You can change this
+          This app has real location data on it: where you’ve been, and when. You can change this
           later in Settings.
         </ThemedText>
 

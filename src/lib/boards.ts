@@ -362,7 +362,7 @@ export async function deleteBoard(boardId: string): Promise<void> {
 // RLS policy (full-row grant, same trust model as visits_delete_admin),
 // not by anything this function checks client-side.
 export async function setBoardFeatured(boardId: string, featured: boolean): Promise<void> {
-  await updateBoardOrThrow(boardId, { is_featured: featured }, 'Could not update featured status — you may not have permission.');
+  await updateBoardOrThrow(boardId, { is_featured: featured }, 'Could not update featured status. You may not have permission.');
 }
 
 // No RPC needed — boards_select RLS already scopes results correctly per

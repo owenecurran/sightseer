@@ -513,7 +513,7 @@ export function LocationSearchModal({
               hasSearchedCenter && (
                 <ThemedView type="backgroundElement" style={styles.messageBox}>
                   <ThemedText type="caption">
-                    No named place here — try dragging a bit or search instead.
+                    No named place here. Try dragging a bit or search instead.
                   </ThemedText>
                 </ThemedView>
               )}

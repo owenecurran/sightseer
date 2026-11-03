@@ -148,7 +148,7 @@ export default function TravelBookRecapScreen() {
 
           <ThemedText type="displaySerif">Trip recap</ThemedText>
           <ThemedText type="caption">
-            A write-up about the whole trip — separate from the individual place reviews inside it. Publishing
+            A write-up about the whole trip, separate from the individual place reviews inside it. Publishing
             it puts it on your feed.
           </ThemedText>
 

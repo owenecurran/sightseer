@@ -45,7 +45,7 @@ export default function NewTripScreen() {
     try {
       const found = await getVisitRangeForPlace(session.user.id, selected.id);
       setRange(found);
-      if (!found) setError(`No reviews in ${selected.name} yet — post one there first.`);
+      if (!found) setError(`No reviews in ${selected.name} yet. Post one there first.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not work out those dates.');
     } finally {

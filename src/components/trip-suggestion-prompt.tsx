@@ -43,7 +43,7 @@ export function TripSuggestionPrompt({ userId, suggestion, onResolved }: TripSug
       <ThemedText type="sectionLabel">Making a trip of it?</ThemedText>
       <ThemedText type="caption">
         You've posted {suggestion.visitCount} reviews around {suggestion.areaName}. Group them as a
-        trip and they'll show together — and you can turn them into a travel book later.
+        trip and they'll show together, and you can turn them into a travel book later.
       </ThemedText>
 
       {error && (

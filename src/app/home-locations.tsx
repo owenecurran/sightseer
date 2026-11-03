@@ -86,7 +86,7 @@ export default function HomeLocationsScreen() {
 
           <ThemedText type="caption">
             Reviews you post around these places count as everyday life. Anything further afield gets
-            grouped into a trip in the feed. Add up to {MAX_HOME_LOCATIONS} — change them whenever you
+            grouped into a trip in the feed. Add up to {MAX_HOME_LOCATIONS}, and change them whenever you
             like.
           </ThemedText>
 

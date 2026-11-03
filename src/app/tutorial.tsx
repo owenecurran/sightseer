@@ -145,7 +145,7 @@ export default function TutorialScreen() {
               </ThemedText>
               <ThemedText type="caption" style={styles.blurb}>
                 The picture is the front. The review, the rating and the tags are all on the
-                back — drag across the card, or press TURN OVER, to read it.
+                back. Drag across the card, or press TURN OVER, to read it.
               </ThemedText>
 
               <View style={styles.cardWrap}>
@@ -234,7 +234,7 @@ export default function TutorialScreen() {
                 <View style={styles.doneRow}>
                   <Ionicons name="checkmark-circle" size={18} color={BrandColors.sage} />
                   <ThemedText type="small" themeColor="sage">
-                    That&apos;s it &mdash; you&apos;ve got it.
+                    That&apos;s it. You&apos;ve got it.
                   </ThemedText>
                 </View>
               ) : showFlipHelp ? (
@@ -259,7 +259,7 @@ export default function TutorialScreen() {
                 Write one yourself
               </ThemedText>
               <ThemedText type="caption" style={styles.blurb}>
-                The + button in the bar at the bottom. Pick a place, rate it, add a photo — the
+                The + button in the bar at the bottom. Pick a place, rate it, add a photo, and the
                 card prints itself.
               </ThemedText>
 

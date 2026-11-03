@@ -61,7 +61,7 @@ function mapMessage(error: unknown, fallback: string): string {
     return 'That email, username or password is not right.';
   }
   if (lower.includes('email not confirmed')) {
-    return 'Confirm your email address first — check your inbox for the link.';
+    return 'Confirm your email address first. Check your inbox for the link.';
   }
   // GoTrue's own throttle says neither "rate limit" nor "too many" — its
   // wording is "For security purposes, you can only request this after 47

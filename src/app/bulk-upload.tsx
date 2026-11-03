@@ -58,7 +58,7 @@ const MODE_COPY: Record<PhotoMode, { title: string; blurb: string }> = {
   'by-place': {
     title: 'Bulk upload',
     blurb:
-      "Pick a batch of photos and we'll group them by location into starting drafts — one per place, ready for you to finish and publish.",
+      "Pick a batch of photos and we'll group them by location into starting drafts, one per place, ready for you to finish and publish.",
   },
 };
 
@@ -161,7 +161,7 @@ export default function BulkUploadScreen() {
       const parts: string[] = [];
       if (failedPhotoCount > 0) parts.push(`${failedPhotoCount} photo${failedPhotoCount === 1 ? '' : 's'} failed to upload`);
       if (cappedPhotoCount > 0) parts.push(`${cappedPhotoCount} photo${cappedPhotoCount === 1 ? '' : 's'} skipped (max ${MAX_VISIT_PHOTOS} per draft)`);
-      setError(`Drafts created, but ${parts.join(' and ')} — you can add more from each draft.`);
+      setError(`Drafts created, but ${parts.join(' and ')}. You can add more from each draft.`);
     }
     router.replace('/drafts');
   }

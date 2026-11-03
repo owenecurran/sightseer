@@ -54,7 +54,7 @@ const STYLE_URL = 'mapbox://styles/mapbox/dark-v10';
 
 mapboxgl.accessToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ?? '';
 if (!mapboxgl.accessToken) {
-  console.warn('Missing EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN — Mapbox tiles will not load.');
+  console.warn('Missing EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN. Mapbox tiles will not load.');
 }
 
 // Real interactive map on web too, via mapbox-gl-js directly — a separate
@@ -473,7 +473,7 @@ export function LocationSearchModal({
               hasSearchedCenter && (
                 <ThemedView type="backgroundElement" style={styles.messageBox}>
                   <ThemedText type="caption">
-                    No named place here — try dragging a bit or search instead.
+                    No named place here. Try dragging a bit or search instead.
                   </ThemedText>
                 </ThemedView>
               )}

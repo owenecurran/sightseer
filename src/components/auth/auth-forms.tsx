@@ -186,7 +186,7 @@ export function SignInForm({ onForgotPassword }: { onForgotPassword?: () => void
       )}
       {pendingVerifyEmail && (
         <ThemedText type="small" themeColor="sage">
-          That address is not confirmed yet — one more check and a code is on its way.
+          That address is not confirmed yet. One more check and a code is on its way.
         </ThemedText>
       )}
       <Turnstile onToken={handleCaptchaToken} action="signin" resetSignal={captchaReset} />

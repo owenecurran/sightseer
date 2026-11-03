@@ -344,7 +344,7 @@ export default function HomeScreen() {
       return;
     }
     if (result === "error") {
-      setError("Could not copy that visit — please try again.");
+      setError("Could not copy that visit. Please try again.");
       return;
     }
     if (result === "copied") {

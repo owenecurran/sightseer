@@ -64,7 +64,7 @@ export function PushPrimingModal({ userId }: PushPrimingModalProps) {
           <ThemedText type="displaySerif">Get notified</ThemedText>
           <ThemedText type="lead">
             We&apos;ll let you know when someone likes or comments on your review, tags you in
-            theirs, or follows you — plus a weekly catch-up if you fall behind on people you
+            theirs, or follows you, plus a weekly catch-up if you fall behind on people you
             follow.
           </ThemedText>
           <ThemedText type="caption">

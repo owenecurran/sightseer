@@ -671,7 +671,7 @@ export default function ReviewFormScreen() {
         }
         setPendingPhotos(stillPending);
         if (stillPending.length > 0) {
-          setError(`Visit saved, but ${stillPending.length} photo(s) failed to upload — try again below.`);
+          setError(`Visit saved, but ${stillPending.length} photo(s) failed to upload. Try again below.`);
         }
       }
     } catch (err) {

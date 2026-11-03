@@ -49,7 +49,7 @@ export function HarmonyMeter({ harmony, userName, otherId }: HarmonyMeterProps) 
       <ThemedText type="smallBold">{harmonyLabel(score)}</ThemedText>
       <ThemedText type="caption">
         {isThin
-          ? `Not much to go on yet — you and ${userName} need more overlap before this means much.`
+          ? `Not much to go on yet. You and ${userName} need more overlap before this means much.`
           : `How alike you and ${userName} travel.`}
       </ThemedText>
 

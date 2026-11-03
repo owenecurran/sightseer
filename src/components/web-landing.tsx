@@ -178,7 +178,7 @@ export function WebLanding({ inviter = null }: WebLandingProps) {
                 download button is. */}
             {isPhone && !storeUrl && (
               <ThemedText type="caption" style={styles.centered}>
-                The mobile apps are on their way — everything works in your browser meanwhile.
+                The mobile apps are on their way. Everything works in your browser meanwhile.
               </ThemedText>
             )}
           </View>

@@ -169,7 +169,7 @@ export default function HarmonyScreen() {
                 <ThemedText type="smallBold">{harmonyLabel(score)}</ThemedText>
                 <ThemedText type="caption">
                   {isThin
-                    ? `Not much to go on yet — you and ${userName} need more overlap before this means much.`
+                    ? `Not much to go on yet. You and ${userName} need more overlap before this means much.`
                     : `Worked out from ${reasons.length} thing${reasons.length === 1 ? '' : 's'} you have in common.`}
                 </ThemedText>
               </View>
@@ -189,7 +189,7 @@ export default function HarmonyScreen() {
             <View style={styles.section}>
               <ThemedText type="sectionLabel">Places you both rated</ThemedText>
               <ThemedText type="caption">
-                The strongest signal — the same spot, judged by both of you.
+                The strongest signal: the same spot, judged by both of you.
               </ThemedText>
               {places.map(renderRow)}
             </View>
