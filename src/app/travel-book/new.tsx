@@ -148,7 +148,7 @@ export default function NewTravelBookScreen() {
             <ThemedText type="sectionLabel">Collaborators</ThemedText>
           <View style={styles.section}>
             <ThemedText type="caption">
-              Optional — anyone added can also add their own reviews
+              Optional. Anyone added can also add their own reviews.
             </ThemedText>
             {collaborators.length > 0 && (
               <View style={styles.tagRow}>

@@ -236,7 +236,11 @@ ${latestCard.note ?? ''}`.trim());
       <TeaserCard
         key="tagged_in"
         label="Tagged in"
-        title={latestTagged?.placeName ?? 'Not tagged in anything yet'}
+        // Two words, not "Not tagged in anything yet": the title is the
+        // stretched headline, which cuts anything past 24 characters, and that
+        // came out as "NOT TAGGED IN ANYTH..." under a label already saying
+        // what it was about.
+        title={latestTagged?.placeName ?? 'Nothing yet'}
         thumbnailUrl={teaserPhotoUrls[latestTagged?.photoIds?.[0] ?? '']}
         onPress={() => router.push('/tagged-in')}
       />

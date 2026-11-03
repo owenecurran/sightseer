@@ -47,7 +47,11 @@ export function AuthScreen({ title, children }: { title: string; children: React
           {/* Tinted cream rather than shipped in its source colour — see
               brand-logo.ts. */}
           <Image source={{ uri: logoUri }} style={styles.logo} contentFit="contain" />
-          <ThemedText type="title" style={styles.centred}>
+          {/* The display serif every screen title in the app is set in.
+              This was `title`, the 48pt system face -- the one heading in the
+              product that looked like a framework default, and the first
+              one anybody sees. */}
+          <ThemedText type="displaySerif" style={styles.centred}>
             {title}
           </ThemedText>
           {children}

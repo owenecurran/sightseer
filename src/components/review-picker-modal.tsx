@@ -54,7 +54,7 @@ export function ReviewPickerModal({
         <View style={styles.grabber} />
 
         <View style={styles.titleRow}>
-          <ThemedText type="subtitle">Choose a review</ThemedText>
+          <ThemedText type="displaySerif">Choose a review</ThemedText>
           <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Close">
             <Ionicons name="close" size={22} color={theme.textSecondary} />
           </Pressable>

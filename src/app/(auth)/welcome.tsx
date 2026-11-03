@@ -258,7 +258,9 @@ export default function WelcomeScreen() {
                         its source colour — see brand-logo.ts. */}
                     <Image source={{ uri: logoUri }} style={styles.logo} contentFit="contain" />
 
-                    <ThemedText type="title" style={styles.centred}>
+                    {/* The serif, to match sign-in and sign-up -- see
+                        auth-screen.tsx. */}
+                    <ThemedText type="displaySerif" style={styles.centred}>
                       {step === 'signin'
                         ? 'Welcome back'
                         : step === 'forgot'
