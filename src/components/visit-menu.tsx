@@ -95,7 +95,7 @@ export function VisitMenu({
       ) : (
         <ThemedView type="backgroundSelected" style={styles.panel}>
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -136,7 +136,7 @@ export function VisitMenu({
           </View>
 
           <Pressable onPress={handleToggle}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="action">
               Close
             </ThemedText>
           </Pressable>

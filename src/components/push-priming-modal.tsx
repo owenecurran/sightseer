@@ -62,12 +62,12 @@ export function PushPrimingModal({ userId }: PushPrimingModalProps) {
       <View style={styles.overlay}>
         <ThemedView type="backgroundElement" style={styles.sheet}>
           <ThemedText type="displaySerif">Get notified</ThemedText>
-          <ThemedText type="body" themeColor="textSecondary">
+          <ThemedText type="lead">
             We&apos;ll let you know when someone likes or comments on your review, tags you in
             theirs, or follows you — plus a weekly catch-up if you fall behind on people you
             follow.
           </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             You can change any of this later in Settings.
           </ThemedText>
 
@@ -77,7 +77,7 @@ export function PushPrimingModal({ userId }: PushPrimingModalProps) {
             disabled={isBusy}
           />
           <Pressable onPress={handleNotNow} disabled={isBusy} hitSlop={8} style={styles.notNow}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="action">
               Not now
             </ThemedText>
           </Pressable>

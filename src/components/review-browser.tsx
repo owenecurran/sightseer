@@ -105,7 +105,7 @@ export function ReviewBrowser({
   if (items.length === 0) {
     return (
       <View style={styles.empty}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="caption">
           No reviews yet.
         </ThemedText>
       </View>

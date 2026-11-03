@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,18 +19,33 @@ import { getAvatarViewUrls } from '@/lib/avatar';
 import { getLatestReviewPhotoIds } from '@/lib/boards';
 import { followUser, unfollowOrCancelRequest, type MutualFollower } from '@/lib/follows';
 import { getPhotoViewUrls } from '@/lib/photo-view';
-import { searchAll, type SearchBoardResult, type SearchTravelBookResult, type SearchUserResult } from '@/lib/search';
+import {
+  searchAll,
+  suggestPeople,
+  type SearchBoardResult,
+  type SearchTravelBookResult,
+  type SearchUserResult,
+} from '@/lib/search';
 
 const DEBOUNCE_MS = 300;
 
-type SearchMode = 'people_boards' | 'locations';
-type ResultFilter = 'all' | 'people' | 'boards' | 'travel_books';
+// One row of chips where there were two. "People & Boards | Locations" sat
+// above the field and "All | People | Boards | Travel books" below it, so
+// narrowing a search meant reading two rows of nearly the same words to work
+// out which one did what. Places is simply the last filter now; picking it
+// swaps the field for the map, which is all the old mode switch did.
+//
+// No "All" chip: nothing selected IS all, and tapping the selected chip
+// again goes back to it. That is what lets the row fit across a phone. It
+// cannot scroll sideways instead -- the tabs are a horizontal pager, and a
+// sideways swipe on the chips turns the page to Create.
+type ResultFilter = 'all' | 'people' | 'boards' | 'travel_books' | 'places';
 
-const RESULT_FILTERS: { key: ResultFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
+const RESULT_FILTERS: { key: Exclude<ResultFilter, 'all'>; label: string }[] = [
   { key: 'people', label: 'People' },
   { key: 'boards', label: 'Boards' },
   { key: 'travel_books', label: 'Travel books' },
+  { key: 'places', label: 'Places' },
 ];
 
 function followLabel(status: SearchUserResult['followStatus']): string {
@@ -50,15 +65,27 @@ function mutualsLabel(mutuals: MutualFollower[]): string | null {
   return `${countLabel} · ${firstName} + ${mutuals.length - 1} other${mutuals.length > 2 ? 's' : ''}`;
 }
 
+// One line, shrunk to fit. These were the 34pt wrapping headline, so a
+// three-word name stacked three lines high and a list of people ran to a
+// screen for every three of them.
+function ResultTitle({ children }: { children: ReactNode }) {
+  return (
+    <ThemedText type="headline" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={styles.resultTitle}>
+      {children}
+    </ThemedText>
+  );
+}
+
 export default function SearchScreen() {
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [query, setQuery] = useState('');
-  const [mode, setMode] = useState<SearchMode>('people_boards');
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all');
+  const isPlaces = resultFilter === 'places';
   const [boards, setBoards] = useState<SearchBoardResult[]>([]);
   const [travelBooks, setTravelBooks] = useState<SearchTravelBookResult[]>([]);
   const [users, setUsers] = useState<SearchUserResult[]>([]);
+  const [suggestions, setSuggestions] = useState<SearchUserResult[]>([]);
   const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
   const [coverUrls, setCoverUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -68,9 +95,35 @@ export default function SearchScreen() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // What fills the screen before anything is typed. It used to be nothing:
+  // a title, two rows of chips and an empty field, on the tab people open to
+  // find someone. Loaded once; a failure here just leaves the space empty,
+  // because nobody asked for these and an error about them would be noise.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const people = await suggestPeople(session.user.id);
+        if (cancelled) return;
+        setSuggestions(people);
+        const ids = people.map((u) => u.id);
+        if (ids.length > 0) {
+          const urls = await getAvatarViewUrls(ids);
+          if (!cancelled) setAvatarUrls((prev) => ({ ...prev, ...urls }));
+        }
+      } catch {
+        // See above.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!session || mode !== 'people_boards') return;
+    if (!session || isPlaces) return;
 
     if (!query.trim()) {
       setBoards([]);
@@ -89,7 +142,12 @@ export default function SearchScreen() {
         setUsers(result.users);
 
         const userIds = result.users.map((u) => u.id);
-        setAvatarUrls(userIds.length > 0 ? await getAvatarViewUrls(userIds) : {});
+        // Merged rather than replaced, so the suggested people keep their
+        // avatars when the field is cleared again.
+        if (userIds.length > 0) {
+          const urls = await getAvatarViewUrls(userIds);
+          setAvatarUrls((prev) => ({ ...prev, ...urls }));
+        }
 
         // Cover thumbnails: explicit cover_photo_id wins; boards without one
         // fall back to the most-recently-added item's photo (same rule
@@ -118,7 +176,7 @@ export default function SearchScreen() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, session, mode]);
+  }, [query, session, isPlaces]);
 
   async function handleFollowToggle(user: SearchUserResult) {
     if (!session) return;
@@ -130,10 +188,16 @@ export default function SearchScreen() {
           followeeId: user.id,
           followeeIsPrivate: user.is_private,
         });
-        setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, followStatus: status } : u)));
+        const update = (list: SearchUserResult[]) =>
+          list.map((u) => (u.id === user.id ? { ...u, followStatus: status } : u));
+        setUsers(update);
+        setSuggestions(update);
       } else {
         await unfollowOrCancelRequest(session.user.id, user.id);
-        setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, followStatus: null } : u)));
+        const update = (list: SearchUserResult[]) =>
+          list.map((u) => (u.id === user.id ? { ...u, followStatus: null } : u));
+        setUsers(update);
+        setSuggestions(update);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not update that follow.');
@@ -145,6 +209,32 @@ export default function SearchScreen() {
   const showTravelBooks = resultFilter === 'all' || resultFilter === 'travel_books';
   const hasAnyResults =
     (showBoards && boards.length > 0) || (showTravelBooks && travelBooks.length > 0) || (showPeople && users.length > 0);
+  const hasQuery = query.trim().length > 0;
+
+  function renderUser(user: SearchUserResult) {
+    const mutualLine = mutualsLabel(user.mutuals);
+    return (
+      <Pressable key={user.id} onPress={() => router.push({ pathname: '/user/[id]', params: { id: user.id } })}>
+        <PaperPanel seed={`result-user`} style={styles.resultRow}>
+          <Avatar uri={avatarUrls[user.id]} name={user.name ?? user.handle} size={40} />
+          <View style={styles.resultInfo}>
+            <ResultTitle>{user.name ?? user.handle ?? 'Unnamed'}</ResultTitle>
+            {user.handle && (
+              <ThemedText type="small" themeColor="textMeta">
+                @{user.handle}
+              </ThemedText>
+            )}
+            {mutualLine && <ThemedText type="caption">{mutualLine}</ThemedText>}
+          </View>
+          <Pressable onPress={() => handleFollowToggle(user)} hitSlop={8}>
+            <ThemedText type="action" themeColor={user.followStatus === null ? 'sage' : 'text'}>
+              {followLabel(user.followStatus)}
+            </ThemedText>
+          </Pressable>
+        </PaperPanel>
+      </Pressable>
+    );
+  }
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -157,11 +247,13 @@ export default function SearchScreen() {
           <ThemedText type="displaySerif">Search</ThemedText>
 
           <View style={styles.filterRow}>
-            {(['people_boards', 'locations'] as SearchMode[]).map((m) => (
-              <Pressable key={m} onPress={() => setMode(m)}>
-                <ThemedView type={mode === m ? 'backgroundSelected' : 'backgroundElement'} style={styles.filterChip}>
-                  <ThemedText type="small" themeColor={mode === m ? 'text' : 'textSecondary'}>
-                    {m === 'people_boards' ? 'People & Boards' : 'Locations'}
+            {RESULT_FILTERS.map((f) => (
+              <Pressable key={f.key} onPress={() => setResultFilter((current) => (current === f.key ? 'all' : f.key))}>
+                <ThemedView
+                  type={resultFilter === f.key ? 'backgroundSelected' : 'backgroundElement'}
+                  style={styles.filterChip}>
+                  <ThemedText type="small" themeColor={resultFilter === f.key ? 'text' : 'textSecondary'}>
+                    {f.label}
                   </ThemedText>
                 </ThemedView>
               </Pressable>
@@ -169,30 +261,35 @@ export default function SearchScreen() {
           </View>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
-          {mode === 'people_boards' ? (
+          {!isPlaces ? (
             <>
               <TextField placeholder="Search people, boards, or travel books" value={query} onChangeText={setQuery} />
 
-              <View style={styles.filterRow}>
-                {RESULT_FILTERS.map((f) => (
-                  <Pressable key={f.key} onPress={() => setResultFilter(f.key)}>
-                    <ThemedView type={resultFilter === f.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.filterChip}>
-                      <ThemedText type="small" themeColor={resultFilter === f.key ? 'text' : 'textSecondary'}>
-                        {f.label}
-                      </ThemedText>
-                    </ThemedView>
-                  </Pressable>
-                ))}
-              </View>
+              {!isSearching && hasQuery && !hasAnyResults && (
+                <ThemedText type="caption">
+                  Nothing matches that. Try part of a name or a handle.
+                </ThemedText>
+              )}
 
-              {!isSearching && query.trim().length > 0 && !hasAnyResults && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  No results.
+              {!hasQuery && showPeople && suggestions.length > 0 && (
+                <View style={styles.results}>
+                  <ThemedText type="sectionLabel" style={styles.sectionLabel}>
+                    People you may know
+                  </ThemedText>
+                  {suggestions.map(renderUser)}
+                </View>
+              )}
+
+              {!hasQuery && !showPeople && (
+                <ThemedText type="caption">
+                  {resultFilter === 'boards'
+                    ? 'Search boards by their name or description.'
+                    : 'Search travel books by their title or description.'}
                 </ThemedText>
               )}
 
@@ -205,8 +302,8 @@ export default function SearchScreen() {
                       <PaperPanel seed={`result-board`} style={styles.resultRow}>
                         {coverUrls[board.id] && <Image source={{ uri: coverUrls[board.id] }} style={styles.resultThumbnail} />}
                         <View style={styles.resultInfo}>
-                          <ThemedText type="headlineWrapped">{board.name}</ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ResultTitle>{board.name}</ResultTitle>
+                          <ThemedText type="meta">
                             by {board.creatorName}
                             {board.is_private ? ' · Private' : ''}
                           </ThemedText>
@@ -223,8 +320,8 @@ export default function SearchScreen() {
                       <PaperPanel seed={`result-book`} style={styles.resultRow}>
                         {coverUrls[book.id] && <Image source={{ uri: coverUrls[book.id] }} style={styles.resultThumbnail} />}
                         <View style={styles.resultInfo}>
-                          <ThemedText type="headlineWrapped">{book.title}</ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ResultTitle>{book.title}</ResultTitle>
+                          <ThemedText type="meta">
                             by {book.creatorName}
                             {book.is_private ? ' · Private' : ''}
                           </ThemedText>
@@ -233,42 +330,14 @@ export default function SearchScreen() {
                     </Pressable>
                   ))}
 
-                {showPeople &&
-                  users.map((user) => {
-                    const mutualLine = mutualsLabel(user.mutuals);
-                    return (
-                      <Pressable
-                        key={user.id}
-                        onPress={() => router.push({ pathname: '/user/[id]', params: { id: user.id } })}>
-                        <PaperPanel seed={`result-user`} style={styles.resultRow}>
-                          <Avatar uri={avatarUrls[user.id]} name={user.name ?? user.handle} size={40} />
-                          <View style={styles.resultInfo}>
-                            <ThemedText type="headlineWrapped">{user.name ?? user.handle ?? 'Unnamed'}</ThemedText>
-                            {user.handle && (
-                              <ThemedText type="small" themeColor="textSecondary">
-                                @{user.handle}
-                              </ThemedText>
-                            )}
-                            {mutualLine && (
-                              <ThemedText type="small" themeColor="textSecondary">
-                                {mutualLine}
-                              </ThemedText>
-                            )}
-                          </View>
-                          <Pressable onPress={() => handleFollowToggle(user)} hitSlop={8}>
-                            <ThemedText type="smallBold">{followLabel(user.followStatus)}</ThemedText>
-                          </Pressable>
-                        </PaperPanel>
-                      </Pressable>
-                    );
-                  })}
+                {showPeople && users.map(renderUser)}
               </View>
             </>
           ) : (
             <Pressable onPress={() => setIsPickerOpen(true)}>
               <PaperPanel seed="explore-map" accentIndex={3} style={styles.locationsCard}>
                 <ThemedText type="headlineWrapped">Search the map</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Browse reviewed places, or search for one to view its page.
                 </ThemedText>
               </PaperPanel>
@@ -303,9 +372,14 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.two,
   },
+  sectionLabel: {
+    marginBottom: Spacing.one,
+  },
+  // Twelve a side rather than sixteen: with that, the four chips fit across
+  // a 411dp phone. Narrower screens wrap the last one rather than clip it.
   filterChip: {
     paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: 12,
     borderRadius: Spacing.five,
   },
   results: {
@@ -322,6 +396,9 @@ const styles = StyleSheet.create({
   resultInfo: {
     flex: 1,
     gap: Spacing.half,
+  },
+  resultTitle: {
+    fontSize: 24,
   },
   resultThumbnail: {
     width: 40,

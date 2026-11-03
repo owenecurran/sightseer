@@ -59,7 +59,7 @@ export default function PrivacyChoiceScreen() {
         <ThemedText type="displaySerif" style={styles.title}>
           Choose your privacy
         </ThemedText>
-        <ThemedText type="default" style={styles.title} themeColor="textSecondary">
+        <ThemedText type="lead" style={styles.title}>
           This app has real location data on it — where you’ve been, and when. You can change this
           later in Settings.
         </ThemedText>
@@ -80,7 +80,7 @@ export default function PrivacyChoiceScreen() {
         </View>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}

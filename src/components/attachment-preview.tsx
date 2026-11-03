@@ -53,7 +53,7 @@ export function AttachmentPreview({ label, data }: AttachmentPreviewProps) {
   if (data.kind === 'empty') {
     return (
       <View style={styles.emptyBox}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="caption">
           Preview will appear here once you finish this attachment.
         </ThemedText>
       </View>

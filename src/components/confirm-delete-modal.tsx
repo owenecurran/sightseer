@@ -38,7 +38,7 @@ export function ConfirmDeleteModal({
           </ThemedText>
           <View style={styles.actionsRow}>
             <Pressable onPress={onCancel} disabled={isConfirming} hitSlop={8}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Cancel
               </ThemedText>
             </Pressable>

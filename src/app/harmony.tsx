@@ -167,7 +167,7 @@ export default function HarmonyScreen() {
               </ThemedText>
               <View style={styles.scoreText}>
                 <ThemedText type="smallBold">{harmonyLabel(score)}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   {isThin
                     ? `Not much to go on yet — you and ${userName} need more overlap before this means much.`
                     : `Worked out from ${reasons.length} thing${reasons.length === 1 ? '' : 's'} you have in common.`}
@@ -180,7 +180,7 @@ export default function HarmonyScreen() {
           </PaperPanel>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -188,7 +188,7 @@ export default function HarmonyScreen() {
           {places.length > 0 && (
             <View style={styles.section}>
               <ThemedText type="sectionLabel">Places you both rated</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 The strongest signal — the same spot, judged by both of you.
               </ThemedText>
               {places.map(renderRow)}
@@ -198,7 +198,7 @@ export default function HarmonyScreen() {
           {areas.length > 0 && (
             <View style={styles.section}>
               <ThemedText type="sectionLabel">Places you both travelled to</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 Compared on how each of you rated everything you did there.
               </ThemedText>
               {areas.map(renderRow)}
@@ -206,7 +206,7 @@ export default function HarmonyScreen() {
           )}
 
           {reasons.length === 0 && !error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Nothing in common to point at yet. Once you have both been somewhere, this fills in.
             </ThemedText>
           )}

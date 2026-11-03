@@ -64,7 +64,7 @@ function AssuranceList({ items, seed }: { items: Assurance[]; seed: string }) {
           <View style={styles.assuranceIcon}>
             <Ionicons name={item.icon} size={16} color={BrandColors.sage} />
           </View>
-          <ThemedText type="small" themeColor="textSecondary" style={styles.assuranceText}>
+          <ThemedText type="caption" style={styles.assuranceText}>
             {item.text}
           </ThemedText>
         </View>
@@ -103,7 +103,7 @@ export function FindFriendsStep({ step }: { step: FindFriendsStepName }) {
           <ThemedText type="displaySerif" style={styles.centered}>
             Your number
           </ThemedText>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.centered}>
+          <ThemedText type="lead" style={styles.centered}>
             So people who already have it can find you here.
           </ThemedText>
         </View>
@@ -124,7 +124,7 @@ export function FindFriendsStep({ step }: { step: FindFriendsStepName }) {
         <ThemedText type="displaySerif" style={styles.centered}>
           Your contacts
         </ThemedText>
-        <ThemedText type="default" themeColor="textSecondary" style={styles.centered}>
+        <ThemedText type="lead" style={styles.centered}>
           Find the people you already know.
         </ThemedText>
       </View>

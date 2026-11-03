@@ -409,7 +409,7 @@ export default function TravelBookDetailScreen() {
             )}
           </View>
           {book?.description && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               {book.description}
             </ThemedText>
           )}
@@ -461,7 +461,7 @@ export default function TravelBookDetailScreen() {
           )}
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -486,7 +486,7 @@ export default function TravelBookDetailScreen() {
 
           <View style={styles.section}>
             {items.length === 0 && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 No reviews in this trip yet.
               </ThemedText>
             )}
@@ -537,7 +537,7 @@ export default function TravelBookDetailScreen() {
                     )}
                     <View style={styles.itemInfo}>
                       <StretchText type="headline" fill>{item.placeName}</StretchText>
-                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                      <ThemedText type="meta" numberOfLines={1}>
                         {item.kind === 'visit'
                           ? [item.stateCountry, item.visited_on].filter(Boolean).join(' · ')
                           : (item.stateCountry ?? 'No review yet')}
@@ -596,7 +596,7 @@ export default function TravelBookDetailScreen() {
                             review: when it was visited, and the way to take
                             it back out again. */}
                         <View style={styles.headerRow}>
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ThemedText type="meta">
                             {item.visited_on}
                           </ThemedText>
                           {canManage && (
@@ -637,7 +637,7 @@ ${item.note ?? ''}`.trim());
                     ) : (
                       <>
                         <StretchText type="headline" fill>{item.placeName}</StretchText>
-                        <ThemedText type="small" themeColor="textSecondary">
+                        <ThemedText type="meta">
                           {item.stateCountry ?? 'No review yet'}
                         </ThemedText>
                         {showOwnRating && (
@@ -669,7 +669,7 @@ ${item.note ?? ''}`.trim());
                   <ThemedText type="sectionLabel">Add one of your eligible reviews</ThemedText>
                   {isLoadingEligible && <ThemedText type="small">Loading…</ThemedText>}
                   {!isLoadingEligible && eligibleVisits.length === 0 && (
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="caption">
                       Nothing eligible to add — only your own reviews, or ones you're tagged in, can go in this book.
                     </ThemedText>
                   )}
@@ -680,7 +680,7 @@ ${item.note ?? ''}`.trim());
                         {visit.rating != null ? (
                           <RatingGlassBadgeGated rating={visit.rating} size={24} seed={visit.id} />
                         ) : (
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ThemedText type="meta">
                             Visited
                           </ThemedText>
                         )}
@@ -697,12 +697,12 @@ ${item.note ?? ''}`.trim());
             {recap ? (
               <PaperPanel seed="book-recap" accentIndex={2} style={styles.recapCard}>
                 <ThemedText type="headlineWrapped">{recap.title}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="meta">
                   {recap.is_published ? 'Published to your feed' : 'Draft — not published yet'}
                 </ThemedText>
               </PaperPanel>
             ) : (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 No recap written yet.
               </ThemedText>
             )}

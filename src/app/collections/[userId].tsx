@@ -122,7 +122,7 @@ export default function UserCollectionsScreen() {
           </ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

@@ -77,7 +77,7 @@ export function EmailLink({ onLinked, caption }: EmailLinkProps) {
     return (
       <View style={styles.wrap}>
         {caption && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             {caption}
           </ThemedText>
         )}
@@ -91,7 +91,7 @@ export function EmailLink({ onLinked, caption }: EmailLinkProps) {
           autoCorrect={false}
         />
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
@@ -102,12 +102,12 @@ export function EmailLink({ onLinked, caption }: EmailLinkProps) {
 
   return (
     <View style={styles.wrap}>
-      <ThemedText type="small" themeColor="textSecondary">
-        Enter the {CODE_LENGTH}-digit code sent to {email}.
+      <ThemedText type="caption">
+        Enter the {CODE_LENGTH}-digit code sent to <ThemedText type="identifier">{email}</ThemedText>.
       </ThemedText>
       <CodeInput value={code} onChangeText={setCode} length={CODE_LENGTH} autoFocus />
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -125,7 +125,7 @@ export function EmailLink({ onLinked, caption }: EmailLinkProps) {
         }}
         hitSlop={8}
       >
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="action">
           Use a different address
         </ThemedText>
       </Pressable>

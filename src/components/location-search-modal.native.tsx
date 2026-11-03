@@ -470,7 +470,7 @@ export function LocationSearchModal({
                   <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
                     <ThemedText type="small">{s.primaryText}</ThemedText>
                     {s.secondaryText && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {s.secondaryText}
                       </ThemedText>
                     )}
@@ -488,7 +488,7 @@ export function LocationSearchModal({
                     style={styles.suggestionRow}>
                     <ThemedText type="small">{place.displayName}</ThemedText>
                     {getLocalityName(place) && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {getLocalityName(place)}
                       </ThemedText>
                     )}
@@ -512,7 +512,7 @@ export function LocationSearchModal({
               !isLoadingCenterPlace &&
               hasSearchedCenter && (
                 <ThemedView type="backgroundElement" style={styles.messageBox}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="caption">
                     No named place here — try dragging a bit or search instead.
                   </ThemedText>
                 </ThemedView>
@@ -527,7 +527,7 @@ export function LocationSearchModal({
                     style={styles.suggestionRow}>
                     <ThemedText type="small">{place.displayName}</ThemedText>
                     {getLocalityName(place) && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {getLocalityName(place)}
                       </ThemedText>
                     )}

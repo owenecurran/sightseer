@@ -41,13 +41,13 @@ export function TripSuggestionPrompt({ userId, suggestion, onResolved }: TripSug
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="sectionLabel">Making a trip of it?</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="caption">
         You've posted {suggestion.visitCount} reviews around {suggestion.areaName}. Group them as a
         trip and they'll show together — and you can turn them into a travel book later.
       </ThemedText>
 
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -59,7 +59,7 @@ export function TripSuggestionPrompt({ userId, suggestion, onResolved }: TripSug
           </ThemedText>
         </Pressable>
         <Pressable onPress={() => answer(false)} disabled={isBusy} hitSlop={8}>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="action">
             Not a trip
           </ThemedText>
         </Pressable>

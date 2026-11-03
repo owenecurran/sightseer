@@ -249,7 +249,7 @@ export default function EditProfileScreen() {
               )}
               <View style={styles.sectionText}>
                 <ThemedText type="default">{PROFILE_SECTION_LABELS[item]}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                <ThemedText type="caption" numberOfLines={1}>
                   {sectionSummary(item)}
                 </ThemedText>
               </View>
@@ -300,7 +300,7 @@ export default function EditProfileScreen() {
             onChangeText={(text) => setBio(text.slice(0, BIO_MAX_LENGTH))}
             multiline
           />
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="meta">
             {bio.length}/{BIO_MAX_LENGTH}
           </ThemedText>
 
@@ -312,7 +312,7 @@ export default function EditProfileScreen() {
           />
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -320,7 +320,7 @@ export default function EditProfileScreen() {
           <Button label="Save" onPress={handleSave} loading={isSaving} />
 
           <ThemedText type="sectionLabel">Prompts</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Press and hold a prompt to drag it into a new order.
           </ThemedText>
           <DraggableFlatList
@@ -334,11 +334,11 @@ export default function EditProfileScreen() {
           {prompts.length < PROMPT_SLOT_COUNT && <PromptCard existing={undefined} onChanged={loadPrompts} />}
 
           <ThemedText type="sectionLabel">Layout</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             The order these appear on your profile. Drag a handle to move one.
           </ThemedText>
           {layoutError && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {layoutError}
             </ThemedText>
           )}

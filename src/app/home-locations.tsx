@@ -84,20 +84,20 @@ export default function HomeLocationsScreen() {
 
           <ThemedText type="displaySerif">Home locations</ThemedText>
 
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Reviews you post around these places count as everyday life. Anything further afield gets
             grouped into a trip in the feed. Add up to {MAX_HOME_LOCATIONS} — change them whenever you
             like.
           </ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
           {locations.length === 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               No home locations yet. Until you add one, none of your reviews are grouped into trips.
             </ThemedText>
           ) : (
@@ -107,13 +107,13 @@ export default function HomeLocationsScreen() {
                   <View style={styles.rowText}>
                     <ThemedText type="headlineWrapped">{location.name}</ThemedText>
                     {location.parentName && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {location.parentName}
                       </ThemedText>
                     )}
                   </View>
                   <Pressable onPress={() => handleRemove(location.id)} disabled={busyId === location.id} hitSlop={8}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       {busyId === location.id ? 'Removing…' : 'Remove'}
                     </ThemedText>
                   </Pressable>

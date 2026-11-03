@@ -96,7 +96,7 @@ export function ChoiceCard({
           {title}
         </ThemedText>
       </View>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="caption">
         {description}
       </ThemedText>
     </TicketCard>

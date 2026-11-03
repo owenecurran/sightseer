@@ -12,7 +12,7 @@ type SocialAuthButtonsProps = {
 export function SocialAuthButtons({ onError }: SocialAuthButtonsProps) {
   return (
     <View style={styles.container}>
-      <ThemedText type="small" themeColor="textSecondary" style={styles.divider}>
+      <ThemedText type="meta" style={styles.divider}>
         or
       </ThemedText>
       <AppleSignInButton onError={onError} />

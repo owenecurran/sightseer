@@ -152,7 +152,7 @@ export default function ArticleComposeScreen() {
           )}
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -164,7 +164,7 @@ export default function ArticleComposeScreen() {
             disabled={!title.trim() || !body.trim()}
           />
           {!id && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               New articles start unpublished — publish it from the edit screen once it's ready.
             </ThemedText>
           )}

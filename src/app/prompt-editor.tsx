@@ -339,7 +339,7 @@ export default function PromptEditorScreen() {
     if (options.length === 0) return null;
     return (
       <View style={styles.photoOptionRow}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="meta">
           Cover photo (optional)
         </ThemedText>
         <View style={styles.chipRow}>
@@ -382,7 +382,7 @@ export default function PromptEditorScreen() {
           )
         ) : (
           <View style={styles.photoOptionRow}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta">
               {attachment.gridPhotoIds.length}/{MAX_GRID_PHOTOS} selected
             </ThemedText>
             <View style={styles.chipRow}>
@@ -593,7 +593,7 @@ export default function PromptEditorScreen() {
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}>
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -610,12 +610,12 @@ export default function PromptEditorScreen() {
           {attachments.map((attachment, index) => (
             <View key={index} style={styles.attachmentBlock}>
               <View style={styles.row}>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="meta">
                   Attachment {index + 1}
                 </ThemedText>
                 {attachments.length > 1 && (
                   <Pressable onPress={() => handleRemoveAttachment(index)}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       Remove
                     </ThemedText>
                   </Pressable>
@@ -678,7 +678,7 @@ export default function PromptEditorScreen() {
                       than one photo to choose between. */}
                   {attachment.visitId && (visitPhotoOptions[attachment.visitId]?.length ?? 0) > 1 && (
                     <View style={styles.photoOptionRow}>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         Photo to feature
                       </ThemedText>
                       <View style={styles.chipRow}>
@@ -750,7 +750,7 @@ export default function PromptEditorScreen() {
                 <>
                   <View style={styles.chipRow}>
                     {ownBoards.length === 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="caption">
                         No boards yet.
                       </ThemedText>
                     )}
@@ -773,7 +773,7 @@ export default function PromptEditorScreen() {
                 <>
                   <View style={styles.chipRow}>
                     {ownTravelBooks.length === 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="caption">
                         No travel books yet.
                       </ThemedText>
                     )}
@@ -801,7 +801,7 @@ export default function PromptEditorScreen() {
                   )}
                   <Pressable onPress={() => setLocationPickerIndex(index)}>
                     <ThemedView type="backgroundElement" style={styles.chip}>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="action">
                         {attachment.placeId ? 'Change place' : 'Search for a place'}
                       </ThemedText>
                     </ThemedView>
@@ -815,7 +815,7 @@ export default function PromptEditorScreen() {
 
               {!attachment.formatExpanded && (
                 <View style={styles.previewSection}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="meta">
                     Preview
                   </ThemedText>
                   <AttachmentPreview
@@ -830,7 +830,7 @@ export default function PromptEditorScreen() {
           <View style={styles.row}>
             <Button label="Save" onPress={handleSave} loading={isSaving} />
             <Pressable onPress={() => goBack()}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Cancel
               </ThemedText>
             </Pressable>
@@ -838,7 +838,7 @@ export default function PromptEditorScreen() {
 
           {existingId && (
             <Pressable onPress={handleRemovePrompt}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Remove this prompt
               </ThemedText>
             </Pressable>

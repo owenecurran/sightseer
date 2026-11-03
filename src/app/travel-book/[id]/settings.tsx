@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { ThemedText } from '@/components/themed-text';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
@@ -128,13 +129,22 @@ export default function TravelBookSettingsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
+        {/* A scroll view where there was a plain View, so the collaborator
+            search can move up out from under the keyboard. The offset is
+            the field plus a few of the suggestions that appear beneath it
+            as you type -- those are what you are looking for, and the field
+            alone clearing the keyboard would leave them all hidden. */}
+        <KeyboardAwareScroll
+          style={styles.safeArea}
+          contentContainerStyle={styles.content}
+          bottomOffset={160}
+          keyboardShouldPersistTaps="handled">
           <BackLink seed="settings" />
 
           <ThemedText type="displaySerif">Travel book settings</ThemedText>
 
           {!isOwner ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Only this travel book's owner can change its settings.
             </ThemedText>
           ) : (
@@ -148,7 +158,7 @@ export default function TravelBookSettingsScreen() {
 
               <View style={styles.section}>
                 <ThemedText type="sectionLabel">Trip collaborators</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Anyone added can also add their own reviews to this trip.
                 </ThemedText>
                 {collaborators.length > 0 && (
@@ -175,11 +185,11 @@ export default function TravelBookSettingsScreen() {
           )}
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
-        </View>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );
@@ -200,6 +210,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+    paddingBottom: Spacing.six,
   },
   section: {
     gap: Spacing.two,

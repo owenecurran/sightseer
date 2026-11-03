@@ -129,7 +129,7 @@ export default function NewTravelBookScreen() {
             </ThemedView>
             {location && (
               <Pressable onPress={() => setLocation(null)} hitSlop={8}>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="action">
                   Clear
                 </ThemedText>
               </Pressable>
@@ -147,7 +147,7 @@ export default function NewTravelBookScreen() {
           <PaperPanel seed="book-collaborators" accentIndex={2}>
             <ThemedText type="sectionLabel">Collaborators</ThemedText>
           <View style={styles.section}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Optional — anyone added can also add their own reviews
             </ThemedText>
             {collaborators.length > 0 && (
@@ -173,7 +173,7 @@ export default function NewTravelBookScreen() {
           </PaperPanel>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

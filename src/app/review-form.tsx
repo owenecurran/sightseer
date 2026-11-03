@@ -761,7 +761,7 @@ export default function ReviewFormScreen() {
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
@@ -774,12 +774,12 @@ export default function ReviewFormScreen() {
               <View style={styles.placeRowText}>
                 <ThemedText type="smallBold">{selectedPlace.name}</ThemedText>
                 {regionFromBreadcrumb(breadcrumb) !== '' && (
-                  <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                  <ThemedText type="meta" numberOfLines={1}>
                     {regionFromBreadcrumb(breadcrumb)}
                   </ThemedText>
                 )}
               </View>
-              <ThemedText type="smallBold" themeColor="sage">
+              <ThemedText type="action" themeColor="sage">
                 Change
               </ThemedText>
             </Pressable>
@@ -822,7 +822,7 @@ export default function ReviewFormScreen() {
                   aside={
                     rating != null ? (
                       <Pressable onPress={() => setRating(null)} hitSlop={8}>
-                        <ThemedText type="small" themeColor="textSecondary">
+                        <ThemedText type="action">
                           Clear
                         </ThemedText>
                       </Pressable>
@@ -886,7 +886,7 @@ export default function ReviewFormScreen() {
                       />
                     )}
                     {photoSlots.length > 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="caption">
                         Tap a photo to recrop it, or use the arrows to reorder.
                       </ThemedText>
                     )}
@@ -938,7 +938,7 @@ export default function ReviewFormScreen() {
                       />
                     )}
                     {pendingPhotos.length > 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="caption">
                         Tap a photo to recrop it, or use the arrows to reorder.
                       </ThemedText>
                     )}
@@ -962,7 +962,7 @@ export default function ReviewFormScreen() {
                     title="Tags"
                     aside={`${selectedTags.length} of ${MAX_VISIT_TAGS}`}
                   />
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="caption">
                     What was it good for?
                   </ThemedText>
                   {/* The chosen ones stay on the form as the stickers they
@@ -1027,7 +1027,7 @@ export default function ReviewFormScreen() {
                       <View style={styles.peopleSuggestionInfo}>
                         <ThemedText type="small">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
                         {user.handle && (
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ThemedText type="small" themeColor="textMeta">
                             @{user.handle}
                           </ThemedText>
                         )}
@@ -1237,7 +1237,7 @@ function SectionHeader({ title, aside }: { title: string; aside?: ReactNode }) {
         {title}
       </ThemedText>
       {typeof aside === 'string' ? (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="meta">
           {aside}
         </ThemedText>
       ) : (

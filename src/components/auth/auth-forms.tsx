@@ -180,7 +180,7 @@ export function SignInForm({ onForgotPassword }: { onForgotPassword?: () => void
         textContentType="password"
       />
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -369,7 +369,7 @@ export function SignUpForm() {
       )}
       <Turnstile onToken={setCaptchaToken} action="signup" resetSignal={captchaReset} />
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -519,16 +519,16 @@ export function VerifyEmailForm({ email }: { email: string }) {
 
   return (
     <View style={styles.form}>
-      <ThemedText type="default" themeColor="textSecondary">
-        We sent a {CODE_LENGTH}-digit code to {email}. Enter it below to finish setting up your
-        account.
+      <ThemedText type="lead">
+        We sent a {CODE_LENGTH}-digit code to <ThemedText type="identifier">{email}</ThemedText>.
+        Enter it below to finish setting up your account.
       </ThemedText>
       {/* autoFocus so the keypad is already up on arrival — this screen
           exists for exactly one action and there is nothing else to do on
           it. */}
       <CodeInput value={code} onChangeText={setCode} length={CODE_LENGTH} autoFocus />
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -551,7 +551,7 @@ export function VerifyEmailForm({ email }: { email: string }) {
           appears only once a new code is actually asked for. */}
       {wantsResend && (
         <>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             One quick check, then a new code is on its way.
           </ThemedText>
           <Turnstile onToken={handleCaptchaToken} action="resend" resetSignal={captchaReset} />
@@ -608,8 +608,9 @@ export function ForgotPasswordForm() {
         {/* Deliberately generic regardless of whether the email exists —
             confirming it would tell anyone who asks which addresses have
             accounts. */}
-        <ThemedText type="default" themeColor="textSecondary">
-          If an account exists for {email}, we sent a link to reset the password.
+        <ThemedText type="lead">
+          If an account exists for <ThemedText type="identifier">{email}</ThemedText>, we sent a
+          link to reset the password.
         </ThemedText>
       </View>
     );
@@ -617,7 +618,7 @@ export function ForgotPasswordForm() {
 
   return (
     <View style={styles.form}>
-      <ThemedText type="default" themeColor="textSecondary">
+      <ThemedText type="lead">
         Enter your email and we will send a link to set a new password.
       </ThemedText>
       <TextField
@@ -628,7 +629,7 @@ export function ForgotPasswordForm() {
         textContentType="emailAddress"
       />
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}

@@ -62,13 +62,13 @@ export function HomeLocationPrompt({ suggestion, onResolved }: HomeLocationPromp
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="sectionLabel">Still in {trip.areaName}?</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="caption">
         You've been posting from {trip.areaName} for {dayCount} days. Add it as a home location and
         reviews there will stop being grouped as a trip.
       </ThemedText>
 
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -80,7 +80,7 @@ export function HomeLocationPrompt({ suggestion, onResolved }: HomeLocationPromp
           </ThemedText>
         </Pressable>
         <Pressable onPress={handleDismiss} disabled={isBusy} hitSlop={8}>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="action">
             Not home
           </ThemedText>
         </Pressable>

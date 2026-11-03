@@ -141,7 +141,7 @@ export function TripGroupCard({
             onPress={() => router.push({ pathname: '/user/[id]', params: { id: trip.userId } })}>
             {authorName}
           </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             {isOuting ? 'had a night out' : 'took a trip'}
           </ThemedText>
         </View>
@@ -167,7 +167,7 @@ export function TripGroupCard({
                 {areaName}
               </StretchText>
             </Pressable>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta">
               {formatVisitedRange(trip.startDate, trip.endDate)} · {visitCount} review
               {visitCount === 1 ? '' : 's'}
               {isOuting ? '' : ` · ${days.length} day${days.length === 1 ? '' : 's'}`}
@@ -178,7 +178,7 @@ export function TripGroupCard({
         {isPickingArea && areaOptions != null && (
           <View style={styles.areaOptions}>
             {areaOptions.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 No broader area to show this as.
               </ThemedText>
             ) : (
@@ -196,7 +196,7 @@ export function TripGroupCard({
         )}
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}

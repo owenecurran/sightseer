@@ -41,7 +41,7 @@ export function ImagesGridView({
   if (tiles.length === 0) {
     return (
       <View style={styles.empty}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="caption">
           None of these reviews have photos yet.
         </ThemedText>
       </View>

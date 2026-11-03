@@ -91,7 +91,7 @@ export default function InviteGateScreen() {
         <ThemedText type="displaySerif" style={styles.centered}>
           Invite a friend
         </ThemedText>
-        <ThemedText type="default" style={styles.centered} themeColor="textSecondary">
+        <ThemedText type="lead" style={styles.centered}>
           Sightseer grows by people bringing people. Share your link with someone before
           continuing.
         </ThemedText>
@@ -100,7 +100,7 @@ export default function InviteGateScreen() {
             for, and a share sheet that swallows it whole gives no way to
             check what actually went out. */}
         <PaperPanel seed="invite-link" accentIndex={0} style={styles.linkPanel}>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="meta">
             Your invite link
           </ThemedText>
           <ThemedText type="body" selectable>
@@ -109,7 +109,7 @@ export default function InviteGateScreen() {
         </PaperPanel>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+          <ThemedText type="small" themeColor="danger" style={styles.centered}>
             {error}
           </ThemedText>
         )}

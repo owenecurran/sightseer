@@ -1032,7 +1032,7 @@ export function VisitCard({
             {visit.placeName}
           </ThemedText>
           {region && (
-            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+            <ThemedText type="meta" numberOfLines={1}>
               {region}
             </ThemedText>
           )}
@@ -1068,7 +1068,7 @@ export function VisitCard({
           {visit.note ? (
             <ThemedText type="postcardMessage">{visit.note}</ThemedText>
           ) : (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.noMessage}>
+            <ThemedText type="caption" style={styles.noMessage}>
               No message
             </ThemedText>
           )}
@@ -1378,8 +1378,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: Spacing.two,
   },
+  // No italic: this is the serif caption now, and iOS will not fake a slant
+  // for a custom face the way Android does, so the two platforms drew it
+  // differently. The dimming alone says "nothing was written here".
   noMessage: {
-    fontStyle: "italic",
     opacity: 0.6,
   },
   backDivider: {

@@ -85,14 +85,14 @@ export default function DraftsScreen() {
           <ThemedText type="displaySerif">Drafts</ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
           {drafts.length === 0 ? (
             <View style={styles.emptyState}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 No drafts yet.
               </ThemedText>
             </View>
@@ -110,12 +110,12 @@ export default function DraftsScreen() {
                     )}
                     <View style={styles.rowLeading}>
                       <ThemedText type="headlineWrapped">{draft.placeName ?? 'Needs a location'}</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {relativeTime(draft.createdAt)}
                       </ThemedText>
                     </View>
                     <Pressable onPress={() => setPendingDeleteId(draft.id)} hitSlop={8}>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="action">
                         Discard
                       </ThemedText>
                     </Pressable>

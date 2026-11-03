@@ -210,7 +210,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
       onScroll={scrollHandler}
       scrollEventThrottle={16}>
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -223,7 +223,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
 
       {isEmpty && (
         <View style={styles.loading}>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Nothing to discover yet. As people review places, they show up here.
           </ThemedText>
         </View>
@@ -281,7 +281,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
                     <ThemedText type="smallBold" numberOfLines={2}>
                       {place.name}
                     </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                    <ThemedText type="meta" numberOfLines={1}>
                       {distanceLabel(place.distanceKm) ??
                         placeRegions.get(place.id) ??
                         `${place.reviewCount} review${place.reviewCount === 1 ? '' : 's'}`}
@@ -335,7 +335,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
                 <View style={styles.rowLeading}>
                   <ThemedText type="headlineWrapped">{article.title}</ThemedText>
                   {article.subtitle && (
-                    <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
+                    <ThemedText type="caption" numberOfLines={2}>
                       {article.subtitle}
                     </ThemedText>
                   )}

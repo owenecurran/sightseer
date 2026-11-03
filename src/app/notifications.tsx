@@ -256,14 +256,14 @@ export default function NotificationsScreen() {
               <BackLink seed="notifications" />
               <ThemedText type="displaySerif">Notifications</ThemedText>
               {error && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="small" themeColor="danger">
                   {error}
                 </ThemedText>
               )}
             </>
           }
           ListEmptyComponent={
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               No notifications yet. Likes, comments, new followers and tags will show up here.
             </ThemedText>
           }
@@ -290,7 +290,7 @@ export default function NotificationsScreen() {
 
                   <View style={styles.rowText}>
                     <ThemedText type="default">{describe(item.latest, item.actors)}</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="meta">
                       {relativeTime(item.latest.createdAt)}
                     </ThemedText>
                   </View>
@@ -311,11 +311,11 @@ export default function NotificationsScreen() {
                       accident. */}
                   {item.latest.type === 'follow' && actorId && (
                     state === 'following' ? (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         Following
                       </ThemedText>
                     ) : state === 'pending' ? (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         Requested
                       </ThemedText>
                     ) : (

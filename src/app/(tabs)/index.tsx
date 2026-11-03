@@ -443,7 +443,7 @@ export default function HomeScreen() {
         {error && (
           <ThemedText
             type="small"
-            themeColor="textSecondary"
+            themeColor="danger"
             style={styles.gutter}
           >
             {error}
@@ -458,8 +458,7 @@ export default function HomeScreen() {
           <>
             {!isLoading && items.length === 0 && (
               <ThemedText
-                type="small"
-                themeColor="textSecondary"
+                type="caption"
                 style={styles.gutter}
               >
                 {/* "From the People tab" used to close this sentence, and

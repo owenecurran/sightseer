@@ -30,7 +30,7 @@ export function SettingsRow({ label, description, onPress, tone = 'default' }: S
           {label}
         </ThemedText>
         {description && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             {description}
           </ThemedText>
         )}

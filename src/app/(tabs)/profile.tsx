@@ -257,6 +257,7 @@ ${latestCard.note ?? ''}`.trim());
       ) : null,
   };
   const sectionOrder = parseSectionOrder(profile?.profile_section_order);
+  const needsSetup = totalVisits > 0 && !profile?.avatar_r2_key && !profile?.bio;
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -277,7 +278,7 @@ ${latestCard.note ?? ''}`.trim());
 
               <View style={styles.headerInfo}>
                 <ThemedText type="displaySerif">{profile?.name ?? profile?.handle ?? 'Profile'}</ThemedText>
-                {profile?.handle && <ThemedText type="default" themeColor="textSecondary" style={styles.handleText}>@{profile.handle}</ThemedText>}
+                {profile?.handle && <ThemedText type="default" themeColor="textMeta" style={styles.handleText}>@{profile.handle}</ThemedText>}
                 <ThemedText type="roundedStat" themeColor="sage">
                   {totalVisits} sight{totalVisits === 1 ? '' : 's'} seen
                 </ThemedText>
@@ -295,11 +296,16 @@ ${latestCard.note ?? ''}`.trim());
 
             {profile?.bio && <ThemedText type="default">{profile.bio}</ThemedText>}
 
-            <Pressable onPress={() => router.push('/edit-profile')}>
-              <ThemedText type="small" themeColor="sage">
-                Edit profile
-              </ThemedText>
-            </Pressable>
+            {/* Not while the setup panel below is showing: its button goes
+                to the same screen, and two ways to do one thing, one line
+                apart, read as two different things. */}
+            {!needsSetup && (
+              <Pressable onPress={() => router.push('/edit-profile')} hitSlop={8} style={styles.editLink}>
+                <ThemedText type="action" themeColor="sage">
+                  Edit profile
+                </ThemedText>
+              </Pressable>
+            )}
 
             {/* Shown once they have posted something and not before.
 
@@ -313,16 +319,16 @@ ${latestCard.note ?? ''}`.trim());
                 this started: a prompt on the post-save panel arrives while
                 they are still finishing one job and reads as the app asking
                 for another. This one is waiting for them when they get back,
-                next to the thing it is talking about, pointing at the same
-                Edit profile link directly above it.
+                next to the thing it is talking about, and stands in for the
+                Edit profile link while it is up.
 
                 No flag and nothing to dismiss: the condition IS the
                 completion. Add an avatar or a bio and it goes, because the
                 thing it was asking for has happened. */}
-            {totalVisits > 0 && !profile?.avatar_r2_key && !profile?.bio && (
+            {needsSetup && (
               <PaperPanel seed="profile-setup" accentIndex={1} style={styles.setupPrompt}>
                 <ThemedText type="sectionLabel">Make it yours</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Add a photo and a line about yourself so people who find your reviews know
                   whose they are.
                 </ThemedText>
@@ -334,7 +340,11 @@ ${latestCard.note ?? ''}`.trim());
               </PaperPanel>
             )}
 
-            {error && <ThemedText type="small">{error}</ThemedText>}
+            {error && (
+              <ThemedText type="small" themeColor="danger">
+                {error}
+              </ThemedText>
+            )}
 
             {sectionOrder.map((key) => sectionMap[key])}
 
@@ -345,13 +355,13 @@ ${latestCard.note ?? ''}`.trim());
                   <PaperPanel key={request.follower_id} seed={`request-${request.follower_id}`} style={styles.requestRow}>
                     <ThemedText type="default">{request.users?.name ?? request.users?.handle ?? 'Someone'}</ThemedText>
                     <View style={styles.requestActions}>
-                      <Pressable onPress={() => handleAccept(request.follower_id)}>
-                        <ThemedText type="smallBold" themeColor="sage">
+                      <Pressable onPress={() => handleAccept(request.follower_id)} hitSlop={8}>
+                        <ThemedText type="action" themeColor="sage">
                           Accept
                         </ThemedText>
                       </Pressable>
-                      <Pressable onPress={() => handleReject(request.follower_id)}>
-                        <ThemedText type="small">Reject</ThemedText>
+                      <Pressable onPress={() => handleReject(request.follower_id)} hitSlop={8}>
+                        <ThemedText type="action">Reject</ThemedText>
                       </Pressable>
                     </View>
                   </PaperPanel>
@@ -417,6 +427,11 @@ const styles = StyleSheet.create({
   handleText: {
     fontSize: 16,
     lineHeight: 20,
+  },
+  // A Pressable in a column stretches to the full width, which made the
+  // whole row under the bio a tap target for a two-word link.
+  editLink: {
+    alignSelf: 'flex-start',
   },
   statsRow: {
     flexDirection: 'row',

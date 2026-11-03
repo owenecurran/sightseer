@@ -161,13 +161,13 @@ export default function EditVisitScreen() {
           <ThemedText type="displaySerif">Edit review</ThemedText>
 
           {visit === null && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               This review isn’t available to edit.
             </ThemedText>
           )}
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -208,7 +208,7 @@ export default function EditVisitScreen() {
                     onPress={handleAddPhoto}
                   />
                 )}
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Tap a photo to recrop it.
                 </ThemedText>
               </View>

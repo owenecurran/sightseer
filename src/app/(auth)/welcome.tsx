@@ -196,7 +196,7 @@ export default function WelcomeScreen() {
           <ThemedText type="displaySerif" style={styles.centred}>
             Sightseer
           </ThemedText>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.centred}>
+          <ThemedText type="lead" style={styles.centred}>
             A journal of everywhere you have been.
           </ThemedText>
 

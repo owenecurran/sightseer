@@ -69,18 +69,18 @@ export default function BlockedAccountsScreen() {
 
           <ThemedText type="displaySerif">Blocked</ThemedText>
 
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Blocked accounts cannot see your profile or reviews, and you will not see theirs.
           </ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
           {blockedUsers.length === 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               You have not blocked anyone.
             </ThemedText>
           ) : (
@@ -94,7 +94,7 @@ export default function BlockedAccountsScreen() {
                     {/* Only when it adds something — for an account with no
                         name the handle is already the line above. */}
                     {user.name && user.handle && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="small" themeColor="textMeta">
                         @{user.handle}
                       </ThemedText>
                     )}

@@ -43,13 +43,13 @@ export default function ArticleDetailScreen() {
           <BackLink seed="[id]" />
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
           {!article && !error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               This article isn't available.
             </ThemedText>
           )}
@@ -64,11 +64,11 @@ export default function ArticleDetailScreen() {
 
               <ThemedText type="displaySerif">{article.title}</ThemedText>
               {article.subtitle && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   {article.subtitle}
                 </ThemedText>
               )}
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="meta">
                 {article.authorName}
               </ThemedText>
 

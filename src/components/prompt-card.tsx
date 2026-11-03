@@ -41,11 +41,11 @@ export function PromptCard({ existing, onChanged, onDragStart }: PromptCardProps
   if (existing) {
     return (
       <ThemedView type="backgroundElement" style={styles.card}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="caption">
           {PROFILE_PROMPTS.find((p) => p.slug === existing.promptSlug)?.label ?? existing.promptSlug}
         </ThemedText>
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
@@ -54,7 +54,7 @@ export function PromptCard({ existing, onChanged, onDragStart }: PromptCardProps
             <ThemedText type="small">Edit</ThemedText>
           </Pressable>
           <Pressable onPress={handleRemovePrompt}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="action">
               Remove
             </ThemedText>
           </Pressable>
@@ -71,7 +71,7 @@ export function PromptCard({ existing, onChanged, onDragStart }: PromptCardProps
   return (
     <Pressable onPress={() => router.push('/prompt-editor')}>
       <ThemedView type="backgroundElement" style={styles.card}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="action">
           + Add a prompt
         </ThemedText>
       </ThemedView>

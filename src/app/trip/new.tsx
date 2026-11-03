@@ -75,7 +75,7 @@ export default function NewTripScreen() {
           <BackLink seed="new" />
 
           <ThemedText type="displaySerif">New trip</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Pick where you went and we'll work out the dates from your reviews there. You can drop
             any that don't belong once the trip exists.
           </ThemedText>
@@ -91,7 +91,7 @@ export default function NewTripScreen() {
               </ThemedView>
             </Pressable>
             {isResolving && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 Finding your reviews there…
               </ThemedText>
             )}
@@ -104,7 +104,7 @@ export default function NewTripScreen() {
           </PaperPanel>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

@@ -86,7 +86,7 @@ export function BoardMapView({ items }: MapViewProps) {
   if (pins.length === 0) {
     return (
       <View style={styles.empty}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="caption">
           None of these reviews have a mappable location yet.
         </ThemedText>
       </View>

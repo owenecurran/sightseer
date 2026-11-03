@@ -108,27 +108,33 @@ export function CollectionsList({
       sortValue(travelBookStats[a.id], a.updated_at, sortMode, a.rating)
   );
 
+  // Only when there is something to put in order. It used to sit over an
+  // empty list -- a "Sort by" menu with nothing under it, on the screen a new
+  // account sees first -- and over trips, which it never sorted at all.
+  const sortableCount =
+    mode === 'boards' ? boards.length : mode === 'travel_books' ? travelBooks.length : 0;
+
   return (
     <View style={styles.container}>
       <View style={styles.controlsRow}>
         <CollectionsSwitcher active={mode} onChange={onModeChange} />
-        <CollectionsSortControl active={sortMode} onChange={onSortModeChange} />
+        {sortableCount > 1 && <CollectionsSortControl active={sortMode} onChange={onSortModeChange} />}
         {headerAction}
       </View>
 
       {mode === 'boards' && !isLoading && boards.length === 0 && (
-        <ThemedText type="small" themeColor="textSecondary" style={styles.gutter}>
+        <ThemedText type="caption" style={styles.gutter}>
           {emptyBoardsMessage}
         </ThemedText>
       )}
       {mode === 'trips' && !isLoading && trips.length === 0 && (
-        <ThemedText type="small" themeColor="textSecondary" style={styles.gutter}>
+        <ThemedText type="caption" style={styles.gutter}>
           No trips yet. Post a couple of reviews away from your home locations and they'll be grouped
           into one automatically.
         </ThemedText>
       )}
       {mode === 'travel_books' && !isLoading && travelBooks.length === 0 && (
-        <ThemedText type="small" themeColor="textSecondary" style={styles.gutter}>
+        <ThemedText type="caption" style={styles.gutter}>
           {emptyTravelBooksMessage}
         </ThemedText>
       )}
@@ -180,7 +186,7 @@ export function CollectionsList({
                   <StretchText type="headline" fill>
                     {item.name}
                   </StretchText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="meta">
                     {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
                     {item.is_private ? ' · Private' : ''}
                   </ThemedText>
@@ -224,7 +230,7 @@ export function CollectionsList({
                   <StretchText type="headline" fill>
                     {item.title}
                   </StretchText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="meta">
                     {stats?.saveCount ?? 0} save{stats?.saveCount === 1 ? '' : 's'}
                     {item.locationName ? ` · ${item.locationName}` : ''}
                     {item.is_private ? ' · Private' : ''}

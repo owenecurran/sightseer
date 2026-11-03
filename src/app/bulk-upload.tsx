@@ -177,18 +177,18 @@ export default function BulkUploadScreen() {
           <BackLink seed="bulk-upload" />
 
           <ThemedText type="displaySerif">{copy.title}</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             {copy.blurb}
           </ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
           {progress && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta">
               Creating draft {Math.min(progress.done + 1, progress.total)} of {progress.total}…
             </ThemedText>
           )}

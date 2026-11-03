@@ -297,14 +297,14 @@ export default function SettingsScreen() {
               />
             )}
             {linkError && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="small" themeColor="danger">
                 {linkError}
               </ThemedText>
             )}
 
             <View style={styles.divider} />
 
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta">
               Change password
             </ThemedText>
             <TextField
@@ -322,7 +322,7 @@ export default function SettingsScreen() {
               textContentType="newPassword"
             />
             {passwordError && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="small" themeColor="danger">
                 {passwordError}
               </ThemedText>
             )}

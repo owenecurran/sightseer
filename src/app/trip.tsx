@@ -137,7 +137,7 @@ export default function TripScreen() {
           <BackLink seed="trip" />
 
           {!trip ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               {error ?? 'This trip is no longer available.'}
             </ThemedText>
           ) : (
@@ -152,7 +152,7 @@ export default function TripScreen() {
                   <StretchText type="headline" fill>
                     {trip.areaName}
                   </StretchText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="meta">
                     {allVisits.length} review{allVisits.length === 1 ? '' : 's'} · {days.length} day
                     {days.length === 1 ? '' : 's'}
                   </ThemedText>
@@ -160,7 +160,7 @@ export default function TripScreen() {
               </View>
 
               {error && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="small" themeColor="danger">
                   {error}
                 </ThemedText>
               )}

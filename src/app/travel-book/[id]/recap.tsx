@@ -147,7 +147,7 @@ export default function TravelBookRecapScreen() {
           <BackLink seed="recap" />
 
           <ThemedText type="displaySerif">Trip recap</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             A write-up about the whole trip — separate from the individual place reviews inside it. Publishing
             it puts it on your feed.
           </ThemedText>
@@ -165,7 +165,7 @@ export default function TravelBookRecapScreen() {
           <RatingSliderWithPreview value={rating} onChange={setRating} />
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

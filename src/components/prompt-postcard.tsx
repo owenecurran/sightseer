@@ -88,7 +88,7 @@ export function PromptPostcard({ visitId, disabled = false }: PromptPostcardProp
   if (failed) {
     return (
       <View style={styles.placeholder}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="caption">
           This review is no longer available.
         </ThemedText>
       </View>

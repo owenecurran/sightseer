@@ -29,7 +29,7 @@ export default function BannedScreen() {
           {isUnderage ? 'Not old enough yet' : 'Account suspended'}
         </ThemedText>
 
-        <ThemedText type="default" themeColor="textSecondary" style={styles.centered}>
+        <ThemedText type="lead" style={styles.centered}>
           {isUnderage
             ? `Sightseer is for people aged ${MIN_AGE_YEARS} and over. This account has been closed to posting.`
             : 'This account has been suspended for breaking the terms of use.'}
@@ -40,7 +40,7 @@ export default function BannedScreen() {
             Renders nothing until SUPPORT_EMAIL is real — the same treatment
             the Settings links get. */}
         {hasSupportEmail && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+          <ThemedText type="caption" style={styles.centered}>
             {isUnderage
               ? 'If you entered your date of birth incorrectly, get in touch and we can put it right.'
               : 'If you think this was a mistake, get in touch.'}

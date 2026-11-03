@@ -153,7 +153,7 @@ export function Turnstile({ onToken, action = 'signup', resetSignal = 0 }: Turns
 
   if (failed) {
     return (
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="small" themeColor="danger">
         Could not load the security check. Check your connection and try again.
       </ThemedText>
     );

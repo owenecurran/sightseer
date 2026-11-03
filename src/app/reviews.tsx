@@ -88,7 +88,7 @@ export default function AllReviewsScreen() {
           </ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

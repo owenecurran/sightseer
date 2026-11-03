@@ -115,7 +115,7 @@ export default function BoardsScreen() {
           <ThemedText type="displaySerif">Your collections</ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

@@ -163,12 +163,12 @@ export default function TaggedInScreen() {
           <BackLink seed="tagged-in" />
           <ThemedText type="displaySerif">Tagged in</ThemedText>
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
           {visits.length === 0 && !error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Not tagged in anything yet.
             </ThemedText>
           )}

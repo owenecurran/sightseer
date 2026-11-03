@@ -127,7 +127,7 @@ export function PhoneVerify({ mode, onVerified, caption, sendLabel = 'Send code'
     return (
       <View style={styles.wrap}>
         {caption && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             {caption}
           </ThemedText>
         )}
@@ -140,7 +140,7 @@ export function PhoneVerify({ mode, onVerified, caption, sendLabel = 'Send code'
           <Turnstile onToken={setCaptchaToken} action="phone-otp" resetSignal={captchaReset} />
         )}
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
@@ -156,12 +156,12 @@ export function PhoneVerify({ mode, onVerified, caption, sendLabel = 'Send code'
 
   return (
     <View style={styles.wrap}>
-      <ThemedText type="small" themeColor="textSecondary">
-        Enter the {CODE_LENGTH}-digit code sent to {phone}.
+      <ThemedText type="caption">
+        Enter the {CODE_LENGTH}-digit code sent to <ThemedText type="identifier">{phone}</ThemedText>.
       </ThemedText>
       <CodeInput value={code} onChangeText={setCode} length={CODE_LENGTH} autoFocus />
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -180,7 +180,7 @@ export function PhoneVerify({ mode, onVerified, caption, sendLabel = 'Send code'
           }}
           hitSlop={8}
         >
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="action">
             Change number
           </ThemedText>
         </Pressable>

@@ -111,7 +111,7 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
             {step === 1 ? (
               <>
                 <ThemedText type="displaySerif">Delete your account?</ThemedText>
-                <ThemedText type="body" themeColor="textSecondary">
+                <ThemedText type="caption">
                   This permanently removes your account and everything in it:
                 </ThemedText>
                 {/* Named specifically rather than as "your data", because the
@@ -123,17 +123,17 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
                     'Comments you left on other people’s reviews',
                     'Your follows, likes and tags',
                   ].map((line) => (
-                    <ThemedText key={line} type="small" themeColor="textSecondary">
+                    <ThemedText key={line} type="caption">
                       • {line}
                     </ThemedText>
                   ))}
                 </View>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   This cannot be undone, and there is no grace period to change your mind.
                 </ThemedText>
                 <Button label="Continue" onPress={() => setStep(2)} />
                 <Pressable onPress={handleCancel} hitSlop={8} style={styles.cancel}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="action">
                     Keep my account
                   </ThemedText>
                 </Pressable>
@@ -141,9 +141,9 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
             ) : (
               <>
                 <ThemedText type="displaySerif">Are you sure?</ThemedText>
-                <ThemedText type="body" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Type your handle{' '}
-                  <ThemedText type="body">{handle ?? ''}</ThemedText> below to confirm.
+                  <ThemedText type="identifier">{handle ?? ''}</ThemedText> below to confirm.
                 </ThemedText>
                 <TextField
                   placeholder="Your handle"
@@ -159,7 +159,7 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
                     only collects it. */}
                 {hasPassword === true && (
                   <>
-                    <ThemedText type="body" themeColor="textSecondary">
+                    <ThemedText type="caption">
                       Then enter your password.
                     </ThemedText>
                     <TextField
@@ -181,7 +181,7 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
                   </>
                 )}
                 {error && (
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="small" themeColor="danger">
                     {error}
                   </ThemedText>
                 )}
@@ -191,7 +191,7 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
                   disabled={!canConfirm}
                 />
                 <Pressable onPress={handleCancel} hitSlop={8} disabled={isDeleting} style={styles.cancel}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="action">
                     Keep my account
                   </ThemedText>
                 </Pressable>

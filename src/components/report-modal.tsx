@@ -92,7 +92,7 @@ export function ReportModal({
               <ThemedText type="headline" style={styles.centerText}>
                 Report submitted
               </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+              <ThemedText type="caption" style={styles.centerText}>
                 Thanks — our team will take a look.
               </ThemedText>
               <Pressable onPress={onClose} style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}>
@@ -117,7 +117,7 @@ export function ReportModal({
                   was opened from somewhere it's actually visible. */}
               {post && (
                 <ThemedView type="backgroundElement" style={styles.postPreview}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="meta">
                     Post
                   </ThemedText>
                   <ThemedText type="smallBold">{post.placeName}</ThemedText>
@@ -130,7 +130,7 @@ export function ReportModal({
               )}
 
               <View style={styles.section}>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="meta">
                   What's wrong?
                 </ThemedText>
                 <View style={styles.reasonGrid}>
@@ -152,7 +152,7 @@ export function ReportModal({
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="meta">
                   Details (optional)
                 </ThemedText>
                 <TextField
@@ -164,14 +164,14 @@ export function ReportModal({
               </View>
 
               {error && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="small" themeColor="danger">
                   {error}
                 </ThemedText>
               )}
 
               <View style={styles.actionsRow}>
                 <Pressable onPress={onClose} disabled={isSubmitting} hitSlop={8}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="action">
                     Cancel
                   </ThemedText>
                 </Pressable>

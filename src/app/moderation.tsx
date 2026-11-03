@@ -121,13 +121,13 @@ export default function ModerationScreen() {
         <ThemedText type="displaySerif">Reports</ThemedText>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
 
         {!isLoading && reports.length === 0 && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             No pending reports.
           </ThemedText>
         )}
@@ -138,7 +138,7 @@ export default function ModerationScreen() {
               <ThemedText type="smallBold">{report.placeName ?? report.authorName}</ThemedText>
               {report.placeName && (
                 <View style={styles.reportMeta}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.reportMetaText}>
+                  <ThemedText type="meta" style={styles.reportMetaText}>
                     {[report.authorName, report.visitNote].filter(Boolean).join(' · ')}
                   </ThemedText>
                   {report.visitRating != null && (
@@ -150,28 +150,28 @@ export default function ModerationScreen() {
                 Reported for {REASON_LABELS[report.reason]} by {report.reporterName}
               </ThemedText>
               {report.details && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   “{report.details}”
                 </ThemedText>
               )}
               {report.placeName && !report.visitId && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Visit already deleted by its owner.
                 </ThemedText>
               )}
               {!report.placeName && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Reported this user directly — no specific post.
                 </ThemedText>
               )}
 
               {confirmingBanId === report.id ? (
                 <View style={styles.actionsRow}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.reportMetaText}>
+                  <ThemedText type="caption" style={styles.reportMetaText}>
                     Ban {report.authorName}?
                   </ThemedText>
                   <Pressable onPress={() => setConfirmingBanId(null)}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       Cancel
                     </ThemedText>
                   </Pressable>
@@ -182,7 +182,7 @@ export default function ModerationScreen() {
               ) : (
                 <View style={styles.actionsRow}>
                   <Pressable onPress={() => handleDismiss(report.id)}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       Dismiss
                     </ThemedText>
                   </Pressable>
@@ -215,7 +215,7 @@ export default function ModerationScreen() {
               {bannedUsers.map((user) => (
                 <ThemedView key={user.id} type="backgroundElement" style={styles.card}>
                   <ThemedText type="smallBold">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="caption">
                     {user.reason === UNDERAGE_REASON
                       ? 'Under the age minimum'
                       : (user.reason ?? 'No reason recorded')}

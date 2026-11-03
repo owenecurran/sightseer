@@ -47,7 +47,7 @@ export function AttachmentTypePicker({ value, expanded, onSelect, onToggleExpand
         <ThemedText type="headline" style={styles.collapsedText}>
           {formatLabel(value)}
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="action">
           Change
         </ThemedText>
       </Pressable>

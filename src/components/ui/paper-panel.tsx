@@ -31,6 +31,47 @@ type PaperPanelProps = {
 // use, minus the ticket. The accent stripe along the top edge is the only
 // borrowed motif, and it is along the TOP rather than the side so a column of
 // these does not start looking like a column of tickets.
+// Layout that describes what is IN the panel rather than the panel itself.
+//
+// Children are drawn inside `body`, not directly in the outer view, so a
+// caller's `style` used to land on a box whose only children were the
+// decoration and that one body column. Every caller that asked for a row
+// got a column: on Search a person came out as avatar, then name, then
+// handle, then Follow, stacked into a card a third of a screen tall, and the
+// same on blocked accounts, home locations, follow requests and travel book
+// entries. Padding doubled up the same way (theirs outside, the body's 16
+// inside) and every `gap` was ignored. Splitting the style sends these to
+// the body, where they mean what the caller wrote; size, position and
+// margins stay on the panel.
+const CONTENT_KEYS = new Set([
+  'flexDirection',
+  'flexWrap',
+  'alignItems',
+  'justifyContent',
+  'alignContent',
+  'gap',
+  'rowGap',
+  'columnGap',
+  'padding',
+  'paddingVertical',
+  'paddingHorizontal',
+  'paddingTop',
+  'paddingBottom',
+  'paddingLeft',
+  'paddingRight',
+  'paddingStart',
+  'paddingEnd',
+]);
+
+function splitStyle(style: ViewStyle | undefined): { panel: ViewStyle; content: ViewStyle } {
+  const panel: Record<string, unknown> = {};
+  const content: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(StyleSheet.flatten(style) ?? {})) {
+    (CONTENT_KEYS.has(key) ? content : panel)[key] = value;
+  }
+  return { panel: panel as ViewStyle, content: content as ViewStyle };
+}
+
 export function PaperPanel({
   children,
   seed,
@@ -41,9 +82,10 @@ export function PaperPanel({
   const { specks, gloss } = useMemo(() => buildSurfaceWear(`panel:${seed}`), [seed]);
   const accent =
     accentIndex == null ? null : StickerAccents[accentIndex % StickerAccents.length];
+  const { panel, content } = splitStyle(style);
 
   return (
-    <View style={[styles.panel, allowOverflow && styles.noClip, style]}>
+    <View style={[styles.panel, allowOverflow && styles.noClip, panel]}>
       {/* Every decorative layer lives in here, and THIS is what clips to the
           rounded rect — not the panel itself. Separating them is what lets a
           card hold something that deliberately hangs past its edge without
@@ -78,7 +120,7 @@ export function PaperPanel({
       ))}
       </View>
 
-      <View style={styles.body}>{children}</View>
+      <View style={[styles.body, content]}>{children}</View>
     </View>
   );
 }

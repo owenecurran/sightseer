@@ -97,7 +97,7 @@ export default function BoardSettingsScreen() {
           <ThemedText type="displaySerif">Board settings</ThemedText>
 
           {!isOwner && !isAdmin ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Only this board's owner can change its settings.
             </ThemedText>
           ) : (
@@ -112,7 +112,7 @@ export default function BoardSettingsScreen() {
                           type={board?.list_style === style.key ? 'backgroundSelected' : 'backgroundElement'}
                           style={styles.option}>
                           <ThemedText type="headline">{style.label}</ThemedText>
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ThemedText type="caption">
                             {style.description}
                           </ThemedText>
                         </ThemedView>
@@ -141,7 +141,7 @@ export default function BoardSettingsScreen() {
           )}
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

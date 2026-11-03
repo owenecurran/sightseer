@@ -103,7 +103,7 @@ export function TaggedUsersModal({ visible, onClose, userIds }: TaggedUsersModal
           <ThemedText type="headline">Tagged</ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -116,7 +116,7 @@ export function TaggedUsersModal({ visible, onClose, userIds }: TaggedUsersModal
                 <View style={styles.info}>
                   <ThemedText type="smallBold">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
                   {user.handle && (
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="small" themeColor="textMeta">
                       @{user.handle}
                     </ThemedText>
                   )}
@@ -136,7 +136,7 @@ export function TaggedUsersModal({ visible, onClose, userIds }: TaggedUsersModal
           </ScrollView>
 
           <Pressable onPress={onClose} style={styles.closeButton}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="action">
               Close
             </ThemedText>
           </Pressable>

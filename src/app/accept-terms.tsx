@@ -67,14 +67,14 @@ export default function AcceptTermsScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
           <ThemedText type="displaySerif">Terms of use</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Please read and accept these to continue.
           </ThemedText>
 
           <TermsContent />
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

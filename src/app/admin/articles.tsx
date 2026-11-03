@@ -69,13 +69,13 @@ export default function AdminArticlesScreen() {
           <Button label="New article" onPress={() => router.push('/admin/articles/new')} />
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
           {articles.length === 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               No articles yet.
             </ThemedText>
           ) : (
@@ -92,12 +92,12 @@ export default function AdminArticlesScreen() {
                     )}
                     <View style={styles.rowLeading}>
                       <ThemedText type="headlineWrapped">{article.title}</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {article.published ? 'Published' : 'Draft'}
                       </ThemedText>
                     </View>
                     <Pressable onPress={() => setPendingDeleteId(article.id)} hitSlop={8}>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="action">
                         Delete
                       </ThemedText>
                     </Pressable>

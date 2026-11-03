@@ -20,7 +20,7 @@ const OWN_STAMP_SIZE = 26;
 export function OwnRatingLine({ rating }: { rating: number }) {
   return (
     <View style={styles.row}>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="meta">
         Your rating
       </ThemedText>
       <RatingGlassBadgeGated rating={rating} size={OWN_STAMP_SIZE} />

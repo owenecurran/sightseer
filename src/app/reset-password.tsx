@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -73,11 +74,11 @@ export default function ResetPasswordScreen() {
   if (done) {
     return (
       <ThemedView type="screen" style={styles.container}>
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={[styles.safeArea, styles.content]}>
           <ThemedText type="title" style={styles.title}>
             Password updated
           </ThemedText>
-          <ThemedText type="default" style={styles.title} themeColor="textSecondary">
+          <ThemedText type="lead" style={styles.title}>
             You&apos;re signed in with your new password.
           </ThemedText>
         </SafeAreaView>
@@ -88,12 +89,18 @@ export default function ResetPasswordScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        {/* bottomOffset keeps Update password in view, not just the field. */}
+        <KeyboardAwareScroll
+          style={styles.safeArea}
+          contentContainerStyle={styles.content}
+          bottomOffset={96}
+          keyboardShouldPersistTaps="handled">
         <ThemedText type="title" style={styles.title}>
           Set a new password
         </ThemedText>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
@@ -115,6 +122,7 @@ export default function ResetPasswordScreen() {
             />
           </ThemedView>
         )}
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );
@@ -126,11 +134,20 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+  },
+  // Centred while it fits, scrollable when the keyboard leaves it too little
+  // room. This was a plain centred column with no scroll view at all, so on
+  // a short phone the keyboard came up over the button and nothing could
+  // move it. flexGrow, not flex: with flex the container is pinned to the
+  // viewport and there is never anything to scroll.
+  content: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.four,
     gap: Spacing.five,
   },
   title: {

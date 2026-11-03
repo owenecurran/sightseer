@@ -157,7 +157,7 @@ export function SaveToBoard({
             </View>
 
             {error && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="small" themeColor="danger">
                 {error}
               </ThemedText>
             )}
@@ -194,7 +194,7 @@ export function SaveToBoard({
                 <View style={styles.section}>
                   <ThemedText type="sectionLabel">Travel books</ThemedText>
                   {travelBooks.length === 0 && (
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="caption">
                       You don't have any travel books yet.
                     </ThemedText>
                   )}

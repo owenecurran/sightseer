@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { keyboardAwareScrollRenderer } from '@/components/keyboard-aware-scroll';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -29,6 +30,12 @@ type FullReviewsViewProps = {
   onSelectVisit?: (visitId: string) => void;
   selectedVisitId?: string | null;
 };
+
+// The cards on this list carry a comment box on their back, and a FlatList
+// builds its own scroll view, so wrapping it in KeyboardAwareScroll the way
+// the ScrollView screens do was not an option -- the box stayed under the
+// keyboard here after it was fixed everywhere else.
+const renderScroll = keyboardAwareScrollRenderer();
 
 // One full review per row, as the same postcard the feed draws.
 //
@@ -122,6 +129,7 @@ export function FullReviewsView({
 
   return (
     <Animated.FlatList
+      renderScrollComponent={renderScroll}
       data={visible}
       keyExtractor={(item: BoardVisitItem) => item.id}
       style={styles.flex}

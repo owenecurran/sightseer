@@ -46,7 +46,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <ThemedView type="screen" style={styles.container}>
           <SafeAreaView style={styles.safeArea}>
             <ThemedText type="displaySerif">Something went wrong</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               This screen ran into a problem loading. Try again, or come back later.
             </ThemedText>
             <Button label="Try again" onPress={() => this.setState({ error: null })} />

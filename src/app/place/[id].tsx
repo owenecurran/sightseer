@@ -5,6 +5,7 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
+import { keyboardAwareScrollRenderer } from '@/components/keyboard-aware-scroll';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,12 @@ function byRating(a: PlaceVisit, b: PlaceVisit, direction: 1 | -1): number {
   if (b.rating == null) return -1;
   return (b.rating - a.rating) * direction;
 }
+
+// The cards on this list carry a comment box on their back, and a FlatList
+// builds its own scroll view, so wrapping it in KeyboardAwareScroll the way
+// the ScrollView screens do was not an option -- the box stayed under the
+// keyboard here after it was fixed everywhere else.
+const renderScroll = keyboardAwareScrollRenderer();
 
 export default function PlaceDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -243,6 +250,7 @@ export default function PlaceDetailScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <Animated.FlatList
+          renderScrollComponent={renderScroll}
           data={visibleVisits}
           keyExtractor={(item: PlaceVisit) => item.id}
           contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
@@ -295,7 +303,7 @@ export default function PlaceDetailScreen() {
                   {ancestors.map((ancestor, index) => (
                     <View key={ancestor.id} style={styles.scopeItem}>
                       {index > 0 && (
-                        <ThemedText type="small" themeColor="textSecondary">
+                        <ThemedText type="meta">
                           ›
                         </ThemedText>
                       )}
@@ -335,7 +343,7 @@ export default function PlaceDetailScreen() {
               />
 
               {error && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="small" themeColor="danger">
                   {error}
                 </ThemedText>
               )}
@@ -419,7 +427,7 @@ export default function PlaceDetailScreen() {
                   />
 
                   {visibleVisits.length !== visits.length && (
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="meta">
                       Showing {visibleVisits.length} of {visits.length}
                     </ThemedText>
                   )}
@@ -429,7 +437,7 @@ export default function PlaceDetailScreen() {
           }
           ListEmptyComponent={
             <View style={styles.contentWrap}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 {visits.length === 0 ? 'No reviews yet.' : 'No reviews match these filters.'}
               </ThemedText>
             </View>

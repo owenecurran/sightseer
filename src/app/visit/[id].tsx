@@ -108,13 +108,13 @@ export default function VisitDetailScreen() {
         <BackLink seed="[id]" />
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
 
         {visit === null && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             This review isn’t available.
           </ThemedText>
         )}

@@ -42,7 +42,7 @@ export function PhotoSourceModal({ visible, onCancel, onPickCamera, onPickLibrar
           </Pressable>
           <View style={styles.divider} />
           <Pressable onPress={onCancel} style={styles.option}>
-            <ThemedText type="smallBold" themeColor="textSecondary">
+            <ThemedText type="action">
               Cancel
             </ThemedText>
           </Pressable>

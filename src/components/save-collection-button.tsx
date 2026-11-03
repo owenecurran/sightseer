@@ -40,7 +40,7 @@ export function SaveCollectionButton({
             <InkBlot size={11} seed="notify-new-items" color={StickerAccents[0]} />
           )}
         </View>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small">
           Notify me of new items
         </ThemedText>
       </Pressable>

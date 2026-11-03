@@ -122,11 +122,11 @@ export function ListView({
             <View style={styles.info}>
               <StretchText type="headline" fill>{item.placeName}</StretchText>
               {isVisit ? (
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                <ThemedText type="caption" numberOfLines={1}>
                   {[item.stateCountry, item.rating == null ? 'Visited' : null, item.note].filter(Boolean).join(' · ')}
                 </ThemedText>
               ) : (
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                <ThemedText type="meta" numberOfLines={1}>
                   {item.stateCountry ?? 'No review yet'}
                 </ThemedText>
               )}

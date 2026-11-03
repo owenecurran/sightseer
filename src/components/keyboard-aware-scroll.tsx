@@ -1,5 +1,5 @@
 import Animated from 'react-native-reanimated';
-import type { Ref } from 'react';
+import type { ReactElement, Ref } from 'react';
 import type { ScrollView, ScrollViewProps } from 'react-native';
 
 // Web has no react-native-keyboard-controller build — plain Animated.ScrollView
@@ -15,4 +15,12 @@ export type KeyboardAwareScrollProps = ScrollViewProps & {
 // how you get a React warning about it.
 export function KeyboardAwareScroll({ bottomOffset: _bottomOffset, ref, ...props }: KeyboardAwareScrollProps) {
   return <Animated.ScrollView ref={ref as never} {...props} />;
+}
+
+// No keyboard to clear, so no custom scroll view: undefined leaves a
+// FlatList on its own default.
+export function keyboardAwareScrollRenderer(
+  _bottomOffset?: number,
+): ((props: ScrollViewProps) => ReactElement<ScrollViewProps>) | undefined {
+  return undefined;
 }

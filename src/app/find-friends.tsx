@@ -101,7 +101,7 @@ export default function FindFriendsScreen() {
           disabled={isFinishing}
           style={styles.skip}
         >
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="action">
             {step === 'phone' ? 'Skip for now' : 'Done'}
           </ThemedText>
         </Pressable>

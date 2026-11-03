@@ -93,14 +93,14 @@ export default function FollowListScreen() {
               <BackLink seed="follow-list" />
               <ThemedText type="displaySerif">{title}</ThemedText>
               {error && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="small" themeColor="danger">
                   {error}
                 </ThemedText>
               )}
             </>
           }
           ListEmptyComponent={
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
             </ThemedText>
           }
@@ -113,7 +113,7 @@ export default function FollowListScreen() {
               trailing={
                 isOwnFollowersList ? (
                   <Pressable onPress={() => handleRemove(item.id)} disabled={removingId === item.id} hitSlop={8}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       Remove
                     </ThemedText>
                   </Pressable>

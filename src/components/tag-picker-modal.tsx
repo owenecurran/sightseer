@@ -65,7 +65,7 @@ export function TagPickerModal({
             <View style={styles.header}>
               <View style={styles.headerText}>
                 <ThemedText type="sectionLabel">Add tags</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="meta">
                   Optional · {selectedSlugs.length} of {max} chosen
                 </ThemedText>
               </View>
@@ -87,7 +87,7 @@ export function TagPickerModal({
               showsVerticalScrollIndicator={false}>
               {sections.map((section) => (
                 <View key={section.category} style={styles.section}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.sectionHeading}>
+                  <ThemedText type="meta" style={styles.sectionHeading}>
                     {section.category}
                   </ThemedText>
                   {/* A GRID of equal tiles, two across. It was one sticker

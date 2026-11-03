@@ -94,7 +94,7 @@ export function UserMenu({
             </Pressable>
           </View>
           <Pressable onPress={() => setIsOpen(false)}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="action">
               Close
             </ThemedText>
           </Pressable>

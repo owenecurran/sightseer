@@ -20,8 +20,29 @@ export type ThemedTextProps = TextProps & {
     | 'statLine'
     | 'roundedStat'
     | 'sectionLabel'
-    | 'body';
+    | 'body'
+    | 'caption'
+    | 'lead'
+    | 'meta'
+    | 'action'
+    | 'identifier';
   themeColor?: ThemeColor;
+};
+
+// The platform's own UI face, named outright. Leaving fontFamily unset is how
+// every other type gets it, but a nested Text inherits its parent's family,
+// so inside a serif caption "unset" means serif.
+const SYSTEM_SANS = Platform.select({ ios: 'System', android: 'sans-serif', default: 'system-ui, sans-serif' });
+
+// The colour a type is drawn in when the caller does not pick one. Most are
+// cream; the reading voices each carry their own, so a call site says WHAT
+// the text is and the colour follows, instead of every caption in the app
+// separately remembering to pass the same themeColor.
+const DEFAULT_COLOR: Partial<Record<NonNullable<ThemedTextProps['type']>, ThemeColor>> = {
+  linkPrimary: 'link',
+  caption: 'textCaption',
+  lead: 'textCaption',
+  meta: 'textMeta',
 };
 
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
@@ -33,7 +54,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         // Resolved from the theme rather than baked into the type's style,
         // so an explicit themeColor still wins — a style further down the
         // array would override it and there would be no way to opt out.
-        { color: theme[themeColor ?? (type === 'linkPrimary' ? 'link' : 'text')] },
+        { color: theme[themeColor ?? DEFAULT_COLOR[type] ?? 'text'] },
         type === 'default' && styles.default,
         type === 'title' && styles.title,
         type === 'small' && styles.small,
@@ -50,6 +71,11 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'roundedStat' && styles.roundedStat,
         type === 'sectionLabel' && styles.sectionLabel,
         type === 'body' && styles.body,
+        type === 'caption' && styles.caption,
+        type === 'lead' && styles.lead,
+        type === 'meta' && styles.meta,
+        type === 'action' && styles.action,
+        type === 'identifier' && styles.identifier,
         style,
       ]}
       {...rest}
@@ -178,6 +204,73 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 26,
     fontWeight: 400,
+  },
+  // ---- The secondary voices.
+  //
+  // Everything below used to be one thing: `small` in textSecondary, the
+  // system face at 14 in a see-through cream. Three hundred lines of the app
+  // were set that way -- descriptions, empty states, timestamps, error
+  // messages, Cancel buttons -- so a caption, a fact, a warning and a button
+  // all looked identical, and none of them looked designed. These split it
+  // by what the words are for.
+  //
+  // A sentence that explains or reassures: the line under a settings row,
+  // an empty state, a hint. Set in the serif the postcard message uses, so
+  // the app's quieter voice is a voice, not the UI face turned down.
+  //
+  // The same 14 as `small`, not larger: this face's x-height is TALLER than
+  // the system sans' (570 to Roboto's 528 per 1000), so at 15 a caption
+  // came out bigger than the label above it -- "Choose what reaches your
+  // phone" outweighing "Notifications" on the settings screen. The line
+  // height is over what the face needs (ascent + descent is 1.14em, so 16pt
+  // here), so iOS has nothing to clip -- see displaySerif above.
+  //
+  // NOT FOR IDENTIFIERS. This face draws a 1 like a lowercase l, so an
+  // email, a phone number, a handle or a code dropped into a caption has to
+  // be wrapped in type="identifier", or "temp1@" reads as "templ@".
+  caption: {
+    fontFamily: BrandFonts.serifDisplay,
+    fontSize: 14,
+    lineHeight: 20,
+    letterSpacing: 0.2,
+  },
+  // The same voice for the paragraph that opens a screen -- "Pick a username
+  // and display name", "A journal of everywhere you have been".
+  lead: {
+    fontFamily: BrandFonts.serifDisplay,
+    fontSize: 18,
+    lineHeight: 25,
+    letterSpacing: 0.1,
+  },
+  // Facts: when, how many, where. Small tracked capitals in the wide face
+  // the section labels already use, which is how a postmark or the back of
+  // a ticket prints this kind of thing.
+  //
+  // No lineHeight, like sectionLabel: this face's line box is 1.59em, and a
+  // tighter explicit one is what iOS clips to.
+  //
+  // Not for handles either, for a different reason: in capitals the 1 and
+  // the I are the same bare stroke, so "@temp1" would come out "@TEMPI".
+  meta: {
+    fontFamily: BrandFonts.wideMedium,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  // A text button -- Cancel, Remove, Not now, Skip. The same face as meta, a
+  // size up and in full cream, so it reads as something to press rather than
+  // as another line of small print.
+  action: {
+    fontFamily: BrandFonts.wideMedium,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  // The plain system face, for an identifier nested inside one of the
+  // display voices above. Sets nothing but the family, so it inherits the
+  // size and line of whatever it sits in.
+  identifier: {
+    fontFamily: SYSTEM_SANS,
   },
 });
 

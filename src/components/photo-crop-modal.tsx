@@ -276,7 +276,7 @@ export function PhotoCropModal({ visible, uri, onCancel, onConfirm, allowRatioSe
           <ThemedText type="smallBold">Adjust photo</ThemedText>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -293,7 +293,7 @@ export function PhotoCropModal({ visible, uri, onCancel, onConfirm, allowRatioSe
             </Animated.View>
           </View>
 
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             {Platform.OS === 'web'
               ? 'Drag to reposition, scroll to zoom.'
               : 'Drag to reposition, pinch to zoom.'}
@@ -319,13 +319,13 @@ export function PhotoCropModal({ visible, uri, onCancel, onConfirm, allowRatioSe
                 <Pressable
                   onPress={() => setRatio(tFromRatio(clamp(imageSize.width / imageSize.height, MIN_RATIO, MAX_RATIO)))}
                   hitSlop={6}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="action">
                     Original
                   </ThemedText>
                 </Pressable>
                 {RATIO_PRESETS.map((preset) => (
                   <Pressable key={preset.label} onPress={() => setRatio(tFromRatio(preset.ratio))} hitSlop={6}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       {preset.label}
                     </ThemedText>
                   </Pressable>
@@ -336,7 +336,7 @@ export function PhotoCropModal({ visible, uri, onCancel, onConfirm, allowRatioSe
 
           <View style={styles.actionsRow}>
             <Pressable onPress={onCancel} disabled={isProcessing}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Cancel
               </ThemedText>
             </Pressable>

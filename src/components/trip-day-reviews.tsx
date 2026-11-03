@@ -291,7 +291,7 @@ export function TripDayReviews({
               onPress={() => onRemoveFromTrip(activeVisit.id)}
               hitSlop={8}
               style={styles.removeButton}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Not part of this trip
               </ThemedText>
             </Pressable>

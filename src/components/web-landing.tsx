@@ -145,8 +145,7 @@ export function WebLanding({ inviter = null }: WebLandingProps) {
               Keep the places you have been.
             </ThemedText>
             <ThemedText
-              type="body"
-              themeColor="textSecondary"
+              type="lead"
               style={[styles.heroSub, !isWide && styles.centered]}>
               Sightseer is a place to record where you have been, rate it, and share that with
               people you choose. Your reviews, photos, boards and travel books stay yours.
@@ -178,7 +177,7 @@ export function WebLanding({ inviter = null }: WebLandingProps) {
                 a link deserves to know that rather than wonder where the
                 download button is. */}
             {isPhone && !storeUrl && (
-              <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+              <ThemedText type="caption" style={styles.centered}>
                 The mobile apps are on their way — everything works in your browser meanwhile.
               </ThemedText>
             )}
@@ -223,20 +222,20 @@ export function WebLanding({ inviter = null }: WebLandingProps) {
         {/* ---------------- footer ---------------- */}
         <View style={styles.footer}>
           <Pressable onPress={() => router.push('/terms')} hitSlop={8}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="action">
               Terms of use
             </ThemedText>
           </Pressable>
           {hasPrivacyPolicy && (
             <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={8}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Privacy
               </ThemedText>
             </Pressable>
           )}
           {hasSupportEmail && (
             <Pressable onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)} hitSlop={8}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="small" themeColor="textMeta">
                 {SUPPORT_EMAIL}
               </ThemedText>
             </Pressable>
@@ -252,7 +251,7 @@ function Feature({ heading, body }: { heading: string; body: string }) {
   return (
     <View style={styles.feature}>
       <ThemedText type="sectionLabel">{heading}</ThemedText>
-      <ThemedText type="body" themeColor="textSecondary">
+      <ThemedText type="caption">
         {body}
       </ThemedText>
     </View>

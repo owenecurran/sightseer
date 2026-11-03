@@ -45,3 +45,19 @@ export function KeyboardAwareScroll({ bottomOffset = 24, ref, ...props }: Keyboa
   // reach through ScrollView is genuinely there.
   return <KeyboardAwareScrollView ref={ref as never} bottomOffset={bottomOffset} {...props} />;
 }
+
+// The same thing for a FlatList, which builds its scroll view itself: pass
+// the result as `renderScrollComponent`. Made once at module scope by the
+// caller, not per render.
+//
+// VirtualizedList clones whatever this returns with a ref of its own, and
+// KeyboardAwareScrollView hands that ref the real ScrollView (it is what its
+// useImperativeHandle returns), so the list's scrollToOffset and the like
+// keep working, as does a Reanimated onScroll on the list -- Reanimated
+// attaches that through the list's getScrollableNode(), which goes through
+// the same ref.
+export function keyboardAwareScrollRenderer(bottomOffset = 24) {
+  return function renderScroll(props: ScrollViewProps) {
+    return <KeyboardAwareScrollView bottomOffset={bottomOffset} {...props} />;
+  };
+}

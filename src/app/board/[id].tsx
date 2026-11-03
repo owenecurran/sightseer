@@ -289,7 +289,7 @@ export default function BoardDetailScreen() {
 
           <StretchText type="headline">{board?.name ?? 'Board'}</StretchText>
           {board?.description && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               {board.description}
             </ThemedText>
           )}
@@ -322,7 +322,7 @@ export default function BoardDetailScreen() {
           )}
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -342,7 +342,7 @@ export default function BoardDetailScreen() {
 
         {items.length === 0 ? (
           <View style={styles.emptyState}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               No reviews saved to this board yet.
             </ThemedText>
           </View>

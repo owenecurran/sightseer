@@ -47,7 +47,7 @@ export function HarmonyMeter({ harmony, userName, otherId }: HarmonyMeterProps) 
           why" screen, where each shared place can be named and shown rather
           than summarised into a sentence nobody can act on. */}
       <ThemedText type="smallBold">{harmonyLabel(score)}</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="caption">
         {isThin
           ? `Not much to go on yet — you and ${userName} need more overlap before this means much.`
           : `How alike you and ${userName} travel.`}
