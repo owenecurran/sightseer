@@ -11,7 +11,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 
-import { PLACE_TAG_STRING, PlaceTag } from '@/components/place-tag';
+import { PLACE_TAG_EDGE, PLACE_TAG_GAP, PLACE_TAG_HEADROOM, PlaceTag, PlaceTagRail } from '@/components/place-tag';
 import { DealIn } from '@/components/ui/deal-in';
 import { ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
 import { JourneyLine } from '@/components/ui/journey-line';
@@ -35,6 +35,7 @@ import {
   type DiscoverPlace,
 } from '@/lib/discover';
 import { likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
+import { funDistanceLabel } from '@/lib/fun-distance';
 import { stopOf } from '@/lib/journey';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { resolveStateCountries } from '@/lib/places-cache';
@@ -69,29 +70,14 @@ const PLACE_COUNT = 10;
 const REVIEW_COUNT = 5;
 const SHELF_COUNT = 5;
 
-
-// Below this a place is near enough to describe in whole kilometres; above it
-// the precision is a lie and the number just gets long.
-const NEAR_KM = 10;
-
-function distanceLabel(km: number | null): string | null {
-  if (km == null) return null;
-  if (km < 1) return 'Right here';
-  if (km < NEAR_KM) return `${km.toFixed(1)} km away`;
-  return `${Math.round(km)} km away`;
-}
-
-// What the Home tab can ask of Discover when it is tapped while already
-// showing it: go back to the top and fetch the shelves again.
-// Where the rail the place tags hang from runs, down from the strip's top.
-const RAIL_TOP = 6;
-
 // A movement reading that lapses to nothing shortly after it is taken.
 function momentary(value: number) {
   'worklet';
   return withSequence(withTiming(value, { duration: 0 }), withDelay(90, withTiming(0, { duration: 0 })));
 }
 
+// What the Home tab can ask of Discover when it is tapped while already
+// showing it: go back to the top and fetch the shelves again.
 export type DiscoverViewHandle = { refresh: () => void };
 
 export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
@@ -293,8 +279,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
             contentContainerStyle={styles.strip}
             onScroll={stripScrollHandler}
             scrollEventThrottle={16}>
-            {/* The rail the tags hang from. */}
-            <View style={styles.rail} pointerEvents="none" />
+            <PlaceTagRail count={places.length} motion={tagMotion} />
             {places.map((place, index) => (
               <PlaceTag
                 key={place.id}
@@ -303,7 +288,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
                 motion={tagMotion}
                 name={place.name}
                 subtitle={
-                  distanceLabel(place.distanceKm) ??
+                  funDistanceLabel(place.distanceKm, place.id) ??
                   placeRegions.get(place.id) ??
                   `${place.reviewCount} review${place.reviewCount === 1 ? '' : 's'}`
                 }
@@ -432,20 +417,12 @@ const styles = StyleSheet.create({
     // at the strip's edge. (Android's horizontal scroll view honours this.)
     overflow: 'visible',
   },
-  rail: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: RAIL_TOP,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: 'rgba(234, 231, 207, 0.22)',
-  },
+
   strip: {
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    // Room above the tags for their strings, up to the rail.
-    paddingTop: RAIL_TOP + 1 + PLACE_TAG_STRING,
+    gap: PLACE_TAG_GAP,
+    paddingHorizontal: PLACE_TAG_EDGE,
+    // Room above the tags for the rail and their strings.
+    paddingTop: PLACE_TAG_HEADROOM,
     // And below, for the slight swing of the last row of a tag.
     paddingBottom: Spacing.two,
     alignItems: 'flex-start',

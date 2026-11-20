@@ -12,6 +12,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { FeedDivider } from '@/components/ui/feed-divider';
 import { JourneyLabel } from '@/components/ui/journey-label';
+import { Spacing } from '@/constants/theme';
 import { useStagedFrame } from '@/components/ui/scroll-stage';
 import { hapticTick } from '@/lib/haptics';
 import { legBetween, type JourneyLeg, type JourneyStop } from '@/lib/journey';
@@ -20,8 +21,14 @@ import { journeyRoute, pointAlong } from '@/lib/journey-route';
 // Declared above the worklets that read them: a worklet takes its closure
 // where it is defined (see unfold.tsx for what happens otherwise).
 export const ROUTE_HEIGHT = 140;
-// Room at each end for the ring it sets out from and the pen it arrives as.
+// Room at the top for the ring it sets out from.
 export const ROUTE_INSET = 6;
+// How far the road runs on below its own frame: past the next post's byline
+// (its avatar and two lines, about 40 points, and the 8 under them) and on
+// under the top edge of that post's card, which is drawn after the route
+// and so covers its end. The road goes in under the card rather than
+// stopping short of it in mid-air.
+const ROUTE_REACH = 64;
 // The route draws itself while its top travels from here (a share of the
 // screen's height down from the top, at the tab bar)...
 const DRAW_FROM = 0.95;
@@ -88,7 +95,7 @@ function Route({ leg, width, seed }: { leg: JourneyLeg; width: number; seed: str
   const [isNear, setIsNear] = useState(!stage);
 
   const route = useMemo(() => {
-    const drawn = journeyRoute(seed, width, ROUTE_HEIGHT - ROUTE_INSET * 2);
+    const drawn = journeyRoute(seed, width, ROUTE_HEIGHT + ROUTE_REACH - ROUTE_INSET);
     const points = drawn.points.map((point) => ({ x: point.x, y: point.y + ROUTE_INSET }));
     const path = Skia.Path.Make();
     path.moveTo(points[0].x, points[0].y);
@@ -112,7 +119,7 @@ function Route({ leg, width, seed }: { leg: JourneyLeg; width: number; seed: str
   });
 
   useAnimatedReaction(
-    () => top.value != null && top.value < screenHeight * (1 + NEAR) && top.value + ROUTE_HEIGHT > -screenHeight * NEAR,
+    () => top.value != null && top.value < screenHeight * (1 + NEAR) && top.value + ROUTE_HEIGHT + ROUTE_REACH > -screenHeight * NEAR,
     (near, wasNear) => {
       if (near !== wasNear) scheduleOnRN(setIsNear, near);
     },
@@ -152,7 +159,7 @@ function Route({ leg, width, seed }: { leg: JourneyLeg; width: number; seed: str
   return (
     <View ref={ref} collapsable={false} style={StyleSheet.absoluteFill} pointerEvents="none" onLayout={onLayout}>
       {isNear && (
-        <Canvas style={{ width, height: ROUTE_HEIGHT }}>
+        <Canvas style={{ width, height: ROUTE_HEIGHT + ROUTE_REACH }}>
           <Path
             path={route.path}
             style="stroke"
@@ -180,8 +187,10 @@ const styles = StyleSheet.create({
   frame: {
     height: ROUTE_HEIGHT,
   },
+  // Near the top of the route's own frame, so all its lines (places,
+  // distance, days apart) clear the next post's byline below.
   label: {
     position: 'absolute',
-    top: ROUTE_HEIGHT / 2 - 38,
+    top: Spacing.one,
   },
 });

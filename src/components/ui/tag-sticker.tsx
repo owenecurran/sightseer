@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -5,6 +6,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { BrandColors, Spacing, StickerAccents } from '@/constants/theme';
 import { randomFor } from '@/lib/seeded-random';
+import { tagIcon } from '@/lib/tag-icons';
 
 
 // Hand-applied stickers are never quite square to what they're stuck on.
@@ -235,12 +237,16 @@ export function TagSticker({ slug, label, placementSeed, onPress, size = 'small'
       </View>
 
       {/* Dark ink on a mid-tone accent, the same contrast pairing the arrow
-          stickers use for their glyph. */}
-      <ThemedText
-        type="sectionLabel"
-        style={[styles.label, size === 'large' && styles.labelLarge, block && styles.labelBlock]}>
-        {label}
-      </ThemedText>
+          stickers use for their glyph. The picture first, printed in the
+          same ink, so a tag is known by its mark before its word is read. */}
+      <View style={[styles.face, size === 'large' && styles.faceLarge]}>
+        <Ionicons name={tagIcon(slug)} size={size === 'large' ? 15 : 10} color={BrandColors.background} />
+        <ThemedText
+          type="sectionLabel"
+          style={[styles.label, size === 'large' && styles.labelLarge, block && styles.labelBlock]}>
+          {label}
+        </ThemedText>
+      </View>
     </View>
   );
 
@@ -305,7 +311,19 @@ const styles = StyleSheet.create({
   labelBlock: {
     textAlign: 'center',
   },
+  face: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  faceLarge: {
+    gap: Spacing.one + 1,
+  },
   label: {
+    // Shrinks beside the icon, so a long word wraps rather than pushing the
+    // sticker past its cell.
+    flexShrink: 1,
     color: BrandColors.background,
     textTransform: 'uppercase',
     // Down from sectionLabel's own 12, which is a heading size and was

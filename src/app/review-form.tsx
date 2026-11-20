@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,11 +16,13 @@ import { SaveToBoard } from '@/components/save-to-board';
 import { TripSuggestionPrompt } from '@/components/trip-suggestion-prompt';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { getTripSuggestion, type TripSuggestion } from '@/lib/trips';
+import { createManualTrip, getTripSuggestion, type TripSuggestion } from '@/lib/trips';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
-import { PaperPanel } from '@/components/ui/paper-panel';
+import { Chapter, JournalPage, JournalTrail } from '@/components/ui/journal';
+import { Postmark } from '@/components/ui/postmark';
+import { formatVisitedPostmark } from '@/lib/visited-date';
 import { pickStampDesign } from '@/lib/stamp-matching';
 import { BLANK_COUNT, GRAIN_COUNT } from '@/lib/postcard-stock';
 
@@ -39,10 +41,10 @@ function drawCard() {
 }
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TextField } from '@/components/ui/text-field';
-import { TagSticker } from '@/components/ui/tag-sticker';
+import { TagStickerGraphic } from '@/components/ui/tag-sticker-graphic';
 import { VisitCard, type VisitCardVisit } from '@/components/visit-card';
 import { TagPickerModal } from '@/components/tag-picker-modal';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BrandFonts, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTheme } from '@/hooks/use-theme';
@@ -105,7 +107,16 @@ function todayIsoDate(): string {
 export default function ReviewFormScreen() {
   const { session, profile } = useAuth();
   const theme = useTheme();
-  const { placeId, draftId } = useLocalSearchParams<{ placeId?: string; draftId?: string }>();
+  // startTrip: arriving from New trip with nowhere reviewed there yet. The
+  // trip is started from this review once it is saved (see handleSaveVisit),
+  // its destination the place given.
+  const { placeId, draftId, startTrip } = useLocalSearchParams<{
+    placeId?: string;
+    draftId?: string;
+    startTrip?: string;
+  }>();
+  // The trip this review started, once it has: its first day, to open it by.
+  const [startedTripOn, setStartedTripOn] = useState<string | null>(null);
   const bottomInset = useBottomTabInset();
   const [error, setError] = useState<string | null>(null);
   // Arriving fresh (no placeId already picked, e.g. place/[id].tsx's "Add
@@ -624,10 +635,22 @@ export default function ReviewFormScreen() {
         })
         .eq('id', visitId);
 
+      // Arrived from New trip: this review is the trip's first, so the trip
+      // starts on its day. Best-effort, like the suggestion below: if it
+      // fails, the review is still saved and New trip will find it now.
+      if (session && startTrip) {
+        try {
+          await createManualTrip(session.user.id, visitedOn, visitedOn, startTrip);
+          setStartedTripOn(visitedOn);
+        } catch {
+          // Left to New trip, which will find this review there.
+        }
+      }
+
       // Does this review complete a day that reads like a trip? Best-effort
       // and deliberately after the visit itself is safely saved — a failure
       // here must never make a successful publish look like it failed.
-      if (session) {
+      if (session && !startTrip) {
         getTripSuggestion(session.user.id, visitedOn)
           .then(setTripSuggestion)
           .catch(() => setTripSuggestion(null));
@@ -767,13 +790,19 @@ export default function ReviewFormScreen() {
           </ThemedText>
         )}
 
-        <PaperPanel seed="form-0" accentIndex={0}>
-          <SectionHeader title="Place" />
+        <JournalPage seed="form-0" accentIndex={0}>
+          <Chapter number={1} title="Where did you go?" seed="form-0" />
 
           {selectedPlace ? (
             <Pressable onPress={() => setIsPickerOpen(true)} style={styles.placeRow}>
+              {/* Printed the way the luggage tags print a destination. */}
               <View style={styles.placeRowText}>
-                <ThemedText type="smallBold">{selectedPlace.name}</ThemedText>
+                <ThemedText type="meta" style={styles.destinationKicker}>
+                  Destination
+                </ThemedText>
+                <ThemedText type="headline" style={styles.destination} numberOfLines={2}>
+                  {selectedPlace.name}
+                </ThemedText>
                 {regionFromBreadcrumb(breadcrumb) !== '' && (
                   <ThemedText type="meta" numberOfLines={1}>
                     {regionFromBreadcrumb(breadcrumb)}
@@ -805,7 +834,7 @@ export default function ReviewFormScreen() {
               <Button label="Search for a spot" variant="secondary" onPress={() => setIsTagPickerOpen(true)} />
             </View>
           )}
-        </PaperPanel>
+        </JournalPage>
 
         {selectedPlace &&
           (!savedVisitId ? (
@@ -816,7 +845,9 @@ export default function ReviewFormScreen() {
                 printed all read as one undifferentiated list. Grouped by
                 what each part IS: what you thought, when and with whom, and
                 what it will look like. */}
-            <PaperPanel seed="form-1" accentIndex={1}>
+            <JournalTrail seed="form-1" />
+            <JournalPage seed="form-1" accentIndex={1}>
+              <Chapter number={2} title="What did you make of it?" seed="form-1" />
               <View style={styles.section}>
                 <SectionHeader
                   title="Rating"
@@ -949,11 +980,13 @@ export default function ReviewFormScreen() {
 
               <View style={styles.section}>
                 <SectionHeader title="Review" aside="Optional" />
+                {/* Written in the hand the back of the card prints it in. */}
                 <TextField
                   placeholder="What was it like?"
                   value={note}
                   onChangeText={setNote}
                   multiline
+                  style={styles.messageInput}
                 />
               </View>
 
@@ -976,7 +1009,7 @@ export default function ReviewFormScreen() {
                           key={tag.slug}
                           onPress={() => handleToggleTag(tag.slug)}
                           accessibilityLabel={`Remove ${tag.label}`}>
-                          <TagSticker slug={tag.slug} label={tag.label} size="large" />
+                          <TagStickerGraphic slug={tag.slug} label={tag.label} interactive={false} showLabel />
                         </Pressable>
                       ))}
                     </View>
@@ -993,9 +1026,18 @@ export default function ReviewFormScreen() {
                 </View>
               )}
 
-            </PaperPanel>
+            </JournalPage>
 
-            <PaperPanel seed="form-details" accentIndex={2}>
+            <JournalTrail seed="form-details" />
+            <JournalPage seed="form-details" accentIndex={2}>
+              <Chapter
+                number={3}
+                title="When, and who with?"
+                seed="form-details"
+                // The date as the card will be postmarked, stamped as it is
+                // picked.
+                aside={<Postmark {...formatVisitedPostmark(visitedOn)} seed="form-details" size={48} />}
+              />
               <View style={styles.section}>
                 <SectionHeader title="Date visited" />
                 <DateCarousel value={visitedOn} onChange={setVisitedOn} />
@@ -1044,9 +1086,11 @@ export default function ReviewFormScreen() {
                   chips under one heading that described both of them at
                   once, several sections away from the only thing on the form
                   that shows what they do. */}
-            </PaperPanel>
+            </JournalPage>
 
-            <PaperPanel seed="form-card" accentIndex={3}>
+            <JournalTrail seed="form-card" />
+            <JournalPage seed="form-card" accentIndex={3}>
+              <Chapter number={4} title="Print your postcard" seed="form-card" />
               <View style={styles.section}>
                 <SectionHeader title="Postcard" />
 
@@ -1132,11 +1176,11 @@ export default function ReviewFormScreen() {
                 onPress={handleSaveVisit}
                 loading={isSavingVisit}
               />
-            </PaperPanel>
+            </JournalPage>
             </>
           ) : (
-            <PaperPanel seed="form-2" accentIndex={2}>
-              <ThemedText type="small">Visit saved.</ThemedText>
+            <JournalPage seed="form-2" accentIndex={2}>
+              <Chapter number={5} title="Posted." seed="form-2" />
 
               {uploadedPhotoUris.length > 0 && (
                 <View style={styles.photoRow}>
@@ -1165,6 +1209,20 @@ export default function ReviewFormScreen() {
 
               <SaveToBoard visitId={savedVisitId} isOwnerOrTagged />
 
+              {startedTripOn && session && (
+                <>
+                  <ThemedText type="small" themeColor="sage">
+                    Your trip has started. Reviews you post there from here on join it.
+                  </ThemedText>
+                  <Button
+                    label="Open your trip"
+                    onPress={() =>
+                      router.replace({ pathname: '/trip', params: { user: session.user.id, start: startedTripOn } })
+                    }
+                  />
+                </>
+              )}
+
               {/* goBack() (not a fixed destination) is what makes "back
                   to your remaining drafts after a bulk upload" fall out for
                   free: a draft was reached by pushing this screen ON TOP of
@@ -1175,7 +1233,7 @@ export default function ReviewFormScreen() {
                   started from instead, same as this screen's own header
                   back button already does. */}
               <Button label="Done" onPress={() => goBack()} />
-            </PaperPanel>
+            </JournalPage>
           ))}
 
         </KeyboardAwareScroll>
@@ -1328,6 +1386,19 @@ const styles = StyleSheet.create({
   placeRowText: {
     flex: 1,
     gap: Spacing.half,
+  },
+  destinationKicker: {
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  destination: {
+    fontSize: 26,
+    lineHeight: 28,
+  },
+  messageInput: {
+    fontFamily: BrandFonts.serifDisplay,
+    fontSize: 18,
+    lineHeight: 25,
   },
   section: {
     gap: Spacing.two,

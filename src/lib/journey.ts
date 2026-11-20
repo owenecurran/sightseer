@@ -3,6 +3,10 @@ import type { FeedItem } from '@/lib/feed';
 // One end of a leg between two posts: where it was, at each level the post
 // knows, and when.
 export type JourneyStop = {
+  // Whose post it is: the days between two posts are only shown when one
+  // person posted both, where they are the gap in one traveller's story.
+  // Between two people's posts they said nothing.
+  userId: string | null;
   lat: number | null;
   lng: number | null;
   date: string | null;
@@ -23,7 +27,9 @@ export type JourneyLeg = {
   // when they share every level known. A bare distance said nothing about
   // what it was the distance between.
   places: string | null;
-  distance: string | null;
+  // As the crow flies, in kilometres; shown in the reader's own unit (see
+  // distance-units). Null when either place has no coordinates.
+  km: number | null;
   gap: string | null;
 };
 
@@ -60,6 +66,7 @@ export function journeyItemId(item: FeedItem | undefined): string {
 }
 
 export function stopOf(visit: {
+  user_id: string;
   placeLat: number | null;
   placeLng: number | null;
   visited_on: string;
@@ -80,7 +87,7 @@ export function stopOf(visit: {
   if (visit.placeLevel === 'locality') city = visit.placeName;
   if (visit.placeLevel === 'admin_area_1') state = visit.placeName;
   if (visit.placeLevel === 'country') country = visit.placeName;
-  return { lat: visit.placeLat, lng: visit.placeLng, date: visit.visited_on, city, state, country };
+  return { userId: visit.user_id, lat: visit.placeLat, lng: visit.placeLng, date: visit.visited_on, city, state, country };
 }
 
 function placesBetween(from: JourneyStop, to: JourneyStop): string | null {
@@ -103,12 +110,12 @@ function placesBetween(from: JourneyStop, to: JourneyStop): string | null {
 export function legBetween(from: JourneyStop | null, to: JourneyStop | null): JourneyLeg | null {
   if (!from || !to) return null;
   const km = distanceKm(from, to);
-  const days = daysBetween(from.date, to.date);
+  const days = from.userId != null && from.userId === to.userId ? daysBetween(from.date, to.date) : null;
   if (km == null && days == null) return null;
   return {
     mode: km == null ? 'unknown' : km < SAME_PLACE_KM ? 'same-place' : km < WALK_KM ? 'walk' : km < DRIVE_KM ? 'drive' : 'fly',
     places: placesBetween(from, to),
-    distance: km == null ? null : km < SAME_PLACE_KM ? 'Same place' : formatDistance(km),
+    km,
     gap: days == null ? null : formatGap(days),
   };
 }
@@ -123,13 +130,6 @@ function distanceKm(a: JourneyStop, b: JourneyStop): number | null {
   const h =
     Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(a.lat)) * Math.cos(toRadians(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-// Kilometres, as the rest of the app gives distances ("8970 km away").
-function formatDistance(km: number): string {
-  if (km < 1) return `${Math.max(10, Math.round(km * 100) * 10)} m`;
-  if (km < 10) return `${km.toFixed(1)} km`;
-  return `${Math.round(km).toLocaleString('en-US')} km`;
 }
 
 // Whole days between two visited_on dates (YYYY-MM-DD), either way round:

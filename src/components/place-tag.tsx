@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, {
@@ -18,12 +19,21 @@ import { SurfaceWearLayer } from '@/components/ui/surface-wear-layer';
 import { BrandColors, Spacing, StickerAccents } from '@/constants/theme';
 import { randomFor } from '@/lib/seeded-random';
 import { buildSurfaceWear } from '@/lib/surface-wear';
+import { KNOT_WIDTH, TWINE_WIDTH, knotUri, railUri, twineFor, twineUri } from '@/lib/twine';
 
 // Declared above the worklets that read them: a worklet takes its closure
 // where it is defined (see unfold.tsx for what happens otherwise).
 const TAG_WIDTH = 176;
-// How far the string runs up out of the tag's hole, to its pin on the rail.
+// How far the string runs up out of the tag's hole to the rail.
 export const PLACE_TAG_STRING = 18;
+// Where the rail runs, down from the top of the strip.
+const RAIL_Y = 8;
+// The room a strip of tags needs above them for the rail and their strings.
+export const PLACE_TAG_HEADROOM = RAIL_Y + PLACE_TAG_STRING;
+// How the strip spaces the tags, which the rail has to match to put a knot
+// over each one. DiscoverView lays the strip out with these.
+export const PLACE_TAG_GAP = Spacing.three;
+export const PLACE_TAG_EDGE = Spacing.four;
 const HOLE_TOP = 10;
 const HOLE = 12;
 const PRINT_RATIO = 1.2;
@@ -32,8 +42,14 @@ const INK = '#1c2218';
 const INK_SOFT = 'rgba(28, 34, 24, 0.55)';
 // A hung tag is never quite straight, and each hangs its own way.
 const MAX_TILT = 2.5;
-// The string, from its pin to the middle of the hole.
-const STRING_LENGTH = PLACE_TAG_STRING + HOLE_TOP + HOLE / 2;
+// How much longer than the shortest a tag's string may be, so the tags hang
+// at uneven heights rather than in a ruled line.
+const MAX_SLACK = 24;
+// How far the twine runs on under the tag's top edge, where the knot drawn
+// over the tag takes it on into the hole.
+const TUCK = 6;
+// The knot's image starts this far above the tag's top edge.
+const KNOT_RISE = 6;
 
 // The drop: each tag starts this far above where it hangs (enough to begin
 // out of sight above the strip), and falls a beat after the one before.
@@ -42,8 +58,9 @@ const DROP_STAGGER_MS = 110;
 // Falling and catching on its string: a bouncy spring, overshooting into a
 // stretch of the string and back.
 const DROP_SPRING = { damping: 11, stiffness: 150, mass: 1 };
-// Swinging about the pin. Lightly damped, so a swing dies away over three or
-// four passes the way a hung tag's does, at about a second a swing.
+// Swinging about where the string is hung. Lightly damped, so a swing dies
+// away over three or four passes the way a hung tag's does, at about a
+// second a swing.
 const SWING_SPRING = { damping: 2.4, stiffness: 30, mass: 1 };
 // The string stretching and springing back.
 const BOB_SPRING = { damping: 6, stiffness: 120, mass: 1 };
@@ -54,6 +71,15 @@ const SWING_PER_STRIP = 1.1;
 const SWING_PER_PAGE = 0.25;
 const STRETCH_PER_PAGE = 0.7;
 const MAX_SWING = 26;
+// The rail's dips between tags, and how much they deepen as the page and
+// strip move: the twine bouncing with everything hung on it.
+const RAIL_SAG_MIN = 5;
+const RAIL_SAG_MAX = 11;
+const RAIL_GIVE = 0.035;
+const RAIL_MAX_GIVE = 0.9;
+const RAIL_SPRING = { damping: 5, stiffness: 90, mass: 1 };
+// Tall enough for the deepest dip and the knots.
+const RAIL_HEIGHT = RAIL_Y + RAIL_SAG_MAX + 8;
 
 // How the strip and the page are moving, in points per frame, for the tags
 // to swing and bob with. See DiscoverView.
@@ -107,9 +133,24 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
       throwAngle: (random() < 0.5 ? -1 : 1) * (12 + random() * 12),
       shimmy: random() < 0.5 ? -1 : 1,
       wear: buildSurfaceWear(`place-tag-${seed}`, { count: 7, maxOpacity: 0.12 }),
+      // Drawn after everything above, so each tag keeps the colour, lean and
+      // wear it already had.
+      twine: twineFor(random),
+      slack: Math.round(random() * MAX_SLACK),
     };
   }, [seed]);
-  const { tilt, throwAngle, shimmy } = look;
+  const { tilt, throwAngle, shimmy, slack } = look;
+  // From its knot on the rail to just under the tag's top edge. The slack
+  // lowers the tag rather than the knot.
+  const reach = PLACE_TAG_STRING + slack;
+  const stringLength = reach + TUCK;
+  const twine = useMemo(
+    () => ({
+      length: twineUri(look.twine, stringLength),
+      knot: knotUri(look.twine, KNOT_RISE, KNOT_RISE + HOLE_TOP + 1),
+    }),
+    [look.twine, stringLength],
+  );
 
   // Above where it hangs (negative), or past it on the bounce (positive,
   // which is the string stretching).
@@ -160,13 +201,20 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
     transform: [{ translateY: Math.max(drop.value, 0) + bob.value }],
   }));
   const stringStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleY: (STRING_LENGTH + Math.max(drop.value, 0) + bob.value) / STRING_LENGTH }],
+    transform: [{ scaleY: (stringLength + Math.max(drop.value, 0) + bob.value) / stringLength }],
   }));
 
   return (
-    <Animated.View style={[styles.hang, hangStyle]}>
-      <Animated.View style={[styles.string, stringStyle]} />
-      <View style={styles.pin} />
+    <Animated.View
+      style={[
+        styles.hang,
+        // Lower by its slack, and turned about its knot on the rail.
+        { marginTop: slack, transformOrigin: [TAG_WIDTH / 2, -reach, 0] },
+        hangStyle,
+      ]}>
+      <Animated.View style={[styles.string, { top: -reach, height: stringLength }, stringStyle]}>
+        <Image source={{ uri: twine.length }} style={{ width: TWINE_WIDTH, height: stringLength }} />
+      </Animated.View>
       <Animated.View style={stretch}>
         <Pressable
           onPress={onPress}
@@ -203,11 +251,14 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
           </View>
 
           <View style={[styles.band, { backgroundColor: look.accent }]}>
-            <ThemedText type="meta" style={styles.bandText} numberOfLines={1}>
+            <ThemedText type="meta" style={styles.bandText} numberOfLines={2}>
               {subtitle}
             </ThemedText>
           </View>
         </Pressable>
+
+        {/* The twine over the tag's top edge, knotted, and into the hole. */}
+        <Image source={{ uri: twine.knot }} style={styles.knot} pointerEvents="none" />
 
         {/* Stuck over the print's corner, past the tag's edge, so it sits
             outside the tag's clip. */}
@@ -221,37 +272,71 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
   );
 }
 
+// The rail along the top of a strip of tags: a length of twine strung across,
+// dipping between each pair of tags, with each tag's string knotted to it.
+// It was a straight rule, which under tags that swung read as static and
+// drawn; this one sags, and gives when things move, its dips deepening as
+// the page or the strip moves and springing back as they settle.
+export function PlaceTagRail({ count, motion }: { count: number; motion: PlaceTagMotion }) {
+  const reduceMotion = useReducedMotion();
+  const width = PLACE_TAG_EDGE * 2 + count * TAG_WIDTH + Math.max(0, count - 1) * PLACE_TAG_GAP;
+  const drawing = useMemo(() => {
+    const random = randomFor(`place-tag-rail-${count}`);
+    const anchors = Array.from({ length: count }, (_, index) => PLACE_TAG_EDGE + index * (TAG_WIDTH + PLACE_TAG_GAP) + TAG_WIDTH / 2);
+    const sags = Array.from({ length: count + 1 }, () => RAIL_SAG_MIN + random() * (RAIL_SAG_MAX - RAIL_SAG_MIN));
+    return railUri(twineFor(random), width, RAIL_HEIGHT, RAIL_Y, anchors, sags);
+  }, [count, width]);
+
+  const give = useSharedValue(0);
+  useAnimatedReaction(
+    () => Math.abs(motion.strip.value) + Math.abs(motion.page.value),
+    (moving) => {
+      if (reduceMotion) return;
+      give.set(withSpring(Math.min(RAIL_MAX_GIVE, moving * RAIL_GIVE), RAIL_SPRING));
+    },
+  );
+  // Deepened from the knots' line down, so the knots, and the strings tied
+  // to them, stay where they are.
+  const railStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: 1 + give.value }] }));
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.rail, { width }, railStyle]}>
+      <Image source={{ uri: drawing }} style={{ width, height: RAIL_HEIGHT }} />
+    </Animated.View>
+  );
+}
+
 const PRINT_TOP = HOLE_TOP + HOLE + Spacing.two;
 const PRINT_HEIGHT = (TAG_WIDTH - Spacing.two * 2 - 8) / PRINT_RATIO + 8;
 
 const styles = StyleSheet.create({
   hang: {
     width: TAG_WIDTH,
-    // Turned about the pin its string hangs from.
-    transformOrigin: [TAG_WIDTH / 2, -PLACE_TAG_STRING, 0],
   },
   pressed: {
     opacity: 0.85,
   },
+  rail: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    height: RAIL_HEIGHT,
+    transformOrigin: [0, RAIL_Y, 0],
+  },
   string: {
     position: 'absolute',
-    top: -PLACE_TAG_STRING,
-    left: TAG_WIDTH / 2 - 1,
-    width: 2,
-    height: STRING_LENGTH,
-    borderRadius: 1,
-    backgroundColor: 'rgba(234, 231, 207, 0.55)',
+    left: TAG_WIDTH / 2 - TWINE_WIDTH / 2,
+    width: TWINE_WIDTH,
     // Stretches downward from the pin.
     transformOrigin: 'top',
   },
-  pin: {
+
+  knot: {
     position: 'absolute',
-    top: -PLACE_TAG_STRING - 3,
-    left: TAG_WIDTH / 2 - 3,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(234, 231, 207, 0.8)',
+    top: -KNOT_RISE,
+    left: TAG_WIDTH / 2 - KNOT_WIDTH / 2,
+    width: KNOT_WIDTH,
+    height: KNOT_RISE + HOLE_TOP + 1 + 3,
   },
   tag: {
     backgroundColor: BrandColors.cream,

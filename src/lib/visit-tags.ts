@@ -1,3 +1,4 @@
+import { getVisitsByIds, type FeedVisit } from '@/lib/feed';
 import { supabase } from '@/lib/supabase';
 
 // Keep in sync with the enforce_visit_tag_limit trigger, which is the real
@@ -81,4 +82,24 @@ export function countTagsForVisits(
     }
   }
   return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+// How many reviews of a tag to show on its page.
+const TAG_PAGE_LIMIT = 30;
+
+// The reviews carrying one tag, newest first, of those the viewer is allowed
+// to see (visit_tags is read through the same visibility rule as visits),
+// with the tag's own label for the page's title.
+export async function getVisitsWithTag(
+  slug: string,
+  viewerId: string,
+): Promise<{ label: string | null; visits: FeedVisit[] }> {
+  const [tagRows, tag] = await Promise.all([
+    supabase.from('visit_tags').select('visit_id').eq('tag_slug', slug).limit(200),
+    supabase.from('tags').select('label').eq('slug', slug).maybeSingle(),
+  ]);
+  if (tagRows.error) throw tagRows.error;
+  const ids = [...new Set((tagRows.data ?? []).map((row) => row.visit_id))];
+  const visits = await getVisitsByIds(ids, viewerId);
+  return { label: tag.data?.label ?? null, visits: visits.slice(0, TAG_PAGE_LIMIT) };
 }

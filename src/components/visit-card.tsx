@@ -41,6 +41,7 @@ import { PostcardPhotos } from "@/components/ui/postcard-photos";
 import { Postmark } from "@/components/ui/postmark";
 import { StretchText } from "@/components/ui/stretch-text";
 import { TagSticker } from "@/components/ui/tag-sticker";
+import { TagStickerGraphic } from "@/components/ui/tag-sticker-graphic";
 import { VisitActionsRow } from "@/components/visit-actions-row";
 import { VisitMenu } from "@/components/visit-menu";
 import { BrandColors, MaxContentWidth, Spacing } from "@/constants/theme";
@@ -1130,7 +1131,7 @@ export function VisitCard({
           {visit.tags.length > 0 && (
             <View style={styles.backStickers}>
               {visit.tags.map((tag) => (
-                <TagSticker
+                <TagStickerGraphic
                   key={tag.slug}
                   slug={tag.slug}
                   label={tag.label}
@@ -1417,8 +1418,12 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.one,
     gap: Spacing.three,
   },
+  // The stickers in a row under the message, each a picture rather than a
+  // word now (see TagStickerGraphic), so three fit across with room.
   backStickers: {
-    alignItems: "flex-start",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
     gap: Spacing.two,
   },
   // No italic: this is the serif caption now, and iOS will not fake a slant

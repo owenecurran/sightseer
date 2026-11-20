@@ -30,6 +30,9 @@ export default function NewTripScreen() {
   // Derived from the chosen destination, never entered by hand — the dates
   // are a fact about the reviews already posted there.
   const [range, setRange] = useState<{ startDate: string; endDate: string; visitCount: number } | null>(null);
+  // Picked somewhere with no reviews of yours yet: the trip has nothing to
+  // be made of, so the screen offers to start it with a first review instead.
+  const [isEmpty, setIsEmpty] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,12 +43,13 @@ export default function NewTripScreen() {
     setIsPickerOpen(false);
     setError(null);
     setRange(null);
+    setIsEmpty(false);
     if (!session) return;
     setIsResolving(true);
     try {
       const found = await getVisitRangeForPlace(session.user.id, selected.id);
       setRange(found);
-      if (!found) setError(`No reviews in ${selected.name} yet. Post one there first.`);
+      setIsEmpty(!found);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not work out those dates.');
     } finally {
@@ -103,18 +107,39 @@ export default function NewTripScreen() {
             )}
           </PaperPanel>
 
+          {/* A trip is made of the reviews you posted there, so with none
+              there was only an error. This starts one instead: write the
+              first review, and the trip begins with it. */}
+          {isEmpty && place && (
+            <PaperPanel seed="trip-first-review" accentIndex={4}>
+              <ThemedText type="sectionLabel">Start it with a review</ThemedText>
+              <ThemedText type="caption">
+                You haven&apos;t reviewed anywhere in {place.name} yet. Write your first review there and
+                your trip starts with it.
+              </ThemedText>
+              <Button
+                label={`Review somewhere in ${place.name}`}
+                onPress={() =>
+                  router.push({ pathname: '/review-form', params: { placeId: place.id, startTrip: place.id } })
+                }
+              />
+            </PaperPanel>
+          )}
+
           {error && (
             <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
-          <Button
-            label="Create trip"
-            onPress={handleCreate}
-            loading={isCreating}
-            disabled={!range}
-          />
+          {!isEmpty && (
+            <Button
+              label="Create trip"
+              onPress={handleCreate}
+              loading={isCreating}
+              disabled={!range}
+            />
+          )}
         </KeyboardAwareScroll>
 
         <LocationSearchModal

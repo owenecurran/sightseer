@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { Fold, Unfold } from '@/components/ui/unfold';
-import { TagSticker } from '@/components/ui/tag-sticker';
+import { TagStickerGraphic } from '@/components/ui/tag-sticker-graphic';
 import { BrandColors, Spacing } from '@/constants/theme';
 import { groupTags, type Tag } from '@/lib/visit-tags';
 
@@ -117,7 +117,16 @@ export function TagPickerModal({
                               isSelected && styles.tileSelected,
                               isDisabled && styles.tileDisabled,
                             ]}>
-                            <TagSticker slug={tag.slug} label={tag.label} size="large" block />
+                            {/* The sticker it will be on the back of the
+                                card, with its name under it, since on the
+                                card it is a picture alone. */}
+                            <TagStickerGraphic
+                              slug={tag.slug}
+                              label={tag.label}
+                              size={50}
+                              interactive={false}
+                              showLabel
+                            />
                             {isSelected && (
                               <View style={styles.check}>
                                 <Ionicons name="checkmark" size={13} color={BrandColors.background} />
@@ -202,10 +211,13 @@ const styles = StyleSheet.create({
     // Fills the fold, which the row stretches to the line's tallest tile, so
     // a tag whose label wraps still sits level with its neighbour.
     flexGrow: 1,
-    // The sticker IS the tile -- it fills it (see TagSticker's `block`).
-    // This padding is only the gap the selection ring draws in, so choosing
-    // a tag rings it without moving or shrinking it.
-    padding: 4,
+    // The sticker and its name, centred in the tile. The padding is the gap
+    // the selection ring draws in, so choosing a tag rings it without moving
+    // or shrinking it.
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: 4,
     minHeight: 60,
     borderRadius: Spacing.three,
     borderWidth: 2,

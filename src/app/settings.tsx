@@ -21,6 +21,7 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { listBlockedUsers } from '@/lib/blocks';
 import { setDiscoverableByContacts } from '@/lib/contacts';
+import { setDistanceUnit, useDistanceUnit } from '@/lib/distance-units';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
 import { supabase } from '@/lib/supabase';
 import { unregisterPush } from '@/lib/push';
@@ -28,6 +29,7 @@ import { hasPrivacyPolicy, hasSupportEmail, PRIVACY_POLICY_URL, SUPPORT_EMAIL } 
 
 export default function SettingsScreen() {
   const { session, profile, refreshProfile } = useAuth();
+  const distanceUnit = useDistanceUnit();
   const scrollHandler = useHideOnScrollHandler();
   const bottomInset = useBottomTabInset();
 
@@ -180,6 +182,25 @@ export default function SettingsScreen() {
               description="Match your contacts against people already here"
               onPress={() => router.push('/contacts-sync')}
             />
+          </PaperPanel>
+
+          {/* How distances read everywhere: the routes between postcards,
+              the places to go. Starts from where you live until you pick. */}
+          <PaperPanel seed="settings-distances" accentIndex={2}>
+            <ThemedText type="sectionLabel">Distances</ThemedText>
+            <CheckboxRow
+              label="Kilometres"
+              checked={distanceUnit === 'km'}
+              onPress={() => setDistanceUnit('km')}
+            />
+            <CheckboxRow
+              label="Miles"
+              checked={distanceUnit === 'mi'}
+              onPress={() => setDistanceUnit('mi')}
+            />
+            <ThemedText type="caption">
+              Until you choose, this follows your first home location.
+            </ThemedText>
           </PaperPanel>
 
           {/* Who can see you, and who cannot. Blocking lives here rather
