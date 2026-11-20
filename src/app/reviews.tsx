@@ -8,7 +8,7 @@ import { ReviewBrowser } from '@/components/review-browser';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useAuth } from '@/lib/auth-context';
 import { getMyVisitItems, type BoardVisitItem } from '@/lib/boards';
@@ -79,7 +79,7 @@ export default function AllReviewsScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <View style={styles.header}>
           <BackLink seed="reviews" />
 

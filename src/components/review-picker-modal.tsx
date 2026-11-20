@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ReviewBrowser } from '@/components/review-browser';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { BoardVisitItem } from '@/lib/boards';
@@ -43,22 +43,27 @@ export function ReviewPickerModal({
   const theme = useTheme();
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       {/* The scrim closes it. A sheet you can only leave by finding the right
           button is a sheet people get stuck in. */}
       <Pressable style={styles.scrim} onPress={onClose} />
 
-      <ThemedView
-        type="screen"
+      <Unfold
+        paper="screen"
+        from="bottom"
         style={[styles.sheet, { paddingBottom: insets.bottom + Spacing.three }]}>
-        <View style={styles.grabber} />
+        {/* One panel: on its own the grabber would be a crease four
+            points tall. The reviews below fold one by one (ReviewBrowser). */}
+        <Fold style={styles.head}>
+          <View style={styles.grabber} />
 
-        <View style={styles.titleRow}>
-          <ThemedText type="displaySerif">Choose a review</ThemedText>
-          <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Close">
-            <Ionicons name="close" size={22} color={theme.textSecondary} />
-          </Pressable>
-        </View>
+          <View style={styles.titleRow}>
+            <ThemedText type="displaySerif">Choose a review</ThemedText>
+            <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Close">
+              <Ionicons name="close" size={22} color={theme.textSecondary} />
+            </Pressable>
+          </View>
+        </Fold>
 
         <View style={styles.body}>
           <ReviewBrowser
@@ -76,7 +81,7 @@ export function ReviewPickerModal({
             }}
           />
         </View>
-      </ThemedView>
+      </Unfold>
     </Modal>
   );
 }
@@ -94,10 +99,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: '88%',
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.two,
+    gap: Spacing.two,
+  },
+  head: {
     gap: Spacing.two,
   },
   grabber: {

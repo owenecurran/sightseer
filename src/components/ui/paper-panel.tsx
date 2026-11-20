@@ -1,8 +1,8 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 
-import { BrandColors, Colors, Spacing, StickerAccents } from '@/constants/theme';
+import { SurfaceWearLayer } from '@/components/ui/surface-wear-layer';
+import { Colors, Spacing, StickerAccents } from '@/constants/theme';
 import { buildSurfaceWear } from '@/lib/surface-wear';
 
 type PaperPanelProps = {
@@ -79,7 +79,7 @@ export function PaperPanel({
   style,
   allowOverflow = false,
 }: PaperPanelProps) {
-  const { specks, gloss } = useMemo(() => buildSurfaceWear(`panel:${seed}`), [seed]);
+  const wear = useMemo(() => buildSurfaceWear(`panel:${seed}`), [seed]);
   const accent =
     accentIndex == null ? null : StickerAccents[accentIndex % StickerAccents.length];
   const { panel, content } = splitStyle(style);
@@ -92,32 +92,7 @@ export function PaperPanel({
           the gloss spilling square corners over the rounding. */}
       <View style={styles.decoration} pointerEvents="none">
       {accent && <View style={[styles.stripe, { backgroundColor: accent }]} />}
-
-      <LinearGradient
-        colors={[`rgba(234,231,207,${gloss.peak})`, 'rgba(234,231,207,0)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: gloss.falloff, y: 1 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
-
-      {specks.map((speck, index) => (
-        <View
-          key={index}
-          pointerEvents="none"
-          style={[
-            styles.speck,
-            {
-              left: speck.left as `${number}%`,
-              top: speck.top as `${number}%`,
-              width: speck.size,
-              height: speck.size,
-              borderRadius: speck.size / 2,
-              opacity: speck.opacity,
-            },
-          ]}
-        />
-      ))}
+      <SurfaceWearLayer wear={wear} />
       </View>
 
       <View style={[styles.body, content]}>{children}</View>
@@ -151,10 +126,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     height: 4,
-  },
-  speck: {
-    position: 'absolute',
-    backgroundColor: BrandColors.cream,
   },
   body: {
     padding: Spacing.three,

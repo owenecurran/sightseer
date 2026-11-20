@@ -19,6 +19,9 @@ export type FeedVisit = {
   created_at: string;
   user_id: string;
   authorName: string;
+  // The author's @handle, shown under their name. Null only when the row
+  // came back without its user.
+  authorHandle: string | null;
   placeId: string;
   placeName: string;
   // Where the place actually is — carried on the visit itself so anything
@@ -134,6 +137,7 @@ export function mapRawFeedVisit(
       side: visit.card_side === 'message' || visit.card_side === 'picture' ? visit.card_side : null,
     },
     authorName: visit.users?.name ?? visit.users?.handle ?? 'Someone',
+    authorHandle: visit.users?.handle ?? null,
     placeId: visit.place_id,
     placeName: visit.places?.name ?? 'Unknown place',
     placeLat: visit.places?.lat ?? null,

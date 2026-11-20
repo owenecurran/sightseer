@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TeaserCard } from '@/components/ui/teaser-card';
 import { UserMenu } from '@/components/user-menu';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getHarmony, type Harmony } from '@/lib/harmony';
@@ -203,7 +203,7 @@ export default function UserProfileScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <Animated.ScrollView
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}

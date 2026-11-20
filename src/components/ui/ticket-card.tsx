@@ -1,7 +1,7 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { SurfaceWearLayer } from '@/components/ui/surface-wear-layer';
 import { BrandColors, Colors, Spacing, StickerAccents } from '@/constants/theme';
 import { hashSeed } from '@/lib/seeded-random';
 import { buildSurfaceWear } from '@/lib/surface-wear';
@@ -72,16 +72,14 @@ export function TicketCard({
 }: TicketCardProps) {
   const stubWidth = stub == null ? 0 : compact ? TICKET_STUB_WIDTH_COMPACT : TICKET_STUB_WIDTH;
 
-  const { accent, rotate, specks, gloss } = useMemo(() => {
+  const { accent, rotate, wear } = useMemo(() => {
     const tiltHash = hashSeed(`${seed}:tilt`);
-    // Shared with the review form's panels — see surface-wear.ts.
-    const { specks, gloss } = buildSurfaceWear(seed, { maxSize: 5 });
 
     return {
       accent: StickerAccents[accentIndex % StickerAccents.length],
       rotate: ((tiltHash % 1000) / 500 - 1) * JITTER_DEGREES,
-      specks,
-      gloss,
+      // Shared with the review form's panels — see surface-wear.ts.
+      wear: buildSurfaceWear(seed, { maxSize: 5 }),
     };
   }, [seed, accentIndex]);
 
@@ -98,13 +96,7 @@ export function TicketCard({
         style={[styles.spine, selected && styles.spineSelected, { backgroundColor: accent }]}
       />
 
-      <LinearGradient
-        colors={[`rgba(234,231,207,${gloss.peak})`, 'rgba(234,231,207,0)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: gloss.falloff, y: 1 }}
-        style={StyleSheet.absoluteFill}
-        pointerEvents="none"
-      />
+      <SurfaceWearLayer wear={wear} />
 
       {/* The tear line: two bites out of the edges with a dotted run between
           them. Positioned from the right so the stub keeps its width on any
@@ -128,24 +120,6 @@ export function TicketCard({
           </View>
         </>
       )}
-
-      {specks.map((speck, index) => (
-        <View
-          key={index}
-          pointerEvents="none"
-          style={[
-            styles.speck,
-            {
-              left: speck.left as `${number}%`,
-              top: speck.top as `${number}%`,
-              width: speck.size,
-              height: speck.size,
-              borderRadius: speck.size / 2,
-              opacity: speck.opacity,
-            },
-          ]}
-        />
-      ))}
 
       <View
         style={[
@@ -214,10 +188,6 @@ const styles = StyleSheet.create({
   },
   spineSelected: {
     width: 12,
-  },
-  speck: {
-    position: 'absolute',
-    backgroundColor: BrandColors.cream,
   },
   body: {
     gap: Spacing.one,

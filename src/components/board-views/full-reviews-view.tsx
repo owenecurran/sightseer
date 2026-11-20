@@ -4,6 +4,7 @@ import Animated from 'react-native-reanimated';
 
 import { keyboardAwareScrollRenderer } from '@/components/keyboard-aware-scroll';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
+import { Fold } from '@/components/ui/unfold';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { VisitCard } from '@/components/visit-card';
@@ -151,7 +152,7 @@ export function FullReviewsView({
         const visit = visits[item.visitId];
 
         return (
-          <View style={styles.card}>
+          <Fold style={styles.card}>
             {/* No author line of our own: the card draws its own byline,
                 avatar and all, and two of them read as a bug. */}
             {visit ? (
@@ -192,7 +193,7 @@ export function FullReviewsView({
                 </ThemedView>
               </Pressable>
             )}
-          </View>
+          </Fold>
         );
       }}
     />

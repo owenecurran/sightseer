@@ -235,11 +235,11 @@ export function PostcardFlip({ isFlipped, front, back, estimatedHeight = 260 }: 
   const width = useSharedValue(0);
 
   const height = useSharedValue(estimatedHeight);
-  // Whether a real measurement has ever landed. The first one has to be a
-  // snap: animating from the placeholder estimate to the true height would
-  // give every card in the feed a visible settle on mount, which is not a
-  // flip and should not look like one.
-  const hasMeasured = useRef(false);
+  // Which side the height was last set for, so a change of side can be told
+  // apart from a side changing size. Null until the first measurement, which
+  // has to be a snap too: animating from the placeholder estimate would give
+  // every card in the feed a visible settle on mount.
+  const sizedFor = useRef<boolean | null>(null);
 
   useEffect(() => {
     progress.value = withTiming(isFlipped ? 1 : 0, {
@@ -253,8 +253,13 @@ export function PostcardFlip({ isFlipped, front, back, estimatedHeight = 260 }: 
   useEffect(() => {
     const measured = isFlipped ? backHeight : frontHeight;
     if (!measured) return;
-    if (!hasMeasured.current) {
-      hasMeasured.current = true;
+    // Only a turn animates the height. Any other change (a face settling
+    // after its first layout, a picture arriving) is applied at once:
+    // animated, it slid every card below for half a second, which in a feed
+    // being scrolled read as the screen jumping about.
+    const isTurn = sizedFor.current != null && sizedFor.current !== isFlipped;
+    sizedFor.current = isFlipped;
+    if (!isTurn) {
       height.value = measured;
       return;
     }

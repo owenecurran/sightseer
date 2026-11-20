@@ -1,7 +1,7 @@
 import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 
 const DESTRUCTIVE_RED = '#F22B22';
@@ -32,11 +32,13 @@ export function ConfirmDeleteModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.overlay}>
-        <ThemedView type="background" style={styles.sheet}>
-          <ThemedText type="default" style={styles.message}>
-            {message}
-          </ThemedText>
-          <View style={styles.actionsRow}>
+        <Unfold style={styles.sheet}>
+          <Fold>
+            <ThemedText type="lead" style={styles.message}>
+              {message}
+            </ThemedText>
+          </Fold>
+          <Fold style={styles.actionsRow}>
             <Pressable onPress={onCancel} disabled={isConfirming} hitSlop={8}>
               <ThemedText type="action">
                 Cancel
@@ -50,13 +52,13 @@ export function ConfirmDeleteModal({
               {isConfirming ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
-                <ThemedText type="smallBold" style={styles.confirmLabel}>
+                <ThemedText type="roundedStat" style={styles.confirmLabel}>
                   {confirmLabel}
                 </ThemedText>
               )}
             </Pressable>
-          </View>
-        </ThemedView>
+          </Fold>
+        </Unfold>
       </View>
     </Modal>
   );
@@ -74,7 +76,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 340,
     padding: Spacing.four,
-    borderRadius: Spacing.three,
     gap: Spacing.four,
     alignItems: 'center',
   },
@@ -95,8 +96,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // The same size the app's own Button sets this face at.
   confirmLabel: {
     color: '#fff',
+    fontSize: 16,
   },
   pressed: {
     opacity: 0.8,

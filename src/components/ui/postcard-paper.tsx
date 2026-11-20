@@ -21,6 +21,9 @@ type PostcardPaperProps = {
   // in less than the written side, so the frame overlay has picture to land
   // on rather than a gap of bare card.
   inset?: number;
+  // The same distance at the top and bottom, where it differs from the sides.
+  // Defaults to `inset`.
+  insetVertical?: number;
   // Lays the card's own middle-removed copy back over the content — see the
   // note in postcard-stock. Picture side only: the written side has text near
   // the edge that a torn frame would eat into. Ignored on a written sheet,
@@ -126,6 +129,7 @@ export function PostcardPaper({
   children,
   style,
   inset = PAPER_BORDER,
+  insetVertical = inset,
   framed = false,
   footer,
   onFlip,
@@ -220,7 +224,10 @@ export function PostcardPaper({
         />
       </View>
 
-      <View style={[styles.body, { padding: inset }]}>{children}</View>
+      <View
+        style={[styles.body, { paddingHorizontal: inset, paddingVertical: insetVertical }]}>
+        {children}
+      </View>
 
       {framed && (
         <View style={styles.sheet} pointerEvents="none">

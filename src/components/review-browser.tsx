@@ -14,6 +14,7 @@ import {
 } from '@/components/reviews-sort-control';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Fold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import type { BoardVisitItem } from '@/lib/boards';
@@ -80,8 +81,10 @@ export function ReviewBrowser({
   // the pins would just rebuild the markers for nothing.
   const ordered = useMemo(() => sortReviewItems(items, sortMode), [items, sortMode]);
 
+  // Fold is a plain View on the reviews screen. In the review picker each of
+  // these is a panel of the sheet's unfold.
   const chips = (
-    <View style={styles.controlsRow}>
+    <Fold style={styles.controlsRow}>
       <View style={styles.modeRow}>
         {modes.map((mode) => (
           <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
@@ -99,16 +102,16 @@ export function ReviewBrowser({
       </View>
       {/* Not offered on the map, which has no order to sort into. */}
       {viewMode !== 'map' && <ReviewsSortControl active={sortMode} onChange={setSortMode} />}
-    </View>
+    </Fold>
   );
 
   if (items.length === 0) {
     return (
-      <View style={styles.empty}>
+      <Fold style={styles.empty}>
         <ThemedText type="caption">
           No reviews yet.
         </ThemedText>
-      </View>
+      </Fold>
     );
   }
 

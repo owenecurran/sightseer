@@ -7,10 +7,13 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
 } from "react-native-reanimated";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { DiscoverView, type DiscoverViewHandle } from "@/components/discover-view";
-import { FeedDivider } from "@/components/ui/feed-divider";
+import { DealIn } from "@/components/ui/deal-in";
+import { ScrollStageProvider, useScrollStage } from "@/components/ui/scroll-stage";
+import { JourneyLine } from "@/components/ui/journey-line";
 import { KeyboardAwareScroll } from "@/components/keyboard-aware-scroll";
 import { FeedSwitcher, type FeedMode } from "@/components/feed-switcher";
 import { ThemedText } from "@/components/themed-text";
@@ -28,13 +31,13 @@ import {
   BrandColors,
   MaxContentWidth,
   Spacing,
-  TopTabInset,
 } from "@/constants/theme";
 import { useBottomTabInset } from "@/hooks/use-bottom-tab-inset";
 import { useHideOnScrollHandler, useNavBarHidden } from "@/hooks/use-hide-on-scroll";
 import { useTabFocusEffect, useTabRetapEffect } from "@/hooks/use-tab-pager";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/lib/auth-context";
+import { journeyItemId, journeyStop } from "@/lib/journey";
 import { getAvatarViewUrls } from "@/lib/avatar";
 import {
   getFeedItems,
@@ -61,6 +64,8 @@ import {
 // clips when collapsing, so overshooting costs nothing while a value that's
 // too small would crop the header at rest.
 const HEADER_MAX_HEIGHT = 140;
+// The screen's own background, as solid as the status bar needs.
+const STATUS_SCRIM = "rgba(3, 16, 9, 0.85)";
 
 export default function HomeScreen() {
   const { session, profile } = useAuth();
@@ -99,15 +104,30 @@ export default function HomeScreen() {
   const [previousViewedAt] = useState(
     () => profile?.feed_last_viewed_at ?? null,
   );
-  const scrollHandler = useHideOnScrollHandler();
+  // Where each card and route in the feed is on screen, for the cards
+  // dealt in as they arrive and the routes drawn between them.
+  const feedScrollRef = useRef<ScrollView>(null);
+  const { stage, scrollProps } = useScrollStage(feedScrollRef);
+  const scrollHandler = useHideOnScrollHandler(stage.scrollY);
   // Same shared value the floating nav bar reads, so the top header and the
   // bottom bar collapse and return together instead of drifting apart.
   const navHidden = useNavBarHidden();
+  // The status bar's height. Padded inside the header rather than around the
+  // screen, so it collapses with the header (see headerSpace).
+  const insets = useSafeAreaInsets();
   // Height is animated (not just opacity) so the feed actually reclaims the
-  // space — fading it out alone would leave a dead gap at the top.
+  // space — fading it out alone would leave a dead gap at the top. The
+  // header carries all the space above the feed, the status bar included;
+  // it used to sit on safeArea, where it never collapsed.
+  //
+  // The padding collapses with it, because a maxHeight of 0 cannot take a
+  // view below its own padding: the space for the status bar stayed, and
+  // left the feed cut off a band below the top of the screen.
   const headerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(navHidden.value, [0, 1], [1, 0]),
-    maxHeight: interpolate(navHidden.value, [0, 1], [HEADER_MAX_HEIGHT, 0]),
+    maxHeight: interpolate(navHidden.value, [0, 1], [HEADER_MAX_HEIGHT + insets.top, 0]),
+    paddingTop: interpolate(navHidden.value, [0, 1], [insets.top + Spacing.four, 0]),
+    paddingBottom: interpolate(navHidden.value, [0, 1], [Spacing.three, 0]),
     transform: [{ translateY: interpolate(navHidden.value, [0, 1], [0, -12]) }],
   }));
 
@@ -256,7 +276,6 @@ export default function HomeScreen() {
     setIsRefreshing(false);
   }
 
-  const feedScrollRef = useRef<ScrollView>(null);
   const discoverRef = useRef<DiscoverViewHandle>(null);
 
   // Tapping Home while already on Home: back to the top, and fetch again.
@@ -407,7 +426,11 @@ export default function HomeScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      {/* Neither the top nor the bottom: the header pads itself below the
+          status bar and the list pads its own end above the gesture bar, so
+          once the header has collapsed the feed runs to both edges of the
+          screen. */}
+      <SafeAreaView edges={["left", "right"]} style={styles.safeArea}>
         <Animated.View style={headerStyle}>
         <View style={[styles.screenHeaderRow, styles.gutter]}>
           <ThemedText type="displaySerif">Feed</ThemedText>
@@ -444,14 +467,14 @@ export default function HomeScreen() {
           <ThemedText
             type="small"
             themeColor="danger"
-            style={styles.gutter}
+            style={[styles.gutter, styles.notice]}
           >
             {error}
           </ThemedText>
         )}
 
         {viewMode === "discover" ? (
-          <View style={[styles.discoverWrap, styles.gutter]}>
+          <View style={styles.discoverWrap}>
             <DiscoverView ref={discoverRef} />
           </View>
         ) : (
@@ -459,7 +482,7 @@ export default function HomeScreen() {
             {!isLoading && items.length === 0 && (
               <ThemedText
                 type="caption"
-                style={styles.gutter}
+                style={[styles.gutter, styles.notice]}
               >
                 {/* "From the People tab" used to close this sentence, and
                     there is no People tab -- the five are Home, Search,
@@ -494,8 +517,10 @@ export default function HomeScreen() {
                 list, and with a plain scroll view focusing it put the
                 keyboard straight over the field being typed into. This is
                 the same drop-in the form screens already use. */}
+            <ScrollStageProvider stage={stage}>
             <KeyboardAwareScroll
               ref={feedScrollRef}
+              {...scrollProps}
               contentContainerStyle={[
                 styles.list,
                 { paddingBottom: bottomInset },
@@ -571,55 +596,80 @@ export default function HomeScreen() {
                   style={{ zIndex: displayItems.length - index }}
                   collapsable={false}
                 >
-                  {/* A tear line between posts. Not before the first, and
-                      not around the "Already seen" label, which is a
-                      boundary in its own right and does not want a second
-                      rule stacked on it. */}
+                  {/* The route from the post above to this one, or a tear
+                      line where there is no route to draw. Not before the
+                      first, and not around the "Already seen" label, which
+                      is a boundary in its own right and does not want a
+                      second rule stacked on it. */}
                   {index > 0 &&
                     item.type !== "divider" &&
-                    displayItems[index - 1]?.type !== "divider" && <FeedDivider />}
+                    displayItems[index - 1]?.type !== "divider" && (
+                      <JourneyLine
+                        from={journeyStop(displayItems[index - 1], "last")}
+                        to={journeyStop(item, "first")}
+                        seed={`${journeyItemId(displayItems[index - 1])}-${journeyItemId(item)}`}
+                        style={styles.journey}
+                      />
+                    )}
 
                   {item.type === "divider" ? (
                     <ThemedText type="sectionLabel" style={styles.dividerText}>
                       Already seen
                     </ThemedText>
                   ) : item.type === "recap" ? (
-                    <RecapCard
-                      recap={item.recap}
-                      avatarUrl={avatarUrls[item.recap.authorId]}
-                      coverUrl={recapCoverUrls[item.recap.id]}
-                    />
+                    <DealIn seed={item.recap.id}>
+                      <RecapCard
+                        recap={item.recap}
+                        avatarUrl={avatarUrls[item.recap.authorId]}
+                        coverUrl={recapCoverUrls[item.recap.id]}
+                      />
+                    </DealIn>
                   ) : item.type === "trip" ? (
-                    <TripGroupCard
-                      feedTrip={item.feedTrip}
-                      photoUrls={photoUrls}
-                      photoThumbUrls={photoThumbUrls}
-                      avatarUrls={avatarUrls}
-                      viewerId={session?.user.id}
-                      copiedVisitId={copiedVisitId}
-                      onToggleLike={handleToggleLike}
-                      onShare={handleShareVisit}
-                      onVisitDeleted={handleVisitDeleted}
-                      onConverted={handleTripConverted}
-                    />
+                    <DealIn seed={item.feedTrip.trip.key}>
+                      <TripGroupCard
+                        feedTrip={item.feedTrip}
+                        photoUrls={photoUrls}
+                        photoThumbUrls={photoThumbUrls}
+                        avatarUrls={avatarUrls}
+                        viewerId={session?.user.id}
+                        copiedVisitId={copiedVisitId}
+                        onToggleLike={handleToggleLike}
+                        onShare={handleShareVisit}
+                        onVisitDeleted={handleVisitDeleted}
+                        onConverted={handleTripConverted}
+                      />
+                    </DealIn>
                   ) : (
-                    <VisitCard
-                      visit={item.visit}
-                      photoUrls={photoUrls}
-                      avatarUrl={avatarUrls[item.visit.user_id]}
-                      isOwner={session?.user.id === item.visit.user_id}
-                      isCopied={copiedVisitId === item.visit.id}
-                      onToggleLike={() => handleToggleLike(item.visit)}
-                      onShare={() => handleShareVisit(item.visit)}
-                      onDeleted={() => handleVisitDeleted(item.visit.id)}
-                    />
+                    <DealIn seed={item.visit.id}>
+                      <VisitCard
+                        visit={item.visit}
+                        photoUrls={photoUrls}
+                        avatarUrl={avatarUrls[item.visit.user_id]}
+                        isOwner={session?.user.id === item.visit.user_id}
+                        isCopied={copiedVisitId === item.visit.id}
+                        onToggleLike={() => handleToggleLike(item.visit)}
+                        onShare={() => handleShareVisit(item.visit)}
+                        onDeleted={() => handleVisitDeleted(item.visit.id)}
+                      />
+                    </DealIn>
                   )}
                 </View>
               ))}
             </KeyboardAwareScroll>
+            </ScrollStageProvider>
           </>
         )}
       </SafeAreaView>
+      {/* What scrolls up under the status bar fades into it, so the clock
+          and battery stay readable over a bright photograph or the cream of
+          a card. Solid behind the bar, then gone a little below it: past
+          that, the screen's own edge does the cutting. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={[STATUS_SCRIM, STATUS_SCRIM, "rgba(3, 16, 9, 0)"]}
+        locations={[0, 0.55, 1]}
+        style={[styles.statusScrim, { height: insets.top * 1.8 }]}
+      />
     </ThemedView>
   );
 }
@@ -698,8 +748,17 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     width: "100%",
-    paddingTop: Spacing.four + TopTabInset,
-    gap: Spacing.three,
+  },
+  // A line of text between the header and the list (an error, the empty
+  // feed), spaced from the list the way the header is.
+  notice: {
+    marginBottom: Spacing.three,
+  },
+  statusScrim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
   },
   // The horizontal inset safeArea used to apply to everything at once —
   // now applied per-child so the scroll container itself can stay
@@ -710,8 +769,10 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     paddingHorizontal: Spacing.four,
   },
-  // DiscoverView used to be a direct flex child of safeArea; wrapping it to
-  // apply the gutter would otherwise collapse it to its content height.
+  // No gutter on this one: DiscoverView is a scroll view, and the gutter
+  // here inset the scroll view itself, which cut stamps and the places strip
+  // off short of the screen's edge (see safeArea above). It pads its own
+  // content instead.
   discoverWrap: {
     flex: 1,
   },
@@ -722,6 +783,10 @@ const styles = StyleSheet.create({
   },
   dividerText: {
     textAlign: "center",
+  },
+  // Up into the list's gap, so the route starts at the post above.
+  journey: {
+    marginTop: -Spacing.three,
   },
   bellButton: {
     position: "relative",

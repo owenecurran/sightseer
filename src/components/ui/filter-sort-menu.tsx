@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { BrandColors, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -109,21 +110,21 @@ export function FilterSortMenu({ groups }: { groups: MenuGroup[] }) {
       <Modal
         visible={isOpen}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setIsOpen(false)}>
         <Pressable style={styles.overlay} onPress={() => setIsOpen(false)}>
           {/* The sheet swallows taps so a press near an option edge cannot
               dismiss the sheet instead of selecting. */}
           <Pressable style={styles.sheetWrap} onPress={(e) => e.stopPropagation()}>
-            <ThemedView type="backgroundElement" style={styles.sheet}>
-              <View style={styles.header}>
-                <ThemedText type="sectionLabel">Sort & filter</ThemedText>
+            <Unfold paper="backgroundElement" from="bottom" style={styles.sheet}>
+              <Fold style={styles.header}>
+                <ThemedText type="displaySerif">Sort & filter</ThemedText>
                 <Pressable onPress={() => setIsOpen(false)} hitSlop={8}>
-                  <ThemedText type="smallBold" themeColor="sage">
+                  <ThemedText type="action" themeColor="sage">
                     Done
                   </ThemedText>
                 </Pressable>
-              </View>
+              </Fold>
 
               <ScrollView
                 style={styles.scroll}
@@ -134,48 +135,48 @@ export function FilterSortMenu({ groups }: { groups: MenuGroup[] }) {
                 showsVerticalScrollIndicator={false}>
                 {groups.map((group) => (
                   <View key={group.key} style={styles.group}>
-                    <ThemedText
-                      type="sectionLabel"
-                      themeColor="textSecondary"
-                      style={styles.groupLabel}>
-                      {group.label}
-                    </ThemedText>
+                    <Fold>
+                      <ThemedText type="meta" style={styles.groupLabel}>
+                        {group.label}
+                      </ThemedText>
+                    </Fold>
                     {group.options.map((option) => {
                       const isSelected =
                         group.kind === 'single'
                           ? group.value === option.value
                           : group.values.includes(option.value);
                       return (
-                        <Pressable
-                          key={option.value}
-                          onPress={() =>
-                            group.kind === 'single'
-                              ? group.onChange(option.value)
-                              : group.onToggle(option.value)
-                          }
-                          style={[styles.row, isSelected && styles.rowSelected]}>
-                          {group.kind === 'multi' && group.renderOption ? (
-                            group.renderOption(option, isSelected)
-                          ) : (
-                            <ThemedText
-                              type="small"
-                              themeColor={isSelected ? 'text' : 'textSecondary'}>
-                              {option.label}
-                              {option.count != null ? '  ' + option.count : ''}
-                            </ThemedText>
-                          )}
-                          {isSelected && (
-                            <ThemedText type="small" themeColor="sage">
-                              ✓
-                            </ThemedText>
-                          )}
-                        </Pressable>
+                        <Fold key={option.value}>
+                          <Pressable
+                            onPress={() =>
+                              group.kind === 'single'
+                                ? group.onChange(option.value)
+                                : group.onToggle(option.value)
+                            }
+                            style={[styles.row, isSelected && styles.rowSelected]}>
+                            {group.kind === 'multi' && group.renderOption ? (
+                              group.renderOption(option, isSelected)
+                            ) : (
+                              <ThemedText
+                                type="small"
+                                themeColor={isSelected ? 'text' : 'textSecondary'}>
+                                {option.label}
+                                {option.count != null ? '  ' + option.count : ''}
+                              </ThemedText>
+                            )}
+                            {isSelected && (
+                              <ThemedText type="small" themeColor="sage">
+                                ✓
+                              </ThemedText>
+                            )}
+                          </Pressable>
+                        </Fold>
                       );
                     })}
                   </View>
                 ))}
               </ScrollView>
-            </ThemedView>
+            </Unfold>
           </Pressable>
         </Pressable>
       </Modal>
@@ -222,8 +223,6 @@ const styles = StyleSheet.create({
     // is how a long option list (the place page reaches five sorts, three
     // filters and up to eight tags) runs off the bottom of the screen.
     flexShrink: 1,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
     paddingTop: Spacing.three,
   },
   header: {
@@ -248,8 +247,6 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   groupLabel: {
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
     marginBottom: Spacing.half,
   },
   row: {

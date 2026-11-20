@@ -1,14 +1,25 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { Fragment, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, {
+  useAnimatedReaction,
+  useAnimatedScrollHandler,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 
+import { PLACE_TAG_STRING, PlaceTag } from '@/components/place-tag';
+import { DealIn } from '@/components/ui/deal-in';
+import { ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
+import { JourneyLine } from '@/components/ui/journey-line';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { VisitCard } from '@/components/visit-card';
-import { BrandColors, Spacing } from '@/constants/theme';
+import { BrandColors, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -24,6 +35,7 @@ import {
   type DiscoverPlace,
 } from '@/lib/discover';
 import { likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
+import { stopOf } from '@/lib/journey';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { resolveStateCountries } from '@/lib/places-cache';
 import { shareText } from '@/lib/share';
@@ -57,8 +69,6 @@ const PLACE_COUNT = 10;
 const REVIEW_COUNT = 5;
 const SHELF_COUNT = 5;
 
-const PLACE_CARD_WIDTH = 176;
-const PLACE_STAMP_SIZE = 38;
 
 // Below this a place is near enough to describe in whole kilometres; above it
 // the precision is a lie and the number just gets long.
@@ -73,12 +83,51 @@ function distanceLabel(km: number | null): string | null {
 
 // What the Home tab can ask of Discover when it is tapped while already
 // showing it: go back to the top and fetch the shelves again.
+// Where the rail the place tags hang from runs, down from the strip's top.
+const RAIL_TOP = 6;
+
+// A movement reading that lapses to nothing shortly after it is taken.
+function momentary(value: number) {
+  'worklet';
+  return withSequence(withTiming(value, { duration: 0 }), withDelay(90, withTiming(0, { duration: 0 })));
+}
+
 export type DiscoverViewHandle = { refresh: () => void };
 
 export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
   const bottomInset = useBottomTabInset();
-  const scrollHandler = useHideOnScrollHandler();
+  // Where each review and route on the page is on screen, for the reviews
+  // dealt in as they arrive and the routes drawn between them.
+  const scrollRef = useRef<ScrollView>(null);
+  const { stage, scrollProps } = useScrollStage(scrollRef);
+  const scrollHandler = useHideOnScrollHandler(stage.scrollY);
   const { session } = useAuth();
+
+  // How the places strip and the page are moving, in points a frame, for the
+  // hung tags to swing and bob with. Each reading falls back to nothing a
+  // moment after the last, so a scroll that stops dead does not leave the
+  // tags leaning into a movement that has ended.
+  const stripMotion = useSharedValue(0);
+  const pageMotion = useSharedValue(0);
+  const tagMotion = useMemo(() => ({ strip: stripMotion, page: pageMotion }), [stripMotion, pageMotion]);
+  const stripX = useSharedValue(0);
+  const stripScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      const x = event.contentOffset.x;
+      stripMotion.set(momentary(x - stripX.get()));
+      stripX.set(x);
+    },
+  });
+  // Only the scroll position goes into the worklet: the stage itself holds
+  // the scroll view's ref, and a ref passed to a worklet is frozen.
+  const pageScrollY = stage.scrollY;
+  useAnimatedReaction(
+    () => pageScrollY.value,
+    (y, previous) => {
+      if (previous == null) return;
+      pageMotion.set(momentary(y - previous));
+    },
+  );
   const viewerId = session?.user.id;
 
   const [loading, setLoading] = useState(true);
@@ -92,7 +141,6 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
   const [boardThumbnailUrls, setBoardThumbnailUrls] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const scrollRef = useRef<ScrollView>(null);
   // A counter rather than a second copy of the loader. Everything below
   // already runs on viewerId changing, and cancels itself properly when it
   // is superseded; adding the nonce to that effect's inputs re-runs exactly
@@ -203,8 +251,10 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
     featuredBoards.length === 0;
 
   return (
+    <ScrollStageProvider stage={stage}>
     <KeyboardAwareScroll
       ref={scrollRef}
+      {...scrollProps}
       contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
       showsVerticalScrollIndicator={false}
       onScroll={scrollHandler}
@@ -236,61 +286,33 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
               reads as scrollable, instead of stopping short and looking like
               a list that happens to be cut off. The gutter is put back as
               padding on the row itself. */}
-          <ScrollView
+          <Animated.ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.stripBleed}
-            contentContainerStyle={styles.strip}>
-            {places.map((place) => (
-              <Pressable
+            contentContainerStyle={styles.strip}
+            onScroll={stripScrollHandler}
+            scrollEventThrottle={16}>
+            {/* The rail the tags hang from. */}
+            <View style={styles.rail} pointerEvents="none" />
+            {places.map((place, index) => (
+              <PlaceTag
                 key={place.id}
-                onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}>
-                <ThemedView type="backgroundElement" style={styles.placeCard}>
-                  <View style={styles.placePhotoWrap}>
-                    {/* One treatment for both waits. A tile whose url has
-                        not resolved and one whose bytes are still arriving
-                        looked identical -- a postcard-shaped grey box with a
-                        rating stamp floating on it -- and that box is the
-                        most glaring placeholder on the screen, because it is
-                        the size of the thing it is failing to be.
-                        LoadableImage covers both with the same walking icon
-                        the postcards below now use. */}
-                    <LoadableImage
-                      source={
-                        placePhotoUrls[place.id]
-                          ? { uri: placePhotoUrls[place.id] }
-                          : undefined
-                      }
-                      style={styles.placePhoto}
-                      contentFit="cover"
-                    />
-                    {place.avgRating != null && (
-                      <View style={styles.placeStamp} pointerEvents="none">
-                        <RatingGlassBadgeGated
-                          rating={place.avgRating}
-                          size={PLACE_STAMP_SIZE}
-                          seed={place.id}
-                        />
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.placeCaption}>
-                    {/* Two lines, not one. At one line every long name in the
-                        table came out as "GOLDEN GAT…", which cannot be told
-                        from Golden Gate Park. */}
-                    <ThemedText type="smallBold" numberOfLines={2}>
-                      {place.name}
-                    </ThemedText>
-                    <ThemedText type="meta" numberOfLines={1}>
-                      {distanceLabel(place.distanceKm) ??
-                        placeRegions.get(place.id) ??
-                        `${place.reviewCount} review${place.reviewCount === 1 ? '' : 's'}`}
-                    </ThemedText>
-                  </View>
-                </ThemedView>
-              </Pressable>
+                seed={place.id}
+                index={index}
+                motion={tagMotion}
+                name={place.name}
+                subtitle={
+                  distanceLabel(place.distanceKm) ??
+                  placeRegions.get(place.id) ??
+                  `${place.reviewCount} review${place.reviewCount === 1 ? '' : 's'}`
+                }
+                photoUrl={placePhotoUrls[place.id]}
+                rating={place.avgRating}
+                onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}
+              />
             ))}
-          </ScrollView>
+          </Animated.ScrollView>
         </View>
       )}
 
@@ -298,21 +320,32 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
         <View style={styles.section}>
           <ThemedText type="sectionLabel">Reviews to read</ThemedText>
           <View style={styles.reviewList}>
-            {reviews.map((visit) => (
-              <VisitCard
-                key={visit.id}
-                visit={visit}
-                photoUrls={reviewPhotoUrls}
-                isOwner={false}
-                isCopied={false}
-                onToggleLike={() => void handleToggleLike(visit)}
-                onShare={() => {
-                  void shareText(`${visit.placeName}\n${visit.note ?? ''}`.trim());
-                }}
-                onDeleted={() =>
-                  setReviews((current) => current.filter((item) => item.id !== visit.id))
-                }
-              />
+            {reviews.map((visit, index) => (
+              <Fragment key={visit.id}>
+                {index > 0 && (
+                  <JourneyLine
+                    from={stopOf(reviews[index - 1])}
+                    to={stopOf(visit)}
+                    seed={`${reviews[index - 1].id}-${visit.id}`}
+                    style={styles.journey}
+                  />
+                )}
+                <DealIn seed={visit.id}>
+                  <VisitCard
+                    visit={visit}
+                    photoUrls={reviewPhotoUrls}
+                    isOwner={false}
+                    isCopied={false}
+                    onToggleLike={() => void handleToggleLike(visit)}
+                    onShare={() => {
+                      void shareText(`${visit.placeName}\n${visit.note ?? ''}`.trim());
+                    }}
+                    onDeleted={() =>
+                      setReviews((current) => current.filter((item) => item.id !== visit.id))
+                    }
+                  />
+                </DealIn>
+              </Fragment>
             ))}
           </View>
         </View>
@@ -367,13 +400,22 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
         </View>
       )}
     </KeyboardAwareScroll>
+    </ScrollStageProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  // The gutter and the column's width cap are on the content, inside the
+  // scroll view, so the scroll view itself runs to the screen's edges and
+  // anything leaning past a card (a stamp, the places strip) is cut off by
+  // the screen rather than short of it.
   scrollContent: {
     gap: Spacing.five,
     paddingTop: Spacing.three,
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    paddingHorizontal: Spacing.four,
   },
   section: {
     gap: Spacing.two,
@@ -382,43 +424,39 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.six,
     alignItems: 'center',
   },
-  // Undoes the screen's own gutter (see discoverWrap in (tabs)/index.tsx) so
-  // the strip can run to both edges, and puts it back inside as padding.
+  // Undoes the content's gutter (see scrollContent) so the strip can run to
+  // both edges, and puts it back inside as padding.
   stripBleed: {
     marginHorizontal: -Spacing.four,
+    // Unclipped, so a tag falling in from above, or swinging, is not cut off
+    // at the strip's edge. (Android's horizontal scroll view honours this.)
+    overflow: 'visible',
+  },
+  rail: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: RAIL_TOP,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(234, 231, 207, 0.22)',
   },
   strip: {
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
-  },
-  placeCard: {
-    width: PLACE_CARD_WIDTH,
-    borderRadius: Spacing.three,
-    overflow: 'hidden',
-  },
-  placePhotoWrap: {
-    width: '100%',
-    // A postcard's own proportion, so these read as of a piece with the
-    // review cards below rather than as a different kind of object.
-    aspectRatio: 1.5,
-  },
-  placePhoto: {
-    width: '100%',
-    height: '100%',
-  },
-  // Overlapping the photograph's bottom edge, the way a stamp sits on a card
-  // rather than in a column of its own.
-  placeStamp: {
-    position: 'absolute',
-    right: Spacing.two,
-    bottom: -Spacing.two,
-  },
-  placeCaption: {
-    padding: Spacing.three,
-    gap: Spacing.half,
+    // Room above the tags for their strings, up to the rail.
+    paddingTop: RAIL_TOP + 1 + PLACE_TAG_STRING,
+    // And below, for the slight swing of the last row of a tag.
+    paddingBottom: Spacing.two,
+    alignItems: 'flex-start',
   },
   reviewList: {
     gap: Spacing.four,
+  },
+  // Into the list's gaps on both sides, so the route runs from the post
+  // above to the next one's avatar with nothing between.
+  journey: {
+    marginVertical: -Spacing.four,
   },
   row: {
     flexDirection: 'row',

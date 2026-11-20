@@ -224,6 +224,7 @@ function fixture({ key, photos, rating, id, tags, placeName, stateCountry }: Cas
     created_at: '2026-08-14T12:00:00Z',
     user_id: 'dev-user',
     authorName: 'Preview',
+    authorHandle: null,
     placeId: 'dev-place',
     placeName: placeName ?? 'Saint-Michel-de-Provence',
     placeLat: 43.6,

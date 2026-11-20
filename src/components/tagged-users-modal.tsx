@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Avatar } from '@/components/ui/avatar';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
@@ -99,48 +99,60 @@ export function TaggedUsersModal({ visible, onClose, userIds }: TaggedUsersModal
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <ThemedView type="background" style={styles.sheet}>
-          <ThemedText type="headline">Tagged</ThemedText>
+        <Unfold style={styles.sheet}>
+          <Fold>
+            <ThemedText type="displaySerif">Tagged</ThemedText>
+          </Fold>
 
           {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
+            <Fold>
+              <ThemedText type="small" themeColor="danger">
+                {error}
+              </ThemedText>
+            </Fold>
           )}
-          {isLoading && <ThemedText type="small">Loading…</ThemedText>}
+          {isLoading && (
+            <Fold>
+              <ThemedText type="small">Loading…</ThemedText>
+            </Fold>
+          )}
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
             {users.map((user) => (
-              <Pressable key={user.id} onPress={() => handleOpenProfile(user.id)} style={styles.row}>
-                <Avatar uri={avatarUrls[user.id]} name={user.name ?? user.handle} size={44} />
-                <View style={styles.info}>
-                  <ThemedText type="smallBold">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
-                  {user.handle && (
-                    <ThemedText type="small" themeColor="textMeta">
-                      @{user.handle}
-                    </ThemedText>
+              <Fold key={user.id}>
+                <Pressable onPress={() => handleOpenProfile(user.id)} style={styles.row}>
+                  <Avatar uri={avatarUrls[user.id]} name={user.name ?? user.handle} size={44} />
+                  <View style={styles.info}>
+                    <ThemedText type="smallBold">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
+                    {user.handle && (
+                      <ThemedText type="small" themeColor="textMeta">
+                        @{user.handle}
+                      </ThemedText>
+                    )}
+                  </View>
+                  {session?.user.id !== user.id && (
+                    <Pressable
+                      onPress={() => handleFollowToggle(user)}
+                      disabled={updatingId === user.id}
+                      hitSlop={8}>
+                      <ThemedText type="action" themeColor={user.followStatus === 'accepted' ? 'textSecondary' : 'sage'}>
+                        {followLabel(user.followStatus)}
+                      </ThemedText>
+                    </Pressable>
                   )}
-                </View>
-                {session?.user.id !== user.id && (
-                  <Pressable
-                    onPress={() => handleFollowToggle(user)}
-                    disabled={updatingId === user.id}
-                    hitSlop={8}>
-                    <ThemedText type="smallBold" themeColor={user.followStatus === 'accepted' ? 'textSecondary' : 'sage'}>
-                      {followLabel(user.followStatus)}
-                    </ThemedText>
-                  </Pressable>
-                )}
-              </Pressable>
+                </Pressable>
+              </Fold>
             ))}
           </ScrollView>
 
-          <Pressable onPress={onClose} style={styles.closeButton}>
-            <ThemedText type="action">
-              Close
-            </ThemedText>
-          </Pressable>
-        </ThemedView>
+          <Fold>
+            <Pressable onPress={onClose} style={styles.closeButton}>
+              <ThemedText type="action">
+                Close
+              </ThemedText>
+            </Pressable>
+          </Fold>
+        </Unfold>
       </View>
     </Modal>
   );
@@ -154,12 +166,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.four,
   },
+  // A percentage cap works here because the overlay this sits in has a
+  // definite height to take it of; the scroll view inside shrinks to it.
   sheet: {
     width: '100%',
     maxWidth: 420,
     maxHeight: '75%',
     padding: Spacing.four,
-    borderRadius: Spacing.three,
     gap: Spacing.three,
   },
   list: {

@@ -16,7 +16,7 @@ import { ThemedView } from '@/components/themed-view';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
@@ -277,7 +277,7 @@ export default function BoardDetailScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <View style={styles.header}>
           <BackLink seed="[id]" />
 

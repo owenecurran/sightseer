@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadableImage } from '@/components/ui/loadable-image';
+import { Fold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 import type { BoardVisitItem } from '@/lib/boards';
 
@@ -51,29 +52,30 @@ export function ImagesGridView({
   return (
     <View style={styles.grid}>
       {tiles.map((tile) => (
-        <Pressable
-          key={tile.key}
-          style={styles.tile}
-          onPress={
-            onSelectVisit
-              ? () => onSelectVisit(tile.visitId)
-              : () => router.push({ pathname: '/visit/[id]', params: { id: tile.visitId } })
-          }>
-          <LoadableImage source={{ uri: tile.url }} style={styles.image} />
-          {isOwner && onSetCover && (
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                onSetCover(tile.photoId);
-              }}
-              hitSlop={4}
-              style={styles.coverButton}>
-              <ThemedView type={coverPhotoId === tile.photoId ? 'backgroundSelected' : 'backgroundElement'} style={styles.coverBadge}>
-                <ThemedText type="small">{coverPhotoId === tile.photoId ? 'Cover ✓' : 'Set as cover'}</ThemedText>
-              </ThemedView>
-            </Pressable>
-          )}
-        </Pressable>
+        <Fold key={tile.key} style={styles.tileSlot}>
+          <Pressable
+            style={styles.tile}
+            onPress={
+              onSelectVisit
+                ? () => onSelectVisit(tile.visitId)
+                : () => router.push({ pathname: '/visit/[id]', params: { id: tile.visitId } })
+            }>
+            <LoadableImage source={{ uri: tile.url }} style={styles.image} />
+            {isOwner && onSetCover && (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onSetCover(tile.photoId);
+                }}
+                hitSlop={4}
+                style={styles.coverButton}>
+                <ThemedView type={coverPhotoId === tile.photoId ? 'backgroundSelected' : 'backgroundElement'} style={styles.coverBadge}>
+                  <ThemedText type="small">{coverPhotoId === tile.photoId ? 'Cover ✓' : 'Set as cover'}</ThemedText>
+                </ThemedView>
+              </Pressable>
+            )}
+          </Pressable>
+        </Fold>
       ))}
     </View>
   );
@@ -95,13 +97,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.four,
   },
-  tile: {
+  // The grid item is the tile's fold (a panel of the review picker's
+  // unfold, a plain View anywhere else), so its share of the row is on that.
+  tileSlot: {
     // Percent, so the row divides exactly however wide the screen is. Half a
     // gutter on every side of every tile makes a full GAP between neighbours
     // and half of one against the grid's own edges, which is the usual
     // Instagram-grid trade: the alternative keeps the outer edge flush but
     // needs the container measured first, for one pixel nobody can see.
     width: `${100 / COLUMNS}%`,
+  },
+  tile: {
     aspectRatio: 1,
     padding: GAP / 2,
   },

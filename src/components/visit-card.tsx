@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { guardCardPress } from "@/lib/card-drag-guard";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -16,6 +16,7 @@ import { FeedAuthorLine } from "@/components/feed-author-line";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Avatar } from "@/components/ui/avatar";
+import { StampLanding } from "@/components/ui/deal-in";
 import { FeedRatingStamp, STAMP_SIZE } from "@/components/ui/feed-rating-stamp";
 import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
 import { ImageLoadingIcon } from "@/components/ui/image-loading-icon";
@@ -23,6 +24,7 @@ import { PostcardFlip } from "@/components/ui/postcard-flip";
 import { PostcardMap } from "@/components/ui/postcard-map";
 import { LayeredHeadline } from "@/components/ui/layered-headline";
 import { PostcardGrain } from "@/components/ui/postcard-grain";
+import { RegionLine } from "@/components/ui/region-line";
 import {
   grainFor,
   seededGrain,
@@ -34,19 +36,17 @@ import {
   PostcardPaper,
   turnMarkInsetFor,
 } from "@/components/ui/postcard-paper";
-import {
-  TURN_MARK_PANEL_INK,
-  turnMarkClearance,
-} from "@/components/ui/postcard-turn-mark";
+import { turnMarkClearance } from "@/components/ui/postcard-turn-mark";
 import { PostcardPhotos } from "@/components/ui/postcard-photos";
 import { Postmark } from "@/components/ui/postmark";
 import { StretchText } from "@/components/ui/stretch-text";
 import { TagSticker } from "@/components/ui/tag-sticker";
 import { VisitActionsRow } from "@/components/visit-actions-row";
 import { VisitMenu } from "@/components/visit-menu";
-import { BrandColors, Spacing } from "@/constants/theme";
+import { BrandColors, MaxContentWidth, Spacing } from "@/constants/theme";
 import { hapticLike, hapticUnlike } from "@/lib/haptics";
 import type { FeedVisit } from "@/lib/feed";
+import { useAvatarUrl } from "@/hooks/use-avatar-url";
 import { useImageAccent } from "@/hooks/use-image-accent";
 import { hashSeed } from "@/lib/seeded-random";
 import { headlineTreatmentFor } from "@/lib/headline-style";
@@ -136,10 +136,22 @@ const STICKER_BAND_CLEARANCE = Spacing.two;
 // than at whatever size its own character count produced — a short name was
 // coming out enormous and a long one small.
 const CAPTION_HEIGHT_SHARE = 0.25;
-// The written side stops short of its own content, which begins 30pt in
-// (the printed border plus the panel's padding). Reaching 44 here would put
-// the strip straight on top of the like button.
+// The written side stops short of its own content, which begins at least
+// 26pt in (the paper's border plus the panel's padding, before the card has
+// been measured; further once it has). Reaching 44 here would put the strip
+// straight on top of the like button on that first frame.
 const BACK_FLIP_REACH = 26;
+
+// How wide the written side's address column is, by orientation. Fixed per
+// orientation rather than content-sized: a column whose width followed its
+// contents would move the ruled divider from card to card down the feed.
+//
+// A landscape card carries its map in this column, at the column's width, so
+// it needs the room for a map you can read a location off. A portrait card
+// carries its map as a thumbnail in the action row instead, leaving only the
+// stamp (64) and the postmark (56) here, and giving it the landscape width
+// took 40pt off a message column that the card's side margins already cost.
+const BACK_COLUMN_WIDTH = { horizontal: 112, vertical: 72 } as const;
 
 // How much of the photograph's colour reaches the written side. A tint in
 // the stock rather than a coloured panel -- see panelWash.
@@ -220,6 +232,8 @@ export function VisitCard({
   onPhotoLayout,
   initialCommentsOpen = false,
 }: VisitCardProps) {
+  // The screen's own avatar when it fetched one, the card's when it did not.
+  const authorAvatarUrl = useAvatarUrl(visit.user_id, avatarUrl);
   const [isCommentsOpen, setIsCommentsOpen] = useState(initialCommentsOpen);
   const [commentCount, setCommentCount] = useState(visit.commentCount);
   // Which side is showing. A review can be written to open on its message
@@ -243,7 +257,15 @@ export function VisitCard({
   // a fixed number of points, because the border itself is: the frame is one
   // image stretched over the card, so it reaches further in the bigger the
   // card gets. See pictureInsetFor.
-  const [cardWidth, setCardWidth] = useState(0);
+  //
+  // Starts at the width a card in a feed column will come out at, so the
+  // first layout already has the right border and the card does not change
+  // height once it is measured. A screen with a different column corrects it
+  // on the first layout.
+  const { width: windowWidth } = useWindowDimensions();
+  const [cardWidth, setCardWidth] = useState(
+    () => Math.min(windowWidth, MaxContentWidth) - Spacing.four * 2,
+  );
   // How wide the place name actually came out. `fill` is capped, so a short
   // name stops well short of its box — and the broader location line has to
   // stay within the NAME's range, not the box's. Zero until it is measured,
@@ -332,6 +354,16 @@ export function VisitCard({
   // coming: the photographs are gone, or expired, and no further waiting
   // will produce them.
   const urlsResolved = Object.keys(photoUrls).length > 0;
+
+  // The shapes of the photos the card is laid out for: the ones it has once
+  // the urls are in, and until then the ones the post says it has, which
+  // arrive with the post itself. Laid out off the resolved list alone, every
+  // card went down landscape and photo-less, then reflowed to its real shape
+  // when the urls landed: about 250 points growing to 500, animated, under
+  // the finger of anyone already scrolling.
+  const layoutRatios = urlsResolved
+    ? photos.map((p) => p.ratio)
+    : visit.photoAspectRatios.slice(0, visit.photoIds.length);
 
   // Still waiting to be worth looking at.
   //
@@ -447,10 +479,7 @@ export function VisitCard({
   // every review written before the choice existed still does.
   const orientation =
     visit.card.orientation ??
-    orientationForPhotos(
-      photos.map((p) => p.ratio),
-      photos.length,
-    );
+    orientationForPhotos(layoutRatios, layoutRatios.length);
   const stock = visit.card.stock ?? seededStock(visit.id);
   const grain = visit.card.grain ?? seededGrain(visit.id);
   const lat = visit.placeLat;
@@ -480,14 +509,29 @@ export function VisitCard({
           router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
         )}
       >
-        <Avatar uri={avatarUrl} name={visit.authorName} size={28} />
+        <Avatar uri={authorAvatarUrl} name={visit.authorName} size={36} />
       </Pressable>
-      <FeedAuthorLine
-        authorId={visit.user_id}
-        authorName={visit.authorName}
-        taggedUsers={visit.taggedUsers}
-        style={styles.bylineText}
-      />
+      <View style={styles.bylineText}>
+        <FeedAuthorLine
+          authorId={visit.user_id}
+          authorName={visit.authorName}
+          taggedUsers={visit.taggedUsers}
+        />
+        {/* Not when there is no display name: the line above is already
+            the handle then. */}
+        {visit.authorHandle && visit.authorHandle !== visit.authorName && (
+          <ThemedText
+            type="small"
+            themeColor="textMeta"
+            numberOfLines={1}
+            onPress={guardCardPress(() =>
+              router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
+            )}
+          >
+            @{visit.authorHandle}
+          </ThemedText>
+        )}
+      </View>
     </View>
   );
 
@@ -500,9 +544,9 @@ export function VisitCard({
   // it leaves bare is a scatter of gaps between photos rather than one
   // margin wide enough to put anything in.
   const singlePictureRatio =
-    photos.length === 1
-      ? photos[0].ratio
-      : photos.length === 0
+    layoutRatios.length === 1
+      ? layoutRatios[0]
+      : layoutRatios.length === 0
         ? POSTCARD_FRAME_RATIO[orientation]
         : null;
   const fit = fitPicture(frame.width, frame.height, singlePictureRatio);
@@ -849,9 +893,10 @@ export function VisitCard({
                   reverse direction is what lets the line be last, and so on
                   top, without moving.
 
-                  It carries its own shadow because the gradient that used to
+                  It carries its own outline because the gradient that used to
                   back this whole block is gone: grey type straight onto an
-                  arbitrary photograph is unreadable about half the time. */}
+                  arbitrary photograph is unreadable about half the time. See
+                  RegionLine. */}
               {(region || visitedLine) && (
                 // Held to the name's own extent rather than the caption's.
                 // The name grows from its left edge (StretchText's transform
@@ -895,9 +940,9 @@ export function VisitCard({
                   ]}
                   pointerEvents="none"
                 >
-                <ThemedText numberOfLines={1} style={[styles.captionLine, headline.region.style]}>
+                <RegionLine treatment={headline.region}>
                   {[region, visitedLine].filter(Boolean).join(" · ")}
-                </ThemedText>
+                </RegionLine>
                 </View>
               )}
             </View>
@@ -955,21 +1000,14 @@ export function VisitCard({
     />
   ) : null;
 
-  // The written side's panel, cut and coloured per card.
+  // The written side's panel, coloured per card.
   //
-  // CORNERS. One radius on all four made the panel a machined rectangle
-  // dropped on a torn sheet -- the junction between it and the card's border
-  // was the one straight edge on an object that is otherwise all deckle and
-  // wear. Each corner now takes its own radius from the review's id, so the
-  // panel reads as cut by hand. Seeded, so a given card keeps its shape
-  // instead of reshuffling every time it is drawn.
-  const panelCorners = {
-    borderTopLeftRadius: Spacing.two + (hashSeed(`${visit.id}:tl`) % 7),
-    borderTopRightRadius: Spacing.two + (hashSeed(`${visit.id}:tr`) % 7),
-    borderBottomLeftRadius: Spacing.two + (hashSeed(`${visit.id}:bl`) % 7),
-    borderBottomRightRadius: Spacing.two + (hashSeed(`${visit.id}:br`) % 7),
-  };
-
+  // Square-cornered, like the photograph on the other side, so the two faces
+  // read as the same card: a print laid on bare stock with a clear margin
+  // round it. It used to carry a seeded radius on each corner, to look cut by
+  // hand, and that was the one thing that made the back look like a
+  // different object from the front.
+  //
   // COLOUR. The panel was one flat green on every card in the app. It takes
   // a wash of the review's OWN photograph now -- the same colour the place
   // name is lettered in, via useImageAccent -- so the message side of a
@@ -998,22 +1036,29 @@ export function VisitCard({
       flipLabel="Show the picture side"
       flipReach={BACK_FLIP_REACH}
       onDoubleTap={handleDoubleTap}
+      // Held off the card's edges by what the photograph is held off them on
+      // the front, so turning a card over keeps the same margin of bare card
+      // round what is printed on it. The sides take this card's own front
+      // margin exactly. Every point there comes off the message column, and
+      // the address column narrows on a portrait card to give some of it
+      // back (see BACK_COLUMN_WIDTH).
+      inset={pictureInset}
+      // The top and bottom take a portrait card's margin on every card,
+      // landscape included: a landscape front's own margin is shallower (its
+      // frame is), and on the back that left the turn-over mark printed hard
+      // against the foot of the panel.
+      insetVertical={pictureInsetFor(cardWidth, "vertical")}
+      // On bare card under the panel now, as it is on the front, so in the
+      // card's own ink.
       turnMark
-      // The written side is a dark panel, not bare card.
-      turnMarkInk={TURN_MARK_PANEL_INK}
     >
-    <ThemedView
-      type="backgroundElement"
-      style={[styles.back, panelCorners]}
-      collapsable={false}>
-      {/* The wash, under everything and catching nothing. Clipped by the
-          panel's own corners, so it withers with them. */}
+    <ThemedView type="backgroundElement" style={styles.back} collapsable={false}>
+      {/* The wash, under everything and catching nothing. */}
       {panelWash != null && (
         <View
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFill,
-            panelCorners,
             { backgroundColor: panelWash, opacity: PANEL_WASH_OPACITY },
           ]}
         />
@@ -1032,7 +1077,10 @@ export function VisitCard({
             {visit.placeName}
           </ThemedText>
           {region && (
-            <ThemedText type="meta" numberOfLines={1}>
+            // Two lines rather than one: with the panel held in off the
+            // card's sides, "ILLINOIS, UNITED STATES" no longer fit beside
+            // the menu button in these wide capitals and lost its last word.
+            <ThemedText type="meta" numberOfLines={2}>
               {region}
             </ThemedText>
           )}
@@ -1052,7 +1100,7 @@ export function VisitCard({
             onDeleted={onDeleted}
             authorId={visit.user_id}
             authorName={visit.authorName}
-            authorAvatarUrl={avatarUrl}
+            authorAvatarUrl={authorAvatarUrl}
             placeName={visit.placeName}
             note={visit.note}
             isViewerTagged={visit.isViewerTagged}
@@ -1097,7 +1145,7 @@ export function VisitCard({
             to; here it separates the message from where and when. */}
         <View style={styles.backDivider} />
 
-        <View style={styles.backColumn}>
+        <View style={[styles.backColumn, { width: BACK_COLUMN_WIDTH[orientation] }]}>
           {/* Top of the address column, which is where a card actually
               carries its stamp — the picture side only gets one when the
               photo leaves a margin wide enough to stick it in. */}
@@ -1106,13 +1154,15 @@ export function VisitCard({
             // absolutely positioned, because its whole job on the picture
             // side is to sit crooked in a corner. Here it is stuck square
             // in the address column, which is how a stamp actually goes on.
-            <RatingGlassBadgeGated
-              rating={visit.rating}
-              size={64}
-              seed={visit.id}
-              tags={visit.tags.map((tag) => tag.slug)}
-              placeId={visit.placeId}
-            />
+            <StampLanding>
+              <RatingGlassBadgeGated
+                rating={visit.rating}
+                size={64}
+                seed={visit.id}
+                tags={visit.tags.map((tag) => tag.slug)}
+                placeId={visit.placeId}
+              />
+            </StampLanding>
           )}
           <Postmark
             line={postmarkDate.line}
@@ -1245,13 +1295,6 @@ const styles = StyleSheet.create({
     // screen. See the line's own note at the call site.
     flexDirection: "column-reverse",
   },
-  // Deliberately carries no colour, opacity or shadow of its own any more:
-  // the region treatment supplies all three, so that this line is struck in
-  // the same ink as the name above or below it and is given a ground only
-  // when light type on a photograph actually needs one. A cream set here
-  // would simply have been overridden on every card, and the flat 0.85
-  // opacity was dimming a colour that had been chosen to match.
-  captionLine: {},
   // The band the broader location line is allowed to sit in: exactly as wide
   // as the name above or below it. See the call site.
   regionRange: {
@@ -1327,7 +1370,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     // The card's own ink, faded — it is a printed caption, not UI text on a
     // dark ground, so the theme's secondary cream would be invisible here.
-    color: "rgba(28, 34, 24, 0.62)",
+    // Faded less than it was (0.62), which left a 12pt line grey enough on
+    // cream to be hard work to read.
+    color: "rgba(28, 34, 24, 0.8)",
   },
   heartBurst: {
     ...StyleSheet.absoluteFill,
@@ -1337,10 +1382,8 @@ const styles = StyleSheet.create({
 
   // --- written side ---
   back: {
-    // Radii come from panelCorners, per card.
     padding: Spacing.three,
     gap: Spacing.two,
-    // So the wash is cut by the same corners the panel is.
     overflow: 'hidden',
   },
   backHeader: {
@@ -1390,11 +1433,7 @@ const styles = StyleSheet.create({
     backgroundColor: `${BrandColors.cream}2e`,
   },
   backColumn: {
-    // Fixed rather than content-sized: a column whose width followed its
-    // contents would move the ruled divider from card to card down the feed.
-    // As narrow as the postmark and a legible map allow, for the same reason
-    // as the gap above.
-    width: 112,
+    // Width per orientation; see BACK_COLUMN_WIDTH.
     alignItems: "flex-end",
     gap: Spacing.two,
   },

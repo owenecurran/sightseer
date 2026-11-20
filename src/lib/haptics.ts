@@ -29,6 +29,21 @@ export function hapticUnlike() {
   fire(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
 }
 
+// A rating stamp coming down on a card as it settles in the feed. Soft, the
+// lightest knock there is: it fires once per card while scrolling, so a
+// flick through the feed is a run of them, and anything heavier would turn
+// that into a buzz.
+export function hapticStamp() {
+  fire(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft));
+}
+
+// A route between two posts drawing itself out, one tick per dash, as the
+// feed scrolls; and taking itself back the same way. Selection, the faintest
+// feedback there is: the ratchet of a dial rather than a knock.
+export function hapticTick() {
+  fire(() => Haptics.selectionAsync());
+}
+
 // A postcard turning over. Medium, because unlike a like this is a gesture
 // with travel behind it: the knock lands at the moment the card commits and
 // confirms that the drag was enough, which is exactly the thing that was

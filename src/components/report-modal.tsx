@@ -3,6 +3,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } fro
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Avatar } from '@/components/ui/avatar';
 import { TextField } from '@/components/ui/text-field';
 import { BrandColors, Spacing } from '@/constants/theme';
@@ -86,90 +87,112 @@ export function ReportModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <ThemedView type="background" style={styles.sheet}>
+        <Unfold style={styles.sheet}>
           {isSubmitted ? (
             <>
-              <ThemedText type="headline" style={styles.centerText}>
-                Report submitted
-              </ThemedText>
-              <ThemedText type="caption" style={styles.centerText}>
-                Thanks. Our team will take a look.
-              </ThemedText>
-              <Pressable onPress={onClose} style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}>
-                <ThemedText type="smallBold" themeColor="background">
-                  Done
+              <Fold>
+                <ThemedText type="displaySerif" style={styles.centerText}>
+                  Report submitted
                 </ThemedText>
-              </Pressable>
+              </Fold>
+              <Fold>
+                <ThemedText type="caption" style={styles.centerText}>
+                  Thanks. Our team will take a look.
+                </ThemedText>
+              </Fold>
+              <Fold>
+                <Pressable onPress={onClose} style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}>
+                  <ThemedText type="roundedStat" themeColor="background" style={styles.buttonLabel}>
+                    Done
+                  </ThemedText>
+                </Pressable>
+              </Fold>
             </>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formContent}>
-              <ThemedText type="headline">Report</ThemedText>
+              <Fold>
+                <ThemedText type="displaySerif">Report</ThemedText>
+              </Fold>
 
               {/* The reported user, highlighted — always present, this
                   dialog is always about a specific person even when a post
                   prompted it. */}
-              <View style={styles.targetRow}>
+              <Fold style={styles.targetRow}>
                 <Avatar uri={reportedUserAvatarUrl} name={reportedUserName} size={40} />
                 <ThemedText type="smallBold">{reportedUserName}</ThemedText>
-              </View>
+              </Fold>
 
               {/* The corresponding post, highlighted, only when this dialog
                   was opened from somewhere it's actually visible. */}
               {post && (
-                <ThemedView type="backgroundElement" style={styles.postPreview}>
-                  <ThemedText type="meta">
-                    Post
-                  </ThemedText>
-                  <ThemedText type="smallBold">{post.placeName}</ThemedText>
-                  {post.note && (
-                    <ThemedText type="small" numberOfLines={3}>
-                      {post.note}
+                <Fold>
+                  <ThemedView type="backgroundElement" style={styles.postPreview}>
+                    <ThemedText type="meta">
+                      Post
                     </ThemedText>
-                  )}
-                </ThemedView>
+                    <ThemedText type="smallBold">{post.placeName}</ThemedText>
+                    {post.note && (
+                      <ThemedText type="small" numberOfLines={3}>
+                        {post.note}
+                      </ThemedText>
+                    )}
+                  </ThemedView>
+                </Fold>
               )}
 
               <View style={styles.section}>
-                <ThemedText type="meta">
-                  What's wrong?
-                </ThemedText>
+                <Fold>
+                  <ThemedText type="meta">
+                    What's wrong?
+                  </ThemedText>
+                </Fold>
+                {/* Each reason is its own fold; the reasons that share a line
+                    are one panel between them. */}
                 <View style={styles.reasonGrid}>
                   {REPORT_REASONS.map((r) => {
                     const isSelected = reason === r.value;
                     return (
-                      <Pressable key={r.value} onPress={() => setReason(r.value)}>
-                        <ThemedView
-                          type={isSelected ? 'backgroundSelected' : 'backgroundElement'}
-                          style={styles.reasonChip}>
-                          <ThemedText type="small" themeColor={isSelected ? 'background' : 'text'}>
-                            {r.label}
-                          </ThemedText>
-                        </ThemedView>
-                      </Pressable>
+                      <Fold key={r.value}>
+                        <Pressable onPress={() => setReason(r.value)}>
+                          <ThemedView
+                            type={isSelected ? 'backgroundSelected' : 'backgroundElement'}
+                            style={styles.reasonChip}>
+                            <ThemedText type="small" themeColor={isSelected ? 'background' : 'text'}>
+                              {r.label}
+                            </ThemedText>
+                          </ThemedView>
+                        </Pressable>
+                      </Fold>
                     );
                   })}
                 </View>
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="meta">
-                  Details (optional)
-                </ThemedText>
-                <TextField
-                  placeholder="Anything else we should know?"
-                  value={details}
-                  onChangeText={setDetails}
-                  multiline
-                />
+                <Fold>
+                  <ThemedText type="meta">
+                    Details (optional)
+                  </ThemedText>
+                </Fold>
+                <Fold>
+                  <TextField
+                    placeholder="Anything else we should know?"
+                    value={details}
+                    onChangeText={setDetails}
+                    multiline
+                  />
+                </Fold>
               </View>
 
               {error && (
-                <ThemedText type="small" themeColor="danger">
-                  {error}
-                </ThemedText>
+                <Fold>
+                  <ThemedText type="small" themeColor="danger">
+                    {error}
+                  </ThemedText>
+                </Fold>
               )}
 
-              <View style={styles.actionsRow}>
+              <Fold style={styles.actionsRow}>
                 <Pressable onPress={onClose} disabled={isSubmitting} hitSlop={8}>
                   <ThemedText type="action">
                     Cancel
@@ -187,15 +210,15 @@ export function ReportModal({
                   {isSubmitting ? (
                     <ActivityIndicator color={BrandColors.background} size="small" />
                   ) : (
-                    <ThemedText type="smallBold" themeColor="background">
+                    <ThemedText type="roundedStat" themeColor="background" style={styles.buttonLabel}>
                       Submit report
                     </ThemedText>
                   )}
                 </Pressable>
-              </View>
+              </Fold>
             </ScrollView>
           )}
-        </ThemedView>
+        </Unfold>
       </View>
     </Modal>
   );
@@ -209,12 +232,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.four,
   },
+  // A percentage cap works here because the overlay this sits in has a
+  // definite height to take it of; the scroll view inside shrinks to it.
   sheet: {
     width: '100%',
     maxWidth: 420,
     maxHeight: '80%',
     padding: Spacing.four,
-    borderRadius: Spacing.three,
   },
   formContent: {
     gap: Spacing.three,
@@ -272,5 +296,9 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.8,
+  },
+  // The size the app's own Button sets this face at.
+  buttonLabel: {
+    fontSize: 16,
   },
 });

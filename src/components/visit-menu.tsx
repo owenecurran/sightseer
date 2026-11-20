@@ -6,7 +6,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { ReportModal } from '@/components/report-modal';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/hooks/use-theme';
@@ -93,11 +93,14 @@ export function VisitMenu({
           <Ionicons name="ellipsis-horizontal" size={22} color={theme.textSecondary} />
         </Pressable>
       ) : (
-        <ThemedView type="backgroundSelected" style={styles.panel}>
+        // Falls open from where the button was, held along its top edge.
+        <Unfold paper="backgroundSelected" style={styles.panel}>
           {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
+            <Fold>
+              <ThemedText type="small" themeColor="danger">
+                {error}
+              </ThemedText>
+            </Fold>
           )}
 
           {/* A short, single-column list of plain actions — the old inline
@@ -108,39 +111,49 @@ export function VisitMenu({
           <View style={styles.list}>
             {isOwner ? (
               <>
-                <Pressable onPress={() => router.push({ pathname: '/edit-visit/[id]', params: { id: visitId } })}>
-                  <ThemedText type="small">Edit</ThemedText>
-                </Pressable>
-                <Pressable onPress={() => setConfirmingDelete(true)}>
-                  <ThemedText type="small" style={styles.deleteLabel}>
-                    Delete
-                  </ThemedText>
-                </Pressable>
+                <Fold>
+                  <Pressable onPress={() => router.push({ pathname: '/edit-visit/[id]', params: { id: visitId } })}>
+                    <ThemedText type="small">Edit</ThemedText>
+                  </Pressable>
+                </Fold>
+                <Fold>
+                  <Pressable onPress={() => setConfirmingDelete(true)}>
+                    <ThemedText type="small" style={styles.deleteLabel}>
+                      Delete
+                    </ThemedText>
+                  </Pressable>
+                </Fold>
               </>
             ) : (
               <>
                 {isViewerTagged && onUntagSelf && (
-                  <Pressable onPress={handleUntag} disabled={isUntagging}>
-                    <ThemedText type="small">{isUntagging ? 'Removing…' : 'Untag yourself'}</ThemedText>
-                  </Pressable>
+                  <Fold>
+                    <Pressable onPress={handleUntag} disabled={isUntagging}>
+                      <ThemedText type="small">{isUntagging ? 'Removing…' : 'Untag yourself'}</ThemedText>
+                    </Pressable>
+                  </Fold>
                 )}
-                <Pressable
-                  onPress={() => {
-                    setIsOpen(false);
-                    setIsReportOpen(true);
-                  }}>
-                  <ThemedText type="small">Report</ThemedText>
-                </Pressable>
+                <Fold>
+                  <Pressable
+                    onPress={() => {
+                      setIsOpen(false);
+                      setIsReportOpen(true);
+                    }}>
+                    <ThemedText type="small">Report</ThemedText>
+                  </Pressable>
+                </Fold>
               </>
             )}
           </View>
 
-          <Pressable onPress={handleToggle}>
-            <ThemedText type="action">
-              Close
-            </ThemedText>
-          </Pressable>
-        </ThemedView>
+          <Fold>
+            <Pressable onPress={handleToggle}>
+              <ThemedText type="action">
+                Close
+              </ThemedText>
+            </Pressable>
+          </Fold>
+        </Unfold>
       )}
 
       <ConfirmDeleteModal
@@ -180,7 +193,6 @@ const styles = StyleSheet.create({
   panel: {
     gap: Spacing.two,
     padding: Spacing.two,
-    borderRadius: Spacing.two,
   },
   list: {
     gap: Spacing.two,

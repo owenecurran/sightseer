@@ -215,7 +215,7 @@ export default function SearchScreen() {
     const mutualLine = mutualsLabel(user.mutuals);
     return (
       <Pressable key={user.id} onPress={() => router.push({ pathname: '/user/[id]', params: { id: user.id } })}>
-        <PaperPanel seed={`result-user`} style={styles.resultRow}>
+        <PaperPanel seed={`result-user-${user.id}`} style={styles.resultRow}>
           <Avatar uri={avatarUrls[user.id]} name={user.name ?? user.handle} size={40} />
           <View style={styles.resultInfo}>
             <ResultTitle>{user.name ?? user.handle ?? 'Unnamed'}</ResultTitle>
@@ -299,7 +299,7 @@ export default function SearchScreen() {
                     <Pressable
                       key={board.id}
                       onPress={() => router.push({ pathname: '/board/[id]', params: { id: board.id } })}>
-                      <PaperPanel seed={`result-board`} style={styles.resultRow}>
+                      <PaperPanel seed={`result-board-${board.id}`} style={styles.resultRow}>
                         {coverUrls[board.id] && <Image source={{ uri: coverUrls[board.id] }} style={styles.resultThumbnail} />}
                         <View style={styles.resultInfo}>
                           <ResultTitle>{board.name}</ResultTitle>
@@ -317,7 +317,7 @@ export default function SearchScreen() {
                     <Pressable
                       key={book.id}
                       onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: book.id } })}>
-                      <PaperPanel seed={`result-book`} style={styles.resultRow}>
+                      <PaperPanel seed={`result-book-${book.id}`} style={styles.resultRow}>
                         {coverUrls[book.id] && <Image source={{ uri: coverUrls[book.id] }} style={styles.resultThumbnail} />}
                         <View style={styles.resultInfo}>
                           <ResultTitle>{book.title}</ResultTitle>

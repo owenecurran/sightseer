@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { TagSticker } from '@/components/ui/tag-sticker';
 import { BrandColors, Spacing } from '@/constants/theme';
 import { groupTags, type Tag } from '@/lib/visit-tags';
@@ -51,7 +51,7 @@ export function TagPickerModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       statusBarTranslucent
       navigationBarTranslucent
       onRequestClose={onClose}>
@@ -59,22 +59,20 @@ export function TagPickerModal({
           meant for a tag near the edge doesn't dismiss instead. */}
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.sheetWrap} onPress={(e) => e.stopPropagation()}>
-          <ThemedView
-            type="backgroundElement"
-            style={[styles.sheet, { marginBottom: -insets.bottom }]}>
-            <View style={styles.header}>
+          <Unfold paper="backgroundElement" from="bottom" style={[styles.sheet, { marginBottom: -insets.bottom }]}>
+            <Fold style={styles.header}>
               <View style={styles.headerText}>
-                <ThemedText type="sectionLabel">Add tags</ThemedText>
+                <ThemedText type="displaySerif">Add tags</ThemedText>
                 <ThemedText type="meta">
                   Optional · {selectedSlugs.length} of {max} chosen
                 </ThemedText>
               </View>
               <Pressable onPress={onClose} hitSlop={8}>
-                <ThemedText type="smallBold" themeColor="sage">
+                <ThemedText type="action" themeColor="sage">
                   Done
                 </ThemedText>
               </Pressable>
-            </View>
+            </Fold>
 
             <ScrollView
               style={styles.scroll}
@@ -87,9 +85,11 @@ export function TagPickerModal({
               showsVerticalScrollIndicator={false}>
               {sections.map((section) => (
                 <View key={section.category} style={styles.section}>
-                  <ThemedText type="meta" style={styles.sectionHeading}>
-                    {section.category}
-                  </ThemedText>
+                  <Fold>
+                    <ThemedText type="meta" style={styles.sectionHeading}>
+                      {section.category}
+                    </ThemedText>
+                  </Fold>
                   {/* A GRID of equal tiles, two across. It was one sticker
                       per full-width row, which made seventeen tags a long
                       scroll of mostly empty lines, and left every sticker
@@ -105,32 +105,33 @@ export function TagPickerModal({
                       // next tap land on something you didn't aim at.
                       const isDisabled = !isSelected && isFull;
                       return (
-                        <Pressable
-                          key={tag.slug}
-                          onPress={() => onToggle(tag.slug)}
-                          disabled={isDisabled}
-                          accessibilityRole="checkbox"
-                          accessibilityState={{ checked: isSelected, disabled: isDisabled }}
-                          accessibilityLabel={tag.label}
-                          style={[
-                            styles.tile,
-                            isSelected && styles.tileSelected,
-                            isDisabled && styles.tileDisabled,
-                          ]}>
-                          <TagSticker slug={tag.slug} label={tag.label} size="large" block />
-                          {isSelected && (
-                            <View style={styles.check}>
-                              <Ionicons name="checkmark" size={13} color={BrandColors.background} />
-                            </View>
-                          )}
-                        </Pressable>
+                        <Fold key={tag.slug} style={styles.tileSlot}>
+                          <Pressable
+                            onPress={() => onToggle(tag.slug)}
+                            disabled={isDisabled}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: isSelected, disabled: isDisabled }}
+                            accessibilityLabel={tag.label}
+                            style={[
+                              styles.tile,
+                              isSelected && styles.tileSelected,
+                              isDisabled && styles.tileDisabled,
+                            ]}>
+                            <TagSticker slug={tag.slug} label={tag.label} size="large" block />
+                            {isSelected && (
+                              <View style={styles.check}>
+                                <Ionicons name="checkmark" size={13} color={BrandColors.background} />
+                              </View>
+                            )}
+                          </Pressable>
+                        </Fold>
                       );
                     })}
                   </View>
                 </View>
               ))}
             </ScrollView>
-          </ThemedView>
+          </Unfold>
         </Pressable>
       </Pressable>
     </Modal>
@@ -153,8 +154,6 @@ const styles = StyleSheet.create({
     // Tall enough to scroll through meaningfully, short enough that the
     // form behind it still reads as the thing being filled in.
     maxHeight: '90%',
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
     paddingTop: Spacing.three,
   },
   header: {
@@ -191,12 +190,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Spacing.two,
   },
-  tile: {
+  // The grid item is the tile's fold, so the sizing is on that.
+  tileSlot: {
     // Two across with the gap between them. A fixed basis rather than
     // flex: 1, so a section with an odd tag out leaves its last tile at
     // half width instead of stretching it across the whole row.
     flexBasis: '48%',
     flexGrow: 0,
+  },
+  tile: {
+    // Fills the fold, which the row stretches to the line's tallest tile, so
+    // a tag whose label wraps still sits level with its neighbour.
+    flexGrow: 1,
     // The sticker IS the tile -- it fills it (see TagSticker's `block`).
     // This padding is only the gap the selection ring draws in, so choosing
     // a tag rings it without moving or shrinking it.

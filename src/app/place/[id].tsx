@@ -16,7 +16,7 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { StretchText } from '@/components/ui/stretch-text';
 import { TagSticker } from '@/components/ui/tag-sticker';
 import { FilterSortMenu, type MenuOption } from '@/components/ui/filter-sort-menu';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
@@ -248,7 +248,7 @@ export default function PlaceDetailScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <Animated.FlatList
           renderScrollComponent={renderScroll}
           data={visibleVisits}

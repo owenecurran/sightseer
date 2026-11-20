@@ -9,7 +9,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { PageLoader } from "@/components/ui/page-loader";
 import { VisitCard } from "@/components/visit-card";
-import { MaxContentWidth, Spacing, TopTabInset } from "@/constants/theme";
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from "@/constants/theme";
 import { useBottomTabInset } from "@/hooks/use-bottom-tab-inset";
 import { useHideOnScrollHandler } from "@/hooks/use-hide-on-scroll";
 import { useAuth } from "@/lib/auth-context";
@@ -158,7 +158,7 @@ export default function TaggedInScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <View style={styles.header}>
           <BackLink seed="tagged-in" />
           <ThemedText type="displaySerif">Tagged in</ThemedText>

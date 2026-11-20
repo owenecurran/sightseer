@@ -103,7 +103,7 @@ function todayIsoDate(): string {
 }
 
 export default function ReviewFormScreen() {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const theme = useTheme();
   const { placeId, draftId } = useLocalSearchParams<{ placeId?: string; draftId?: string }>();
   const bottomInset = useBottomTabInset();
@@ -723,6 +723,7 @@ export default function ReviewFormScreen() {
     created_at: new Date().toISOString(),
     user_id: session?.user.id ?? 'preview',
     authorName: 'You',
+    authorHandle: profile?.handle ?? null,
     placeId: selectedPlace?.id ?? 'preview',
     placeName: selectedPlace?.name ?? '',
     placeLat: selectedPlace?.lat ?? null,

@@ -25,7 +25,7 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { StretchText } from '@/components/ui/stretch-text';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
-import { MaxContentWidth, Spacing, StickerAccents, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, StickerAccents, TopTabInset } from '@/constants/theme';
 import { hashSeed } from '@/lib/seeded-random';
 import { useTheme } from '@/hooks/use-theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -379,7 +379,7 @@ export default function TravelBookDetailScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}

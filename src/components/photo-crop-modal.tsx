@@ -5,7 +5,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Button } from '@/components/ui/button';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -272,16 +272,20 @@ export function PhotoCropModal({ visible, uri, onCancel, onConfirm, allowRatioSe
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.overlay}>
-        <ThemedView type="background" style={styles.sheet}>
-          <ThemedText type="smallBold">Adjust photo</ThemedText>
+        <Unfold style={styles.sheet}>
+          <Fold>
+            <ThemedText type="displaySerif">Adjust photo</ThemedText>
+          </Fold>
 
           {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
+            <Fold>
+              <ThemedText type="small" themeColor="danger">
+                {error}
+              </ThemedText>
+            </Fold>
           )}
 
-          <View style={styles.frameOuter}>
+          <Fold style={styles.frameOuter}>
             <Animated.View style={[styles.frame, frameContainerStyle]} ref={frameRef}>
               {uri && imageSize && (
                 <GestureDetector gesture={composed}>
@@ -291,31 +295,35 @@ export function PhotoCropModal({ visible, uri, onCancel, onConfirm, allowRatioSe
                 </GestureDetector>
               )}
             </Animated.View>
-          </View>
+          </Fold>
 
-          <ThemedText type="caption">
-            {Platform.OS === 'web'
-              ? 'Drag to reposition, scroll to zoom.'
-              : 'Drag to reposition, pinch to zoom.'}
-          </ThemedText>
+          <Fold>
+            <ThemedText type="caption">
+              {Platform.OS === 'web'
+                ? 'Drag to reposition, scroll to zoom.'
+                : 'Drag to reposition, pinch to zoom.'}
+            </ThemedText>
+          </Fold>
 
           {allowRatioSelection && imageSize && (
             <View style={styles.ratioSection}>
-              <GestureDetector gesture={sliderPan}>
-                <View style={styles.sliderTrack} onLayout={handleSliderLayout}>
-                  <View style={[styles.sliderTrackBackground, { backgroundColor: theme.backgroundElement }]} />
-                  {sliderTrackWidth > 0 && (
-                    <>
-                      <Animated.View style={[styles.sliderFill, sliderFillStyle, { backgroundColor: theme.sage }]} />
-                      <Animated.View
-                        style={[styles.sliderThumb, sliderThumbStyle, { backgroundColor: theme.sage, borderColor: theme.background }]}
-                      />
-                    </>
-                  )}
-                </View>
-              </GestureDetector>
+              <Fold>
+                <GestureDetector gesture={sliderPan}>
+                  <View style={styles.sliderTrack} onLayout={handleSliderLayout}>
+                    <View style={[styles.sliderTrackBackground, { backgroundColor: theme.backgroundElement }]} />
+                    {sliderTrackWidth > 0 && (
+                      <>
+                        <Animated.View style={[styles.sliderFill, sliderFillStyle, { backgroundColor: theme.sage }]} />
+                        <Animated.View
+                          style={[styles.sliderThumb, sliderThumbStyle, { backgroundColor: theme.sage, borderColor: theme.background }]}
+                        />
+                      </>
+                    )}
+                  </View>
+                </GestureDetector>
+              </Fold>
 
-              <View style={styles.presetsRow}>
+              <Fold style={styles.presetsRow}>
                 <Pressable
                   onPress={() => setRatio(tFromRatio(clamp(imageSize.width / imageSize.height, MIN_RATIO, MAX_RATIO)))}
                   hitSlop={6}>
@@ -330,19 +338,19 @@ export function PhotoCropModal({ visible, uri, onCancel, onConfirm, allowRatioSe
                     </ThemedText>
                   </Pressable>
                 ))}
-              </View>
+              </Fold>
             </View>
           )}
 
-          <View style={styles.actionsRow}>
+          <Fold style={styles.actionsRow}>
             <Pressable onPress={onCancel} disabled={isProcessing}>
               <ThemedText type="action">
                 Cancel
               </ThemedText>
             </Pressable>
             <Button label="Use photo" onPress={handleConfirm} loading={isProcessing} disabled={!imageSize} />
-          </View>
-        </ThemedView>
+          </Fold>
+        </Unfold>
       </View>
     </Modal>
   );
@@ -362,7 +370,6 @@ const styles = StyleSheet.create({
   sheet: {
     width: FRAME_MAX + Spacing.four * 2,
     padding: Spacing.four,
-    borderRadius: Spacing.three,
     gap: Spacing.two,
     alignItems: 'center',
   },

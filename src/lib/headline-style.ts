@@ -33,6 +33,9 @@ export type HeadlineTreatment = {
 // own, in the name's own colour, and tucked against it.
 export type RegionTreatment = {
   style: TextStyle;
+  // Its outline: copies of the line in the opposite ink, ringed around it.
+  // See REGION_OUTLINE_RADIUS for why it is copies and not a shadow.
+  back: HeadlinePlate[];
   // Which side of the name it sits on, and which margin it runs to. Two
   // independent draws, which is why they use a MIXED two-way pick — see
   // pickOneOfTwo. With a plain hash they would have been the same coin flip
@@ -280,10 +283,27 @@ const EXTRUDE_STEP = 0.8;
 // same thickness on both.
 const BORDER_SHARE = 0.07;
 
-// How far the region line's own outline reaches — see the textShadowRadius in
-// regionTreatmentFor. The line box has to carry it on both sides or the
-// outline is what gets clipped instead of the letters.
-const REGION_OUTLINE_RADIUS = 2;
+// How far the region line's outline stands off its letters, in points. The
+// line box has to carry it on both sides or the outline is what gets clipped
+// instead of the letters.
+//
+// A ring of hard copies, the same construction as the name's borderOut, and
+// not a textShadow. The shadow was a 2pt blur, and a blur that small spreads
+// its colour so thin that on a busy photograph it barely registers: lilac
+// type over foliage came out as lilac type over foliage, with a faint smudge.
+// A copy is real ink, so the line carries its own dark (or cream) ground
+// wherever it lands.
+const REGION_OUTLINE_RADIUS = 1;
+// Eight copies, not the name's twelve. The ring's outer edge falls short by
+// radius * (1 - cos(pi / steps)), which at this radius is a tenth of a point.
+const REGION_OUTLINE_STEPS = 8;
+// Each copy is struck translucent, so the edge is a quiet ground rather than
+// a stroke. At full strength a black ring round every letter turned a small
+// supporting line into the loudest thing on the card. The copies overlap most
+// right against the letters, so the edge stays densest where it does the
+// work and fades toward its outside.
+const REGION_EDGE_INK = 'rgba(10, 16, 12, 0.4)';
+const REGION_EDGE_CREAM = 'rgba(234, 231, 207, 0.45)';
 
 // The gap left between the name and the region line's letters, in points.
 //
@@ -565,9 +585,28 @@ function regionTreatmentFor(seed: string, color: string, isLight: boolean): Regi
   const face = pick(`region-face:${seed}`, REGION_FACES);
   const above = pickOneOfTwo(`region-side:${seed}`, true, false);
   const box = regionBoxFor(face);
+  // An edge, always, and in whichever direction actually helps.
+  //
+  // This line used to get a soft dark halo only when its ink was light, on
+  // the reasoning that dark type on bare card needs nothing. That missed the
+  // case this line is most often in: CREAM ON CREAM. The name is allowed to
+  // run off the picture and onto the card, and this line goes with it, where
+  // light ink on light paper has almost no contrast at all.
+  //
+  // So the outline is struck in the OPPOSITE direction to the ink: light type
+  // gets the card's near-black, dark type gets cream.
+  const edge = isLight ? REGION_EDGE_INK : REGION_EDGE_CREAM;
 
   return {
     above,
+    back: Array.from({ length: REGION_OUTLINE_STEPS }, (_, i) => {
+      const angle = (2 * Math.PI * i) / REGION_OUTLINE_STEPS;
+      return {
+        color: edge,
+        dx: REGION_OUTLINE_RADIUS * Math.cos(angle),
+        dy: REGION_OUTLINE_RADIUS * Math.sin(angle),
+      };
+    }),
     alignRight: pickOneOfTwo(`region-margin:${seed}`, true, false),
     // The empty space between this face's letters and the edge of its line
     // box on the side the name is on, less the gap we actually want. The
@@ -592,23 +631,6 @@ function regionTreatmentFor(seed: string, color: string, isLight: boolean): Regi
       ...(face.letterSpacing != null ? { letterSpacing: face.letterSpacing } : null),
       ...(face.textTransform != null ? { textTransform: face.textTransform } : null),
       color,
-      // An edge, always, and in whichever direction actually helps.
-      //
-      // This line used to get a soft dark halo only when its ink was light,
-      // on the reasoning that dark type on bare card needs nothing. That
-      // missed the case this line is most often in: CREAM ON CREAM. The name
-      // is allowed to run off the picture and onto the card, and this line
-      // goes with it — where light ink on light paper has almost no contrast
-      // at all, and a soft halo at radius 4 is too diffuse to give it any.
-      //
-      // So: a tight, strong outline rather than a soft one, struck in the
-      // OPPOSITE direction to the ink. Light type gets the card's near-black,
-      // dark type gets cream. Small radius because an outline is what reads
-      // at this size — the blur is what made it disappear.
-      textShadowColor: isLight ? INK : CREAM,
-      textShadowOffset: { width: 0, height: 0 },
-      // The line box above is cut to fit this, so the two have to agree.
-      textShadowRadius: REGION_OUTLINE_RADIUS,
     },
   };
 }

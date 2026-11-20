@@ -176,3 +176,10 @@ export const NavBarHeight = 76;
 // sites, since `Spacing.x + TopTabInset` is a harmless no-op at 0.
 export const TopTabInset = 0;
 export const MaxContentWidth = 800;
+// The safe-area edges for a screen whose content scrolls under the floating
+// nav bar. Not the bottom: such a screen's scroll content already pads its
+// own bottom past the gesture bar (useBottomTabInset includes that inset),
+// and padding the frame as well stopped the scroll view short of the
+// screen, so content was cut off in a band above the gesture bar rather
+// than by the edge of the screen.
+export const ScrollScreenEdges = ['top', 'left', 'right'] as const;
