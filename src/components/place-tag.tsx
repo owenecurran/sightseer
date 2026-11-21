@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -86,6 +86,9 @@ const RAIL_HEIGHT = RAIL_Y + RAIL_SAG_MAX + 8;
 export type PlaceTagMotion = {
   strip: SharedValue<number>;
   page: SharedValue<number>;
+  // How far the strip is scrolled, for each tag to tell whether it is in
+  // view: only those that are swing.
+  offset: SharedValue<number>;
 };
 
 type PlaceTagProps = {
@@ -181,10 +184,20 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
   // so the tags lag behind the movement and swing back past rest when it
   // stops. Held off until the drop has landed, so a scroll during it does
   // not cut the fall short.
+  //
+  // Only while it is in view, or near it. Each tag's swing, stretch and
+  // string are three animated views, and Reanimated, as this app builds it,
+  // commits the whole page for every animated frame (its
+  // ANDROID_SYNCHRONOUSLY_UPDATE_UI_PROPS flag is off), so ten tags all
+  // springing on every scroll frame was the heaviest thing on the page.
+  const { width: screenWidth } = useWindowDimensions();
+  const tagLeft = PLACE_TAG_EDGE + index * (TAG_WIDTH + PLACE_TAG_GAP);
   useAnimatedReaction(
     () => [motion.strip.value, motion.page.value],
     ([strip, page]) => {
       if (!hasDropped.value) return;
+      const onScreen = tagLeft - motion.offset.value;
+      if (onScreen < -TAG_WIDTH * 1.3 || onScreen > screenWidth + TAG_WIDTH * 0.3) return;
       const target = -strip * SWING_PER_STRIP + page * SWING_PER_PAGE * shimmy;
       swing.set(withSpring(Math.max(-MAX_SWING, Math.min(MAX_SWING, target)), SWING_SPRING));
       bob.set(withSpring(Math.max(-6, Math.min(14, page * STRETCH_PER_PAGE)), BOB_SPRING));

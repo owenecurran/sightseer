@@ -92,3 +92,57 @@ export function tagFamily(slug: string): TagFamily {
   }
   return 'verdict';
 }
+
+// The word printed on a tag's sticker banner: a sticker's slogan rather than
+// the tag's full name, short enough to set large on a sticker an inch
+// across. The name itself shows when the sticker is tapped.
+const SLOGANS: Record<string, string> = {
+  'perfect-sunset': 'Golden hour',
+  'scenic-location': 'What a view',
+  'open-water': 'Splash',
+  'great-trails': 'Trails',
+  'mountain-views': 'Peaks',
+  waterfront: 'Harbour',
+  'green-space': 'Green',
+  wildlife: 'Wild',
+  stargazing: 'Starry',
+  vibe: 'Vibes',
+  cozy: 'Cozy',
+  'live-music': 'Live',
+  bar: 'Cheers',
+  'night-out': 'Night out',
+  quiet: 'Hush',
+  lively: 'Buzzing',
+  romantic: 'Amour',
+  historic: 'Old soul',
+  artsy: 'Artsy',
+  'young-people': 'Young',
+  'kid-friendly': 'Kids',
+  'pet-friendly': 'Pets',
+  'solo-friendly': 'Solo',
+  'good-for-groups': 'Crew',
+  accessible: 'Step-free',
+  'date-spot': 'Date',
+  'good-food': 'Yum',
+  'good-coffee': 'Coffee',
+  'great-cocktails': 'Sips',
+  'local-food': 'Local',
+  walkable: 'Stroll',
+  affordable: 'Cheap',
+  'high-end': 'Fancy',
+  'easy-parking': 'Parking',
+  'transit-friendly': 'Transit',
+  free: 'Free',
+  'gets-crowded': 'Busy',
+  'book-ahead': 'Book it',
+  'rainy-day': 'Rainy day',
+  'local-secret': 'Hidden gem',
+  'highlight-of-the-city': 'The best',
+  'worth-the-detour': 'Detour',
+  underrated: 'Sleeper',
+  overrated: 'Meh',
+};
+
+export function tagSlogan(slug: string, label: string): string {
+  return SLOGANS[slug] ?? label.split(' ')[0];
+}

@@ -93,10 +93,20 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
   // hung tags to swing and bob with. Each reading falls back to nothing a
   // moment after the last, so a scroll that stops dead does not leave the
   // tags leaning into a movement that has ended.
+  //
+  // Only while the strip is on screen. Every animated view here costs a
+  // commit of the whole page on each frame (see place-tag.tsx), and the tags
+  // bobbing to a scroll that had long since carried them out of sight was
+  // most of what made scrolling Discover stutter.
   const stripMotion = useSharedValue(0);
   const pageMotion = useSharedValue(0);
-  const tagMotion = useMemo(() => ({ strip: stripMotion, page: pageMotion }), [stripMotion, pageMotion]);
   const stripX = useSharedValue(0);
+  // Where the strip's section ends, down the page.
+  const stripBottom = useSharedValue(0);
+  const tagMotion = useMemo(
+    () => ({ strip: stripMotion, page: pageMotion, offset: stripX }),
+    [stripMotion, pageMotion, stripX],
+  );
   const stripScrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       const x = event.contentOffset.x;
@@ -111,6 +121,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
     () => pageScrollY.value,
     (y, previous) => {
       if (previous == null) return;
+      if (y > stripBottom.value) return;
       pageMotion.set(momentary(y - previous));
     },
   );
@@ -266,7 +277,12 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
       )}
 
       {places.length > 0 && (
-        <View style={styles.section}>
+        <View
+          style={styles.section}
+          onLayout={(event) => {
+            const { y, height } = event.nativeEvent.layout;
+            stripBottom.set(y + height);
+          }}>
           <ThemedText type="sectionLabel">Places to go</ThemedText>
           {/* Bled past the screen's gutter so the strip runs off the edge and
               reads as scrollable, instead of stopping short and looking like
