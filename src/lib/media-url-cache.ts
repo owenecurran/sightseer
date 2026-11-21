@@ -1,90 +1,117 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Shared in-memory cache for presigned R2 view URLs (avatars, visit photos,
-// prompt photos) — every screen that shows the same photo was re-fetching
-// its signed URL from scratch on every mount, which was the main
-// contributor to "images load slowly" (a full Edge Function round trip +
-// R2 signature per image, repeated on every navigation). Signed URLs are
-// valid for 1 hour server-side; cached a bit short of that so a stale URL
-// is never served.
 const CACHE_TTL_MS = 50 * 60 * 1000;
+const MAX_ENTRIES = 2000;
+const LEGACY_STORAGE_KEY = 'media-url-cache-v1';
 
 type CacheEntry = { url: string; expiresAt: number };
+type ViewerCache = {
+  viewerId: string;
+  storageKey: string;
+  entries: Map<string, CacheEntry>;
+  pending: Map<string, Promise<string | undefined>>;
+  hydration?: Promise<void>;
+  flushTimer?: ReturnType<typeof setTimeout>;
+};
 
-const cache = new Map<string, CacheEntry>();
+let active: ViewerCache | undefined;
+let removedLegacyCache = false;
 
-// Persisted across launches, not just across screens. In-memory alone meant
-// every cold start re-signed every URL before a single image could render —
-// and since expo-image keys its disk cache on the URL path (see
-// image-cache.ts), the bytes were usually already on disk, waiting on a
-// round trip that only existed to rediscover the address. Restoring the map
-// first means a cold start paints from disk immediately.
-const STORAGE_KEY = 'media-url-cache-v1';
-let hydrated = false;
-let hydrating: Promise<void> | null = null;
-
-async function hydrate(): Promise<void> {
-  if (hydrated) return;
-  if (!hydrating) {
-    hydrating = (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const now = Date.now();
-          for (const [id, entry] of Object.entries(JSON.parse(raw) as Record<string, CacheEntry>)) {
-            // Expired entries are dropped rather than restored — a stale
-            // signed URL 403s, which is worse than a round trip.
-            if (entry.expiresAt > now) cache.set(id, entry);
-          }
-        }
-      } catch {
-        // A corrupt or unreadable cache is not worth failing a screen over.
-      } finally {
-        hydrated = true;
-      }
-    })();
+export function setMediaCacheViewer(viewerId: string | undefined) {
+  if (!removedLegacyCache) {
+    removedLegacyCache = true;
+    void AsyncStorage.removeItem(LEGACY_STORAGE_KEY).catch(() => {});
   }
-  return hydrating;
+  if (active?.viewerId === viewerId) return;
+
+  if (active) {
+    if (active.flushTimer) clearTimeout(active.flushTimer);
+    void AsyncStorage.removeItem(active.storageKey).catch(() => {});
+  }
+
+  active = viewerId ? {
+    viewerId,
+    storageKey: `media-url-cache-v2:${viewerId}`,
+    entries: new Map(),
+    pending: new Map(),
+  } : undefined;
 }
 
-// Debounced: a feed load resolves many ids in quick succession, and writing
-// the whole map per batch would thrash storage on the main path.
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
-function scheduleFlush() {
-  if (flushTimer) clearTimeout(flushTimer);
-  flushTimer = setTimeout(() => {
-    flushTimer = null;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(cache))).catch(() => {});
+function hydrate(cache: ViewerCache) {
+  cache.hydration ??= (async () => {
+    try {
+      const raw = await AsyncStorage.getItem(cache.storageKey);
+      if (!raw || active !== cache) return;
+      const now = Date.now();
+      for (const [id, entry] of Object.entries(JSON.parse(raw) as Record<string, CacheEntry>)) {
+        if (entry.expiresAt > now) cache.entries.set(id, entry);
+      }
+    } catch {
+      // A corrupt or unreadable cache can be rebuilt from the signer.
+    }
+  })();
+  return cache.hydration;
+}
+
+function scheduleFlush(cache: ViewerCache) {
+  if (cache.flushTimer) clearTimeout(cache.flushTimer);
+  cache.flushTimer = setTimeout(() => {
+    if (active !== cache) return;
+    cache.flushTimer = undefined;
+    const now = Date.now();
+    for (const [id, entry] of cache.entries) {
+      if (entry.expiresAt <= now || cache.entries.size > MAX_ENTRIES) cache.entries.delete(id);
+    }
+    void AsyncStorage.setItem(cache.storageKey, JSON.stringify(Object.fromEntries(cache.entries))).catch(() => {});
   }, 1000);
 }
 
 export async function getCachedUrls(
+  namespace: string,
   ids: string[],
-  fetchMissing: (missingIds: string[]) => Promise<Record<string, string>>
+  fetchMissing: (missingIds: string[]) => Promise<Record<string, string>>,
 ): Promise<Record<string, string>> {
-  await hydrate();
-  const now = Date.now();
+  const cache = active;
+  if (!cache || ids.length === 0) return {};
+  await hydrate(cache);
+  if (active !== cache) return {};
+
   const result: Record<string, string> = {};
   const missing: string[] = [];
+  const waiting: Promise<void>[] = [];
+  const now = Date.now();
 
-  for (const id of ids) {
-    const cached = cache.get(id);
-    if (cached && cached.expiresAt > now) {
-      result[id] = cached.url;
-    } else {
-      missing.push(id);
-    }
+  for (const id of new Set(ids)) {
+    const key = `${namespace}:${id}`;
+    const entry = cache.entries.get(key);
+    const pending = cache.pending.get(key);
+    if (entry && entry.expiresAt > now) result[id] = entry.url;
+    else if (pending) waiting.push(pending.then((url) => { if (url) result[id] = url; }));
+    else missing.push(id);
   }
 
   if (missing.length > 0) {
-    const fetched = await fetchMissing(missing);
-    const expiresAt = now + CACHE_TTL_MS;
-    for (const [id, url] of Object.entries(fetched)) {
-      cache.set(id, { url, expiresAt });
-      result[id] = url;
+    const batch = fetchMissing(missing).then((urls) => {
+      if (active !== cache) return {};
+      const expiresAt = Date.now() + CACHE_TTL_MS;
+      for (const [id, url] of Object.entries(urls)) {
+        const key = `${namespace}:${id}`;
+        cache.entries.delete(key);
+        cache.entries.set(key, { url, expiresAt });
+      }
+      scheduleFlush(cache);
+      return urls;
+    }).finally(() => {
+      for (const id of missing) cache.pending.delete(`${namespace}:${id}`);
+    });
+
+    for (const id of missing) {
+      const pending = batch.then((urls) => urls[id]);
+      cache.pending.set(`${namespace}:${id}`, pending);
+      waiting.push(pending.then((url) => { if (url) result[id] = url; }));
     }
-    scheduleFlush();
   }
 
-  return result;
+  await Promise.all(waiting);
+  return active === cache ? result : {};
 }

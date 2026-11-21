@@ -44,6 +44,7 @@ const ScrollStageContext = createContext<ScrollStage | null>(null);
 export function useScrollStage(scrollRef: RefObject<ScrollView | null>) {
   const scrollY = useSharedValue(0);
   const viewportTop = useSharedValue(0);
+  const measureFrame = useRef<number | null>(null);
   // One set for the screen's life, made once.
   const [listeners] = useState(() => new Set<() => void>());
 
@@ -53,17 +54,24 @@ export function useScrollStage(scrollRef: RefObject<ScrollView | null>) {
   );
 
   const remeasureAll = useCallback(() => {
-    for (const remeasure of listeners) remeasure();
-  }, [listeners]);
-
-  const onLayout = useCallback(() => {
-    scrollHost(scrollRef.current)?.measure((_x, _y, _width, _height, _pageX, pageY) => {
-      viewportTop.set(pageY);
+    if (measureFrame.current != null) return;
+    measureFrame.current = requestAnimationFrame(() => {
+      measureFrame.current = null;
+      scrollHost(scrollRef.current)?.measure((_x, _y, _width, _height, _pageX, pageY) => {
+        viewportTop.set(pageY);
+      });
+      for (const remeasure of listeners) remeasure();
     });
-    remeasureAll();
-  }, [scrollRef, viewportTop, remeasureAll]);
+  }, [listeners, scrollRef, viewportTop]);
 
-  return { stage, scrollProps: { onLayout, onContentSizeChange: remeasureAll } };
+  useEffect(() => () => {
+    if (measureFrame.current != null) {
+      cancelAnimationFrame(measureFrame.current);
+      measureFrame.current = null;
+    }
+  }, []);
+
+  return { stage, scrollProps: { onLayout: remeasureAll, onContentSizeChange: remeasureAll } };
 }
 
 export function ScrollStageProvider({ stage, children }: { stage: ScrollStage; children: ReactNode }) {

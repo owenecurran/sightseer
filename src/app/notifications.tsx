@@ -183,7 +183,6 @@ export default function NotificationsScreen() {
       const status = await followUser({
         followerId: session.user.id,
         followeeId: actorId,
-        followeeIsPrivate: notification.actorIsPrivate,
       });
       // A private account turns the press into a REQUEST, not a follow, and
       // the row has to say so — otherwise it reads as done when it is not.

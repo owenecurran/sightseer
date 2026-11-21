@@ -2,8 +2,12 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { validPhotoKeys } from "../_shared/media-keys.ts";
 
 const VIEW_URL_TTL_SECONDS = 3600;
+const PHOTO_QUERY_BATCH_SIZE = 100;
+const MAX_PHOTOS_PER_REQUEST = 1000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const s3 = new S3Client({
   region: "auto",
@@ -25,10 +29,12 @@ const s3 = new S3Client({
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
-    const { photoIds } = await req.json();
+    const body = await req.json().catch(() => null);
+    const photoIds: unknown = body?.photoIds;
 
-    if (!Array.isArray(photoIds) || photoIds.length === 0) {
-      return Response.json({ error: "photoIds must be a non-empty array" }, { status: 400 });
+    if (!Array.isArray(photoIds) || photoIds.length === 0 || photoIds.length > MAX_PHOTOS_PER_REQUEST ||
+      photoIds.some((id) => typeof id !== "string" || !UUID.test(id))) {
+      return Response.json({ error: `photoIds must contain 1 to ${MAX_PHOTOS_PER_REQUEST} UUIDs` }, { status: 400 });
     }
 
     // RLS-scoped: photos_select already implements the same visibility rule
@@ -36,38 +42,37 @@ export default {
     // the app, so any photo the caller can't see is simply absent here —
     // no separate authorization check needed, unlike the upload function
     // where ownership (not just visibility) had to be checked explicitly.
-    const { data: photos, error } = await ctx.supabase
-      .from("photos")
-      .select("id, r2_key, thumb_r2_key")
-      .in("id", photoIds);
+    const ids = [...new Set<string>(photoIds)];
+    const results: { photoId: string; url: string; thumbUrl: string | null }[] = [];
+    for (let index = 0; index < ids.length; index += PHOTO_QUERY_BATCH_SIZE) {
+      const { data: photos, error } = await ctx.supabase
+        .from("photos")
+        .select("id, r2_key, thumb_r2_key, visit_id, draft_visit_id")
+        .in("id", ids.slice(index, index + PHOTO_QUERY_BATCH_SIZE));
 
-    if (error) {
-      return Response.json({ error: error.message }, { status: 500 });
+      if (error) {
+        return Response.json({ error: error.message }, { status: 500 });
+      }
+
+      const signedPhotos = await Promise.all(photos.flatMap((photo) => {
+        const keys = validPhotoKeys(photo);
+        if (!keys) return [];
+        return [Promise.all([
+          sign(keys.original),
+          keys.thumbnail ? sign(keys.thumbnail) : null,
+        ]).then(([url, thumbUrl]) => ({ photoId: photo.id, url, thumbUrl }))];
+      }));
+      results.push(...signedPhotos);
     }
-
-    const results = await Promise.all(
-      photos.map(async (photo) => ({
-        photoId: photo.id,
-        url: await getSignedUrl(
-          s3,
-          new GetObjectCommand({ Bucket: Deno.env.get("R2_BUCKET_NAME"), Key: photo.r2_key }),
-          { expiresIn: VIEW_URL_TTL_SECONDS },
-        ),
-        // Null for anything uploaded before thumbnails existed; the client
-        // falls back to the full image rather than rendering a gap.
-        thumbUrl: photo.thumb_r2_key
-          ? await getSignedUrl(
-            s3,
-            new GetObjectCommand({
-              Bucket: Deno.env.get("R2_BUCKET_NAME"),
-              Key: photo.thumb_r2_key,
-            }),
-            { expiresIn: VIEW_URL_TTL_SECONDS },
-          )
-          : null,
-      })),
-    );
 
     return Response.json({ urls: results });
   }),
 };
+
+function sign(key: string) {
+  return getSignedUrl(
+    s3,
+    new GetObjectCommand({ Bucket: Deno.env.get("R2_BUCKET_NAME"), Key: key }),
+    { expiresIn: VIEW_URL_TTL_SECONDS },
+  );
+}

@@ -69,8 +69,19 @@ export async function getTripsForUsers(userIds: string[]): Promise<Trip[]> {
 
   const { data, error } = await supabase.rpc('get_trips_for_users', { user_ids: userIds });
   if (error) throw error;
+  return mapTrips(data);
+}
 
-  return (data as unknown as RawTrip[]).map((row) => ({
+export async function getTripsForFeed(visitIds: string[]): Promise<Trip[]> {
+  if (visitIds.length === 0) return [];
+
+  const { data, error } = await supabase.rpc('get_feed_trips', { feed_visit_ids: visitIds });
+  if (error) throw error;
+  return mapTrips(data);
+}
+
+function mapTrips(rows: RawTrip[]): Trip[] {
+  return rows.map((row) => ({
     key: row.trip_key,
     kind: row.kind === 'outing' ? 'outing' : 'trip',
     userId: row.user_id,

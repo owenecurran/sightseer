@@ -231,6 +231,7 @@ export function TripGroupCard({
           dayNumber={1}
           photoUrls={photoUrls}
           photoThumbUrls={photoThumbUrls}
+          preferPhotoThumbnails
           avatarUrls={avatarUrls}
           viewerId={viewerId}
           copiedVisitId={copiedVisitId}
@@ -248,6 +249,7 @@ export function TripGroupCard({
               dayNumber={dayNumber}
               photoUrls={photoUrls}
               photoThumbUrls={photoThumbUrls}
+              preferPhotoThumbnails
               avatarUrls={avatarUrls}
               viewerId={viewerId}
               copiedVisitId={copiedVisitId}

@@ -2,6 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { matchesMediaKey } from "../_shared/media-keys.ts";
 
 const VIEW_URL_TTL_SECONDS = 3600;
 const ALLOWED_TABLES = ["boards", "travel_books", "articles"] as const;
@@ -45,7 +46,7 @@ export default {
     }
 
     const results = await Promise.all(
-      rows.map(async (row: { id: string; cover_photo_r2_key: string }) => ({
+      rows.filter((row) => matchesMediaKey(row.cover_photo_r2_key, `covers/${table}/${row.id}/`)).map(async (row: { id: string; cover_photo_r2_key: string }) => ({
         id: row.id,
         url: await getSignedUrl(
           s3,

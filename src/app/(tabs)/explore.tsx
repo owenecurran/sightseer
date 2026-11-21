@@ -186,7 +186,6 @@ export default function SearchScreen() {
         const status = await followUser({
           followerId: session.user.id,
           followeeId: user.id,
-          followeeIsPrivate: user.is_private,
         });
         const update = (list: SearchUserResult[]) =>
           list.map((u) => (u.id === user.id ? { ...u, followStatus: status } : u));

@@ -122,7 +122,6 @@ export default function UserProfileScreen() {
         const status = await followUser({
           followerId: session.user.id,
           followeeId: user.id,
-          followeeIsPrivate: user.is_private,
         });
         setFollowStatus(status);
       } else {

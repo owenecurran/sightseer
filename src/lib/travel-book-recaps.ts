@@ -104,7 +104,7 @@ export async function uploadRecapCover(params: { recapId: string; uri: string; m
 export async function getRecapCoverUrls(recapIds: string[]): Promise<Record<string, string>> {
   if (recapIds.length === 0) return {};
 
-  return getCachedUrls(recapIds, async (missingIds) => {
+  return getCachedUrls('recap', recapIds, async (missingIds) => {
     const { data, error } = await supabase.functions.invoke('get-recap-cover-urls', {
       body: { recapIds: missingIds },
     });
@@ -145,7 +145,9 @@ export async function getFeedRecaps(followedIds: string[]): Promise<FeedRecap[]>
     .select('id, travel_book_id, title, body, rating, author_id, published_at, users!author_id(handle, name)')
     .eq('is_published', true)
     .in('author_id', followedIds)
-    .order('published_at', { ascending: false });
+    .order('published_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: false })
+    .limit(50);
   if (error) throw error;
 
   return (data as unknown as RawFeedRecap[]).map((recap) => ({

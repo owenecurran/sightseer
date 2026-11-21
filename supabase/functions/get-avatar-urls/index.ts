@@ -2,6 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { matchesMediaKey } from "../_shared/media-keys.ts";
 
 const VIEW_URL_TTL_SECONDS = 3600;
 
@@ -40,7 +41,7 @@ export default {
     }
 
     const results = await Promise.all(
-      users.map(async (user) => ({
+      users.filter((user) => matchesMediaKey(user.avatar_r2_key, `avatars/${user.id}/`)).map(async (user) => ({
         userId: user.id,
         url: await getSignedUrl(
           s3,

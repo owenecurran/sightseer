@@ -197,7 +197,6 @@ export function FindFriendsPanel({
       await followUser({
         followerId: session.user.id,
         followeeId: row.user.id,
-        followeeIsPrivate: row.user.is_private,
       });
       setFollowingIds((prev) => new Set(prev).add(row.user.id));
     } catch (err) {

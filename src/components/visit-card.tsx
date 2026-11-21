@@ -172,6 +172,7 @@ type VisitCardProps = {
   // Grid-sized copies, keyed the same way. Optional: screens that haven't
   // fetched them just render full images, exactly as before.
   photoThumbUrls?: Record<string, string>;
+  preferPhotoThumbnails?: boolean;
   avatarUrl?: string;
   isOwner: boolean;
   isCopied: boolean;
@@ -221,6 +222,7 @@ export function VisitCard({
   visit,
   photoUrls,
   photoThumbUrls,
+  preferPhotoThumbnails,
   avatarUrl,
   isOwner,
   isCopied,
@@ -648,6 +650,7 @@ export function VisitCard({
         thumbUrls={
           photoThumbUrls ? photos.map((p) => photoThumbUrls[p.id] ?? p.url) : undefined
         }
+        preferThumbnails={preferPhotoThumbnails}
         orientation={orientation}
         // Printed above its caption, the picture keeps its own shape.
         frameRatio={

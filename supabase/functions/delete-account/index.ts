@@ -2,6 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { S3Client, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { matchesMediaKey, validPhotoKeys } from "../_shared/media-keys.ts";
 
 const BUCKET = Deno.env.get("R2_BUCKET_NAME")!;
 // S3 DeleteObjects caps at 1000 keys per call.
@@ -50,45 +51,55 @@ async function collectR2Keys(admin: SupabaseClient, userId: string): Promise<str
     .select("avatar_r2_key")
     .eq("id", userId)
     .single();
-  keys.push(user?.avatar_r2_key ?? null);
+  if (matchesMediaKey(user?.avatar_r2_key, `avatars/${userId}/`)) keys.push(user.avatar_r2_key);
 
   // Photos hang off visits AND draft_visits — the same table serves both, so
   // one pass over each ownership path covers published and unpublished alike.
   const { data: visitPhotos } = await admin
     .from("photos")
-    .select("r2_key, thumb_r2_key, visits!inner(user_id)")
+    .select("r2_key, thumb_r2_key, visit_id, draft_visit_id, visits!inner(user_id)")
     .eq("visits.user_id", userId);
-  for (const p of visitPhotos ?? []) keys.push(p.r2_key, p.thumb_r2_key);
 
   const { data: draftPhotos } = await admin
     .from("photos")
-    .select("r2_key, thumb_r2_key, draft_visits!inner(user_id)")
+    .select("r2_key, thumb_r2_key, visit_id, draft_visit_id, draft_visits!inner(user_id)")
     .eq("draft_visits.user_id", userId);
-  for (const p of draftPhotos ?? []) keys.push(p.r2_key, p.thumb_r2_key);
+  for (const photo of [...(visitPhotos ?? []), ...(draftPhotos ?? [])]) {
+    const validated = validPhotoKeys(photo);
+    if (validated) keys.push(validated.original, validated.thumbnail);
+  }
 
   const { data: boards } = await admin
     .from("boards")
-    .select("cover_photo_r2_key, cover_r2_key")
+    .select("id, cover_photo_r2_key")
     .eq("user_id", userId);
-  for (const b of boards ?? []) keys.push(b.cover_photo_r2_key, b.cover_r2_key);
+  for (const b of boards ?? []) {
+    if (matchesMediaKey(b.cover_photo_r2_key, `covers/boards/${b.id}/`)) keys.push(b.cover_photo_r2_key);
+  }
 
   const { data: books } = await admin
     .from("travel_books")
-    .select("cover_photo_r2_key, cover_r2_key")
+    .select("id, cover_photo_r2_key")
     .eq("user_id", userId);
-  for (const b of books ?? []) keys.push(b.cover_photo_r2_key, b.cover_r2_key);
+  for (const b of books ?? []) {
+    if (matchesMediaKey(b.cover_photo_r2_key, `covers/travel_books/${b.id}/`)) keys.push(b.cover_photo_r2_key);
+  }
 
   const { data: recaps } = await admin
     .from("travel_book_recaps")
-    .select("cover_r2_key")
+    .select("id, cover_r2_key")
     .eq("author_id", userId);
-  for (const r of recaps ?? []) keys.push(r.cover_r2_key);
+  for (const r of recaps ?? []) {
+    if (matchesMediaKey(r.cover_r2_key, `travel-book-recaps/${r.id}/`)) keys.push(r.cover_r2_key);
+  }
 
   const { data: attachments } = await admin
     .from("profile_prompt_attachments")
     .select("photo_r2_key, profile_prompts!inner(user_id)")
     .eq("profile_prompts.user_id", userId);
-  for (const a of attachments ?? []) keys.push(a.photo_r2_key);
+  for (const a of attachments ?? []) {
+    if (matchesMediaKey(a.photo_r2_key, `prompt-photos/${userId}/`)) keys.push(a.photo_r2_key);
+  }
 
   // Articles deliberately excluded: author_id is now SET NULL, so the
   // article outlives the account and keeps its cover image.
@@ -114,7 +125,8 @@ export default {
    try {
     // The id comes from the verified token, never from the request body —
     // otherwise this would delete any account by id.
-    const userId = ctx.userClaims.id;
+    const userId = ctx.userClaims?.id;
+    if (!userId) return Response.json({ error: "Sign in to continue." }, { status: 401 });
     const admin = ctx.supabaseAdmin;
 
     // ------------------------------------------------------------------

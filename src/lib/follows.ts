@@ -26,14 +26,14 @@ export async function listOtherUsersWithFollowStatus(myUserId: string): Promise<
 export async function followUser(params: {
   followerId: string;
   followeeId: string;
-  followeeIsPrivate: boolean;
 }): Promise<FollowStatus> {
-  const status: FollowStatus = params.followeeIsPrivate ? 'pending' : 'accepted';
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('follows')
-    .insert({ follower_id: params.followerId, followee_id: params.followeeId, status });
+    .insert({ follower_id: params.followerId, followee_id: params.followeeId })
+    .select('status')
+    .single();
   if (error) throw error;
-  return status;
+  return data.status;
 }
 
 // Deletes the follow row regardless of status — cancels a pending request or

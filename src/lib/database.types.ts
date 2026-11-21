@@ -2090,6 +2090,25 @@ export type Database = {
           visit_id: string
         }[]
       }
+      get_feed_trips: {
+        Args: { feed_visit_ids: string[] }
+        Returns: {
+          area_lat: number
+          area_level: string
+          area_lng: number
+          area_name: string
+          area_place_id: string
+          auto_area_place_id: string
+          end_date: string
+          is_ongoing: boolean
+          kind: string
+          start_date: string
+          travel_book_id: string
+          trip_key: string
+          user_id: string
+          visit_ids: string[]
+        }[]
+      }
       get_harmony: {
         Args: { other_id: string; viewer_id: string }
         Returns: {

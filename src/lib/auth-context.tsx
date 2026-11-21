@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { consumePendingInvite } from '@/lib/invites';
+import { setMediaCacheViewer } from '@/lib/media-url-cache';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } = await supabase.auth.getSession();
       if (!isMounted) return;
 
+      setMediaCacheViewer(initialSession?.user.id);
       sessionRef.current = initialSession;
       setSession(initialSession);
       if (initialSession) {
@@ -98,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isFreshSignIn = sessionRef.current === null && nextSession !== null;
       if (isFreshSignIn) setIsLoading(true);
 
+      setMediaCacheViewer(nextSession?.user.id);
       sessionRef.current = nextSession;
       setSession(nextSession);
 

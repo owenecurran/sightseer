@@ -77,7 +77,6 @@ export function TaggedUsersModal({ visible, onClose, userIds }: TaggedUsersModal
         const status = await followUser({
           followerId: session.user.id,
           followeeId: user.id,
-          followeeIsPrivate: user.is_private,
         });
         setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, followStatus: status } : u)));
       } else {

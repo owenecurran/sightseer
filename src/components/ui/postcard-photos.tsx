@@ -14,6 +14,8 @@ type PostcardPhotosProps = {
   // fraction of the frame and the full image is far more resolution than it
   // can show.
   thumbUrls?: string[];
+  // Home feed tiles use preview-size images. The lightbox still uses urls.
+  preferThumbnails?: boolean;
   orientation: PostcardOrientation;
   // Overrides the frame the photos are fitted into. A picture tipped onto a
   // written card is a print on one half of the sheet, not the sheet's own
@@ -51,12 +53,14 @@ type PostcardPhotosProps = {
 export function PostcardPhotos({
   urls,
   thumbUrls,
+  preferThumbnails,
   orientation,
   frameRatio,
   onDoubleTap,
   onReady,
 }: PostcardPhotosProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [failedPreviews, setFailedPreviews] = useState<ReadonlySet<string>>(() => new Set());
   const openAt = useCallback((index: number) => setSelectedIndex(index), []);
   const handleTilePress = usePhotoTaps(openAt, onDoubleTap);
 
@@ -90,8 +94,13 @@ export function PostcardPhotos({
 
   if (urls.length === 0) return null;
 
-  // Falls back per index, so a photo without a derivative still renders.
-  const displayUrls = urls.length > 1 && thumbUrls ? urls.map((url, i) => thumbUrls[i] ?? url) : urls;
+  // Fall back to the original if its derivative is missing or fails to load.
+  const displayUrls = thumbUrls && (preferThumbnails || urls.length > 1)
+    ? urls.map((url, index) => {
+        const thumb = thumbUrls[index];
+        return thumb && !failedPreviews.has(thumb) ? thumb : url;
+      })
+    : urls;
 
   const fit = urls.length === 1 ? 'contain' : 'cover';
 
@@ -127,8 +136,9 @@ export function PostcardPhotos({
     // shape — loaded the full 2048px original with nothing on screen behind
     // it, while its 800px derivative sat unused in the bucket.
     const placeholderUrl = thumbUrls?.[index];
-    const placeholder =
-      placeholderUrl && placeholderUrl !== displayUrls[index] ? { uri: placeholderUrl } : undefined;
+    const placeholder = placeholderUrl && placeholderUrl !== displayUrls[index] && !failedPreviews.has(placeholderUrl)
+      ? { uri: placeholderUrl }
+      : undefined;
 
     return (
       <Pressable style={styles.tile} onPress={guardCardPress(() => handleTilePress(index))}>
@@ -138,7 +148,11 @@ export function PostcardPhotos({
           style={styles.fill}
           contentFit={fit}
           onLoad={() => reportLoaded(index)}
-          onError={() => reportLoaded(index)}
+          onError={() => {
+            const displayed = displayUrls[index];
+            if (displayed === urls[index]) reportLoaded(index);
+            else setFailedPreviews((failed) => new Set([...failed, displayed]));
+          }}
         />
       </Pressable>
     );

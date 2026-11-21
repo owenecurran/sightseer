@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
 import type { ScrollView } from "react-native";
 import Animated, {
@@ -48,8 +48,7 @@ import {
 } from "@/lib/feed";
 import { listHomeLocations } from "@/lib/home-locations";
 import { getUnreadNotificationCount } from "@/lib/notifications";
-import { prefetchThumbnails } from "@/lib/image-prefetch";
-import { getPhotoThumbUrls, getPhotoViewUrls } from "@/lib/photo-view";
+import { getPhotoUrls } from "@/lib/photo-view";
 import { shareText } from "@/lib/share";
 import { supabase } from "@/lib/supabase";
 import { getRecapCoverUrls, type FeedRecap } from "@/lib/travel-book-recaps";
@@ -66,9 +65,25 @@ import {
 const HEADER_MAX_HEIGHT = 140;
 // The screen's own background, as solid as the status bar needs.
 const STATUS_SCRIM = "rgba(3, 16, 9, 0.85)";
+const INITIAL_FEED_ROWS = 5;
+const FEED_BATCH_SIZE = 3;
+const FEED_BATCH_INTERVAL_MS = 48;
+const INITIAL_THUMBNAILS = 10;
+
+function initialPhotoIds(items: FeedItem[]): string[] {
+  return items.slice(0, INITIAL_FEED_ROWS).flatMap((item) => {
+    if (item.type === "visit") return item.visit.photoIds;
+    if (item.type !== "trip") return [];
+    return item.feedTrip.days.slice(-3).flatMap((day) => day.visits[0]?.photoIds ?? []);
+  }).slice(0, INITIAL_THUMBNAILS);
+}
 
 export default function HomeScreen() {
   const { session, profile } = useAuth();
+  return <HomeFeedScreen key={session?.user.id} viewerId={session?.user.id} viewedAt={profile?.feed_last_viewed_at} />;
+}
+
+function HomeFeedScreen({ viewerId, viewedAt }: { viewerId?: string; viewedAt?: string | null }) {
   const theme = useTheme();
   const bottomInset = useBottomTabInset();
   // Which tab this launch opens on is DERIVED below, from whether the feed
@@ -97,13 +112,15 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [startupPainted, setStartupPainted] = useState(false);
+  const [renderedRows, setRenderedRows] = useState(INITIAL_FEED_ROWS);
+  const loadInFlight = useRef<Promise<boolean> | null>(null);
+  const startupFrame = useRef<number | null>(null);
   const [copiedVisitId, setCopiedVisitId] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   // Captured once per screen focus, before feed_last_viewed_at gets bumped
   // to now() below — this is the boundary "already seen" divider needs.
-  const [previousViewedAt] = useState(
-    () => profile?.feed_last_viewed_at ?? null,
-  );
+  const [previousViewedAt] = useState(() => viewedAt ?? null);
   // Where each card and route in the feed is on screen, for the cards
   // dealt in as they arrive and the routes drawn between them.
   const feedScrollRef = useRef<ScrollView>(null);
@@ -131,84 +148,78 @@ export default function HomeScreen() {
     transform: [{ translateY: interpolate(navHidden.value, [0, 1], [0, -12]) }],
   }));
 
-  const loadFeed = useCallback(async () => {
-    if (!session) return;
-    setError(null);
-    try {
-      const feedItems = await getFeedItems(session.user.id);
-      setItems(feedItems);
-      // Trip items carry their visits nested inside days, so collecting
-      // only `type === "visit"` items missed every review inside a trip —
-      // their photo ids never reached getPhotoViewUrls and their authors
-      // never reached getAvatarViewUrls, which is exactly why trips
-      // rendered with no photos and no avatars.
-      const feedVisits = feedItems.flatMap((item) =>
-        item.type === "visit"
-          ? [item.visit]
-          : item.type === "trip"
-            ? item.feedTrip.days.flatMap((day) => day.visits)
-            : [],
-      );
-      const feedRecaps = feedItems.flatMap((item) =>
-        item.type === "recap" ? [item.recap] : [],
-      );
-      // Every photo, and the thumbnails for every photo — one list now, where
-      // there used to be two.
-      //
-      // Thumbnails used to be asked for only on multi-photo reviews, on the
-      // reasoning that a lone photo renders large enough to want the real one.
-      // It does — but it now wants the small one FIRST, as something to put on
-      // screen while the real one is still coming (see PostcardPhotos'
-      // placeholder). The single-photo card is the common shape and it was the
-      // one with nothing behind it, so the case that skipped this call was the
-      // case that needed it most.
-      const photoIds = feedVisits.flatMap((v) => v.photoIds);
-      const authorIds = [
-        ...new Set([
-          ...feedVisits.map((v) => v.user_id),
-          ...feedRecaps.map((r) => r.authorId),
-        ]),
-      ];
-      const [photos, thumbs, avatars, recapCovers] = await Promise.all([
-        photoIds.length > 0 ? getPhotoViewUrls(photoIds) : Promise.resolve({}),
-        photoIds.length > 0
-          ? getPhotoThumbUrls(photoIds)
-          : Promise.resolve({}),
-        authorIds.length > 0
-          ? getAvatarViewUrls(authorIds)
-          : Promise.resolve({}),
-        feedRecaps.length > 0
-          ? getRecapCoverUrls(feedRecaps.map((r) => r.id))
-          : Promise.resolve({}),
-      ]);
-      setPhotoUrls(photos);
-      setPhotoThumbUrls(thumbs);
-      setAvatarUrls(avatars);
-      setRecapCoverUrls(recapCovers);
+  const loadFeed = useCallback((): Promise<boolean> => {
+    if (!viewerId) return Promise.resolve(false);
+    if (loadInFlight.current) return loadInFlight.current;
 
-      // Warm the cache with the small copies for the cards further down.
-      //
-      // The feed is not virtualized (see the note on the list below), so every
-      // card mounts and starts its own requests at once, and what lands first
-      // is whatever the network happened to finish. Queueing the thumbnails
-      // deliberately means the thing a card needs in order to show itself is
-      // the thing that arrives soonest.
-      //
-      // Thumbnails only, and for a reason that is not obvious — see
-      // prefetchThumbnails. Prefetching the originals would download the
-      // whole feed a second time rather than save anything.
-      //
-      // Not awaited, and its failure ignored: this is a head start, and a
-      // head start that throws must not take the feed down with it. The cards
-      // ask for all of it again themselves, so the worst case is that this
-      // did nothing.
-      void prefetchThumbnails(Object.values(thumbs));
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not load your feed.",
-      );
-    }
-  }, [session]);
+    setError(null);
+    const request = (async () => {
+      try {
+        const feedItems = await getFeedItems(viewerId);
+        const visits = feedItems.flatMap((item) => {
+          if (item.type === "visit") return [item.visit];
+          if (item.type === "trip") return item.feedTrip.days.flatMap((day) => day.visits);
+          return [];
+        });
+        const recaps = feedItems.flatMap((item) => item.type === "recap" ? [item.recap] : []);
+        const authorIds = [...new Set([
+          ...visits.map((visit) => visit.user_id),
+          ...recaps.map((recap) => recap.authorId),
+        ])];
+        const orderedPhotoIds = [...new Set([
+          ...initialPhotoIds(feedItems),
+          ...visits.flatMap((visit) => visit.photoIds),
+        ])];
+
+        // The feed can still show its text and maps if a media service fails.
+        const [photoResult, avatarResult, coverResult] = await Promise.allSettled([
+          getPhotoUrls(orderedPhotoIds),
+          getAvatarViewUrls(authorIds),
+          getRecapCoverUrls(recaps.map((recap) => recap.id)),
+        ]);
+
+        if (photoResult.status === "fulfilled") {
+          const { photos, thumbs } = photoResult.value;
+          setPhotoUrls(photos);
+          setPhotoThumbUrls(thumbs);
+        }
+        if (avatarResult.status === "fulfilled") setAvatarUrls(avatarResult.value);
+        if (coverResult.status === "fulfilled") setRecapCoverUrls(coverResult.value);
+        setItems(feedItems);
+        return true;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load your feed.");
+        return false;
+      } finally {
+        loadInFlight.current = null;
+        setHasLoadedOnce(true);
+      }
+    })();
+
+    loadInFlight.current = request;
+    return request;
+  }, [viewerId]);
+
+  // Keep the startup loader over the first batch until the rows have laid
+  // out and had a frame to paint. The rest mount while the feed is idle.
+  const handleInitialLayout = useCallback(() => {
+    if (startupPainted || startupFrame.current != null) return;
+    startupFrame.current = requestAnimationFrame(() => {
+      startupFrame.current = requestAnimationFrame(() => {
+        startupFrame.current = null;
+        setStartupPainted(true);
+      });
+    });
+  }, [startupPainted]);
+
+  useEffect(() => () => {
+    if (startupFrame.current != null) cancelAnimationFrame(startupFrame.current);
+  }, []);
+
+  async function reloadAfterChange() {
+    await loadInFlight.current;
+    await loadFeed();
+  }
 
   // Refetch on every focus, not just on mount — tab navigators (native: a
   // PagerView, all 5 tabs mounted at once; web: a real Stack) keep sibling
@@ -219,11 +230,19 @@ export default function HomeScreen() {
     0,
     useCallback(() => {
       setIsLoading(true);
-      loadFeed().finally(() => {
+      const viewedAt = new Date().toISOString();
+      void loadFeed().then((loaded) => {
         setIsLoading(false);
-        setHasLoadedOnce(true);
+        if (!loaded || !viewerId) return;
+        // Mark only after a successful load. Its starting timestamp leaves
+        // posts published during the request eligible for the next session.
+        void supabase
+          .from("users")
+          .update({ feed_last_viewed_at: viewedAt })
+          .eq("id", viewerId)
+          .then(() => {}, () => {});
       });
-      if (session) {
+      if (viewerId) {
         // Best-effort and independent of the feed itself — a failure here
         // just means no prompt, never a broken feed.
         // Re-offer the most recent unanswered day. Checked against today
@@ -234,7 +253,7 @@ export default function HomeScreen() {
           for (const daysAgo of [0, 1]) {
             const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-            const found = await getTripSuggestion(session.user.id, key);
+            const found = await getTripSuggestion(viewerId, key);
             if (found) return found;
           }
           return null;
@@ -242,32 +261,20 @@ export default function HomeScreen() {
           .then(setTripSuggestion)
           .catch(() => setTripSuggestion(null));
 
-        listHomeLocations(session.user.id)
+        listHomeLocations(viewerId)
           .then((homes) =>
             getHomeLocationSuggestion(
-              session.user.id,
+              viewerId,
               homes.map((h) => h.placeId),
             ),
           )
           .then(setHomeSuggestion)
           .catch(() => setHomeSuggestion(null));
-        getUnreadNotificationCount(session.user.id)
+        getUnreadNotificationCount(viewerId)
           .then(setUnreadCount)
           .catch(() => {});
-        // Fire-and-forget — bumps the boundary for the *next* visit.
-        // previousViewedAt (captured once at mount) stays fixed for this
-        // whole session, so the divider doesn't jump around as the user
-        // swipes between tabs and back.
-        supabase
-          .from("users")
-          .update({ feed_last_viewed_at: new Date().toISOString() })
-          .eq("id", session.user.id)
-          .then(
-            () => {},
-            () => {},
-          );
       }
-    }, [loadFeed, session]),
+    }, [loadFeed, viewerId]),
   );
 
   async function handleRefresh() {
@@ -294,14 +301,14 @@ export default function HomeScreen() {
     void handleRefresh();
   });
 
-  async function handleToggleLike(visit: FeedVisit) {
-    if (!session) return;
+  const handleToggleLike = useCallback(async (visit: FeedVisit) => {
+    if (!viewerId) return;
     setError(null);
     try {
       if (visit.isLikedByMe) {
-        await unlikeVisit(session.user.id, visit.id);
+        await unlikeVisit(viewerId, visit.id);
       } else {
-        await likeVisit(session.user.id, visit.id);
+        await likeVisit(viewerId, visit.id);
       }
       setItems((prev) =>
         prev.map((item) =>
@@ -323,12 +330,12 @@ export default function HomeScreen() {
         err instanceof Error ? err.message : "Could not update that like.",
       );
     }
-  }
+  }, [viewerId]);
 
   // Flips a trip block from "Make this a travel book" to a link to the new
   // book without refetching the whole feed — the trip's grouping and
   // contents haven't changed, only what it's now linked to.
-  function handleTripConverted(tripKey: string, travelBookId: string) {
+  const handleTripConverted = useCallback((tripKey: string, travelBookId: string) => {
     setItems((prev) =>
       prev.map((item) =>
         item.type === "trip" && item.feedTrip.trip.key === tripKey
@@ -342,17 +349,17 @@ export default function HomeScreen() {
           : item,
       ),
     );
-  }
+  }, []);
 
-  function handleVisitDeleted(visitId: string) {
+  const handleVisitDeleted = useCallback((visitId: string) => {
     setItems((prev) =>
       prev.filter(
         (item) => !(item.type === "visit" && item.visit.id === visitId),
       ),
     );
-  }
+  }, []);
 
-  async function handleShareVisit(visit: FeedVisit) {
+  const handleShareVisit = useCallback(async (visit: FeedVisit) => {
     const message = `${visit.authorName} ${visit.rating != null ? `rated ${visit.placeName} ${visit.rating.toFixed(1)}/10` : `visited ${visit.placeName}`}${
       visit.note ? `: "${visit.note}"` : ""
     } on Sightseer.`;
@@ -376,9 +383,7 @@ export default function HomeScreen() {
         2000,
       );
     }
-  }
-
-  if (!hasLoadedOnce) return <PageLoader />;
+  }, []);
 
   // Discover only when the people you follow have nothing new.
   //
@@ -411,7 +416,7 @@ export default function HomeScreen() {
   // viewer's last feed visit — skipped entirely on a first-ever visit
   // (previousViewedAt null) or when nothing's new since last time (boundary
   // at index 0, which would just be a pointless divider at the very top).
-  const displayItems: FeedItem[] = (() => {
+  const displayItems = useMemo<FeedItem[]>(() => {
     if (!previousViewedAt) return items;
     const boundaryIndex = items.findIndex(
       (item) => item.sortKey <= previousViewedAt,
@@ -422,7 +427,119 @@ export default function HomeScreen() {
       { type: "divider", sortKey: "" } as const,
       ...items.slice(boundaryIndex),
     ];
-  })();
+  }, [items, previousViewedAt]);
+
+  // Reuse existing row elements while the startup batches append new ones.
+  const feedRows = useMemo(() => displayItems.map((item, index) => (
+    // Descending zIndex, one wrapper per card. The rating stamp
+    // hangs below its card by design (canSeep lets bottomOffset
+    // go to -size*0.45), and on a short post that overhang clears
+    // the card's own bottom entirely and lands over the NEXT
+    // card. Neither the stamp's own zIndex nor cardTop's could
+    // ever fix that: both are scoped inside one card, and zIndex
+    // only resolves stacking among elements sharing an immediate
+    // parent. Cards are siblings HERE, so here is the only place
+    // the order between them can be decided.
+    //
+    // Descending rather than a flat value because siblings paint
+    // in document order by default — every card must outrank the
+    // one after it, not merely tie with it.
+    //
+    // collapsable={false} is load-bearing, not defensive: on
+    // Android a View whose only job is a style like this is
+    // exactly what the view-flattening pass removes, and it was
+    // flattening that broke the stamp's seep before (see
+    // visit-card.tsx's cardWrap). A removed wrapper takes the
+    // zIndex with it and the bug returns, silently and only on
+    // Android.
+    <View
+      key={
+        item.type === "divider"
+          ? "divider"
+          : item.type === "recap"
+            ? `recap-${item.recap.id}`
+            : item.type === "trip"
+              ? `trip-${item.feedTrip.trip.key}`
+              : `visit-${item.visit.id}`
+      }
+      style={{ zIndex: displayItems.length - index }}
+      collapsable={false}
+    >
+      {/* The route from the post above to this one, or a tear
+          line where there is no route to draw. Not before the
+          first, and not around the "Already seen" label, which
+          is a boundary in its own right and does not want a
+          second rule stacked on it. */}
+      {index > 0 &&
+        item.type !== "divider" &&
+        displayItems[index - 1]?.type !== "divider" && (
+          <JourneyLine
+            from={journeyStop(displayItems[index - 1], "last")}
+            to={journeyStop(item, "first")}
+            seed={`${journeyItemId(displayItems[index - 1])}-${journeyItemId(item)}`}
+            style={styles.journey}
+          />
+        )}
+
+      {item.type === "divider" ? (
+        <ThemedText type="sectionLabel" style={styles.dividerText}>
+          Already seen
+        </ThemedText>
+      ) : item.type === "recap" ? (
+        <DealIn seed={item.recap.id}>
+          <RecapCard
+            recap={item.recap}
+            avatarUrl={avatarUrls[item.recap.authorId]}
+            coverUrl={recapCoverUrls[item.recap.id]}
+          />
+        </DealIn>
+      ) : item.type === "trip" ? (
+        <DealIn seed={item.feedTrip.trip.key}>
+          <TripGroupCard
+            feedTrip={item.feedTrip}
+            photoUrls={photoUrls}
+            photoThumbUrls={photoThumbUrls}
+            avatarUrls={avatarUrls}
+            viewerId={viewerId}
+            copiedVisitId={copiedVisitId}
+            onToggleLike={handleToggleLike}
+            onShare={handleShareVisit}
+            onVisitDeleted={handleVisitDeleted}
+            onConverted={handleTripConverted}
+          />
+        </DealIn>
+      ) : (
+        <DealIn seed={item.visit.id}>
+          <VisitCard
+            visit={item.visit}
+            photoUrls={photoUrls}
+            photoThumbUrls={photoThumbUrls}
+            preferPhotoThumbnails
+            avatarUrl={avatarUrls[item.visit.user_id]}
+            isOwner={viewerId === item.visit.user_id}
+            isCopied={copiedVisitId === item.visit.id}
+            onToggleLike={() => handleToggleLike(item.visit)}
+            onShare={() => handleShareVisit(item.visit)}
+            onDeleted={() => handleVisitDeleted(item.visit.id)}
+          />
+        </DealIn>
+      )}
+    </View>
+  )), [
+    avatarUrls, copiedVisitId, displayItems, handleShareVisit, handleToggleLike,
+    handleTripConverted, handleVisitDeleted, photoThumbUrls, photoUrls,
+    recapCoverUrls, viewerId,
+  ]);
+
+  useEffect(() => {
+    if (!startupPainted || viewMode !== "feed" || renderedRows >= displayItems.length) return;
+    const timer = setTimeout(() => {
+      startTransition(() => setRenderedRows((count) => count + FEED_BATCH_SIZE));
+    }, FEED_BATCH_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [displayItems.length, renderedRows, startupPainted, viewMode]);
+
+  if (!hasLoadedOnce) return <PageLoader />;
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -430,7 +547,7 @@ export default function HomeScreen() {
           status bar and the list pads its own end above the gesture bar, so
           once the header has collapsed the feed runs to both edges of the
           screen. */}
-      <SafeAreaView edges={["left", "right"]} style={styles.safeArea}>
+      <SafeAreaView edges={["left", "right"]} style={styles.safeArea} onLayout={handleInitialLayout}>
         <Animated.View style={headerStyle}>
         <View style={[styles.screenHeaderRow, styles.gutter]}>
           <ThemedText type="displaySerif">Feed</ThemedText>
@@ -493,30 +610,8 @@ export default function HomeScreen() {
               </ThemedText>
             )}
 
-            {
-              // Plain ScrollView + .map(), not FlatList — deliberately.
-              // FlatList virtualizes/recycles cells, which on Android
-              // structurally requires clipping each cell to its own
-              // measured rect (so recycled views don't visually bleed into
-              // a neighbor during scroll) — that's a real clipping layer
-              // inside FlatList's own cell wrapper, not reachable via
-              // styles on cardTop/cardWrap, and (confirmed live) not
-              // avoidable via a custom CellRendererComponent either:
-              // reanimated's Animated.FlatList didn't actually forward it
-              // through to the real FlatList at runtime, despite
-              // compiling fine. A plain ScrollView never recycles views,
-              // so nothing here structurally needs to clip — the same
-              // reason the stamp's overflow already works correctly on
-              // visit/[id].tsx's plain ScrollView. Fine performance-wise
-              // at this app's current feed scale (a personal social feed,
-              // not an infinite-scroll timeline); worth revisiting if the
-              // feed ever needs to hold hundreds+ of items at once.
-            }
-            {/* KeyboardAwareScroll, not Animated.ScrollView: the comment
-                composer sits at the bottom of a card in the middle of this
-                list, and with a plain scroll view focusing it put the
-                keyboard straight over the field being typed into. This is
-                the same drop-in the form screens already use. */}
+            {/* A single scroll container preserves the stamp overlap on
+                Android and keeps the inline comment input keyboard-aware. */}
             <ScrollStageProvider stage={stage}>
             <KeyboardAwareScroll
               ref={feedScrollRef}
@@ -536,15 +631,15 @@ export default function HomeScreen() {
                 />
               }
             >
-              {tripSuggestion && session && (
+              {tripSuggestion && viewerId && (
                 <TripSuggestionPrompt
-                  userId={session.user.id}
+                  userId={viewerId}
                   suggestion={tripSuggestion}
                   onResolved={(promoted) => {
                     setTripSuggestion(null);
                     // Accepting changes what's a trip, so the grouping has
                     // to be recomputed; declining changes nothing visible.
-                    if (promoted) loadFeed();
+                    if (promoted) void reloadAfterChange();
                   }}
                 />
               )}
@@ -557,104 +652,11 @@ export default function HomeScreen() {
                     // Adding a home location changes what counts as a trip,
                     // so the grouping has to be recomputed rather than just
                     // hiding the prompt.
-                    loadFeed();
+                    void reloadAfterChange();
                   }}
                 />
               )}
-              {displayItems.map((item: FeedItem, index: number) => (
-                // Descending zIndex, one wrapper per card. The rating stamp
-                // hangs below its card by design (canSeep lets bottomOffset
-                // go to -size*0.45), and on a short post that overhang clears
-                // the card's own bottom entirely and lands over the NEXT
-                // card. Neither the stamp's own zIndex nor cardTop's could
-                // ever fix that: both are scoped inside one card, and zIndex
-                // only resolves stacking among elements sharing an immediate
-                // parent. Cards are siblings HERE, so here is the only place
-                // the order between them can be decided.
-                //
-                // Descending rather than a flat value because siblings paint
-                // in document order by default — every card must outrank the
-                // one after it, not merely tie with it.
-                //
-                // collapsable={false} is load-bearing, not defensive: on
-                // Android a View whose only job is a style like this is
-                // exactly what the view-flattening pass removes, and it was
-                // flattening that broke the stamp's seep before (see
-                // visit-card.tsx's cardWrap). A removed wrapper takes the
-                // zIndex with it and the bug returns, silently and only on
-                // Android.
-                <View
-                  key={
-                    item.type === "divider"
-                      ? "divider"
-                      : item.type === "recap"
-                        ? `recap-${item.recap.id}`
-                        : item.type === "trip"
-                          ? `trip-${item.feedTrip.trip.key}`
-                          : `visit-${item.visit.id}`
-                  }
-                  style={{ zIndex: displayItems.length - index }}
-                  collapsable={false}
-                >
-                  {/* The route from the post above to this one, or a tear
-                      line where there is no route to draw. Not before the
-                      first, and not around the "Already seen" label, which
-                      is a boundary in its own right and does not want a
-                      second rule stacked on it. */}
-                  {index > 0 &&
-                    item.type !== "divider" &&
-                    displayItems[index - 1]?.type !== "divider" && (
-                      <JourneyLine
-                        from={journeyStop(displayItems[index - 1], "last")}
-                        to={journeyStop(item, "first")}
-                        seed={`${journeyItemId(displayItems[index - 1])}-${journeyItemId(item)}`}
-                        style={styles.journey}
-                      />
-                    )}
-
-                  {item.type === "divider" ? (
-                    <ThemedText type="sectionLabel" style={styles.dividerText}>
-                      Already seen
-                    </ThemedText>
-                  ) : item.type === "recap" ? (
-                    <DealIn seed={item.recap.id}>
-                      <RecapCard
-                        recap={item.recap}
-                        avatarUrl={avatarUrls[item.recap.authorId]}
-                        coverUrl={recapCoverUrls[item.recap.id]}
-                      />
-                    </DealIn>
-                  ) : item.type === "trip" ? (
-                    <DealIn seed={item.feedTrip.trip.key}>
-                      <TripGroupCard
-                        feedTrip={item.feedTrip}
-                        photoUrls={photoUrls}
-                        photoThumbUrls={photoThumbUrls}
-                        avatarUrls={avatarUrls}
-                        viewerId={session?.user.id}
-                        copiedVisitId={copiedVisitId}
-                        onToggleLike={handleToggleLike}
-                        onShare={handleShareVisit}
-                        onVisitDeleted={handleVisitDeleted}
-                        onConverted={handleTripConverted}
-                      />
-                    </DealIn>
-                  ) : (
-                    <DealIn seed={item.visit.id}>
-                      <VisitCard
-                        visit={item.visit}
-                        photoUrls={photoUrls}
-                        avatarUrl={avatarUrls[item.visit.user_id]}
-                        isOwner={session?.user.id === item.visit.user_id}
-                        isCopied={copiedVisitId === item.visit.id}
-                        onToggleLike={() => handleToggleLike(item.visit)}
-                        onShare={() => handleShareVisit(item.visit)}
-                        onDeleted={() => handleVisitDeleted(item.visit.id)}
-                      />
-                    </DealIn>
-                  )}
-                </View>
-              ))}
+              {feedRows.slice(0, renderedRows)}
             </KeyboardAwareScroll>
             </ScrollStageProvider>
           </>
@@ -670,6 +672,11 @@ export default function HomeScreen() {
         locations={[0, 0.55, 1]}
         style={[styles.statusScrim, { height: insets.top * 1.8 }]}
       />
+      {!startupPainted && (
+        <View style={StyleSheet.absoluteFill}>
+          <PageLoader />
+        </View>
+      )}
     </ThemedView>
   );
 }

@@ -2,6 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { matchesMediaKey } from "../_shared/media-keys.ts";
 
 const VIEW_URL_TTL_SECONDS = 3600;
 
@@ -31,16 +32,23 @@ export default {
     // can't see is simply absent here — no separate authorization check needed.
     const { data: attachments, error } = await ctx.supabase
       .from("profile_prompt_attachments")
-      .select("id, photo_r2_key")
+      .select("id, photo_r2_key, profile_prompts!inner(user_id)")
       .in("id", attachmentIds)
-      .not("photo_r2_key", "is", null);
+      .not("photo_r2_key", "is", null)
+      .overrideTypes<{
+        id: string;
+        photo_r2_key: string;
+        profile_prompts: { user_id: string };
+      }[], { merge: false }>();
 
     if (error) {
       return Response.json({ error: error.message }, { status: 500 });
     }
 
     const results = await Promise.all(
-      attachments.map(async (attachment) => ({
+      attachments.filter((attachment) =>
+        matchesMediaKey(attachment.photo_r2_key, `prompt-photos/${attachment.profile_prompts.user_id}/`)
+      ).map(async (attachment) => ({
         attachmentId: attachment.id,
         url: await getSignedUrl(
           s3,

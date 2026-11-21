@@ -43,46 +43,17 @@ export async function uploadAvatar(params: UploadAvatarParams): Promise<string> 
   return r2Key;
 }
 
-// Users whose avatar is being fetched right now. A card that asks for its
-// own avatar while its screen's batch for the same user is still out waits
-// on that batch rather than sending a second request for it.
-const inFlight = new Map<string, Promise<string | undefined>>();
-
-// Batched, not one call per avatar — a feed load may need many at once.
-// Cached across calls (see media-url-cache).
+// Batched across screens by the viewer-scoped URL cache.
 export async function getAvatarViewUrls(userIds: string[]): Promise<Record<string, string>> {
-  if (userIds.length === 0) return {};
+  return getCachedUrls('avatar', userIds, async (missingIds) => {
+    const { data, error } = await supabase.functions.invoke('get-avatar-urls', {
+      body: { userIds: missingIds },
+    });
+    if (error) throw error;
 
-  const fresh = [...new Set(userIds)].filter((id) => !inFlight.has(id));
-  const batch =
-    fresh.length > 0
-      ? getCachedUrls(fresh, async (missingIds) => {
-          const { data, error } = await supabase.functions.invoke('get-avatar-urls', {
-            body: { userIds: missingIds },
-          });
-          if (error) throw error;
-
-          const { urls } = data as { urls: { userId: string; url: string }[] };
-          return Object.fromEntries(urls.map((u) => [u.userId, u.url]));
-        })
-      : null;
-  if (batch) {
-    for (const id of fresh) {
-      const one = batch.then((urls) => urls[id], () => undefined);
-      inFlight.set(id, one);
-      void one.then(() => inFlight.delete(id));
-    }
-  }
-
-  const joined = userIds.filter((id) => !fresh.includes(id));
-  const [own, borrowed] = await Promise.all([
-    // Still throws, as it always has, when this call's own request fails.
-    batch ?? Promise.resolve({}),
-    Promise.all(joined.map(async (id) => [id, await inFlight.get(id)] as const)),
-  ]);
-  const result: Record<string, string> = { ...own };
-  for (const [id, url] of borrowed) if (url) result[id] = url;
-  return result;
+    const { urls } = data as { urls: { userId: string; url: string }[] };
+    return Object.fromEntries(urls.map((u) => [u.userId, u.url]));
+  });
 }
 
 // A user with no avatar is remembered for a while, so a list of their posts

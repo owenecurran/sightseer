@@ -50,7 +50,7 @@ export async function uploadCoverPhoto(params: UploadCoverParams): Promise<strin
 export async function getCoverViewUrls(table: CoverTable, ids: string[]): Promise<Record<string, string>> {
   if (ids.length === 0) return {};
 
-  return getCachedUrls(ids, async (missingIds) => {
+  return getCachedUrls(`cover:${table}`, ids, async (missingIds) => {
     const { data, error } = await supabase.functions.invoke('get-cover-urls', {
       body: { table, ids: missingIds },
     });

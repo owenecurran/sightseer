@@ -273,7 +273,7 @@ export async function uploadPromptPhoto(uri: string, mimeType?: string): Promise
 export async function getPromptPhotoUrls(attachmentIds: string[]): Promise<Record<string, string>> {
   if (attachmentIds.length === 0) return {};
 
-  return getCachedUrls(attachmentIds, async (missingIds) => {
+  return getCachedUrls('prompt', attachmentIds, async (missingIds) => {
     const { data, error } = await supabase.functions.invoke('get-prompt-photo-urls', {
       body: { attachmentIds: missingIds },
     });
