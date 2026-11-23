@@ -39,6 +39,7 @@ import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
 import { getVisitsByIds, likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
 import { shareText } from '@/lib/share';
 import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
 import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function ProfileScreen() {
@@ -166,7 +167,7 @@ export default function ProfileScreen() {
     setError(null);
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required to set a profile picture.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -259,6 +260,7 @@ ${latestCard.note ?? ''}`.trim());
             defaultCamera={parseDefaultCamera(profile)}
             isOwnProfile
             onCameraLocked={refreshProfile}
+            onLayersSaved={refreshProfile}
           />
         </PaperPanel>
       ) : null,

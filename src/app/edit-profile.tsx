@@ -10,6 +10,7 @@ import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { PromptCard } from '@/components/prompt-card';
 import { ThemedText } from '@/components/themed-text';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -36,7 +37,10 @@ import { supabase } from '@/lib/supabase';
 import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
 import { goBack } from '@/lib/navigation';
 import { Avatar } from '@/components/ui/avatar';
+import { FormError } from '@/components/ui/error-notice';
 import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
+import { LAYER_OPTIONS, parseDefaultLayers, type LayerKey } from '@/lib/map-layers';
 
 const BIO_MAX_LENGTH = 160;
 const PROMPT_SLOT_COUNT = 6;
@@ -57,6 +61,9 @@ export default function EditProfileScreen() {
   const [name, setName] = useState(profile?.name ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
   const [showMap, setShowMap] = useState(profile?.show_map ?? false);
+  // What the map shows: countries, states, cities, pins, parks. Saved with
+  // the rest of the profile, as the full map's own "Save layers" saves it.
+  const [mapLayers, setMapLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(profile?.map_default_layers));
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
@@ -150,7 +157,7 @@ export default function EditProfileScreen() {
     if (!session) return;
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -182,6 +189,7 @@ export default function EditProfileScreen() {
         name: name.trim(),
         bio: bio.trim() || null,
         show_map: showMap,
+        map_default_layers: LAYER_OPTIONS.map((option) => option.key).filter((key) => mapLayers.has(key)),
       })
       .eq('id', session.user.id);
     setIsSaving(false);
@@ -312,11 +320,32 @@ export default function EditProfileScreen() {
             onPress={() => setShowMap((prev) => !prev)}
           />
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
+          {/* Which kinds of place it marks, each ringed while it is on.
+              At least one stays on: an empty choice reads back as the
+              default (see parseDefaultLayers), which would undo itself. */}
+          {showMap && (
+            <View style={styles.mapLayers}>
+              <ThemedText type="caption">What it shows</ThemedText>
+              <CircledTabs
+                items={LAYER_OPTIONS}
+                active={[...mapLayers]}
+                onChange={(key) =>
+                  setMapLayers((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(key)) {
+                      if (next.size === 1) return prev;
+                      next.delete(key);
+                    } else {
+                      next.add(key);
+                    }
+                    return next;
+                  })
+                }
+              />
+            </View>
           )}
+
+          {error && <FormError message={error} />}
 
           <Button label="Save" onPress={handleSave} loading={isSaving} />
 
@@ -361,6 +390,12 @@ export default function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  // In line with the checkbox's label, under it.
+  mapLayers: {
+    gap: Spacing.one,
+    marginLeft: 22 + Spacing.two,
+    marginTop: -Spacing.one,
+  },
   container: {
     flex: 1,
   },
