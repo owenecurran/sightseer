@@ -9,6 +9,7 @@ import { Fold, Unfold } from '@/components/ui/unfold';
 import { Button } from '@/components/ui/button';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { userErrorMessage } from '@/lib/user-error';
 
 const FRAME_MAX = 320;
 // Capped lower than before (was 3) — zooming all the way in produced
@@ -263,7 +264,7 @@ export function PhotoCropModal({ visible, uri, onCancel, onConfirm, allowRatioSe
       const saved = await rendered.saveAsync({ format: SaveFormat.JPEG, compress: 0.9 });
       onConfirm({ uri: saved.uri, width: saved.width, height: saved.height });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not crop that photo.');
+      setError(userErrorMessage(err, 'Could not crop that photo.'));
     } finally {
       setIsProcessing(false);
     }

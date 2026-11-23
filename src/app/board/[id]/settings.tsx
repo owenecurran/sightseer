@@ -15,6 +15,8 @@ import { useAuth } from '@/lib/auth-context';
 import { deleteBoard, setBoardFeatured, updateBoardListStyle, updateBoardPrivacy } from '@/lib/boards';
 import type { Database } from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 type ListStyle = 'collection' | 'ranked';
@@ -43,7 +45,7 @@ export default function BoardSettingsScreen() {
           if (boardError) throw boardError;
           setBoard(data);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this board.');
+          setError(userErrorMessage(err, 'Could not load this board.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -58,7 +60,7 @@ export default function BoardSettingsScreen() {
     try {
       await updateBoardListStyle(board.id, listStyle);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update the ranking type.');
+      setError(userErrorMessage(err, 'Could not update the ranking type.'));
       setBoard((prev) => (prev ? { ...prev, list_style: previous } : prev));
     }
   }
@@ -70,7 +72,7 @@ export default function BoardSettingsScreen() {
     try {
       await updateBoardPrivacy(board.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update privacy.');
+      setError(userErrorMessage(err, 'Could not update privacy.'));
       setBoard((prev) => (prev ? { ...prev, is_private: !next } : prev));
     }
   }
@@ -82,7 +84,7 @@ export default function BoardSettingsScreen() {
     try {
       await setBoardFeatured(board.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update featured status.');
+      setError(userErrorMessage(err, 'Could not update featured status.'));
       setBoard((prev) => (prev ? { ...prev, is_featured: !next } : prev));
     }
   }
@@ -102,7 +104,7 @@ export default function BoardSettingsScreen() {
       // counts as a re-tap. Without it the pager stays where it was.
       if (router.canDismiss()) router.dismissAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete this board.');
+      setError(userErrorMessage(err, 'Could not delete this board.'));
       setIsConfirmingDelete(false);
       setIsDeleting(false);
     }
@@ -175,11 +177,7 @@ export default function BoardSettingsScreen() {
             </>
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
         </View>
       </SafeAreaView>
 

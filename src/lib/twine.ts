@@ -145,13 +145,45 @@ export function knotUri(twine: Twine, edge: number, hole: number): string {
   );
 }
 
-// The rail the tags hang from: one length of twine strung across the strip,
-// tied off past both ends, dipping between each pair of tags and knotted at
-// each tag's string. `anchors` are the knots' x positions, all at `y`;
-// `sags` is how far it dips in each span, from the left end to the right.
-export function railUri(twine: Twine, width: number, height: number, y: number, anchors: number[], sags: number[]): string {
+// Twine laid along a polyline (`points`, as SVG writes them): one ply along
+// it, the other in short bands round it, a shadow in each turn, and a glint
+// offset by `glint` toward the light.
+function twineAlong(twine: Twine, points: string, glint: [number, number] = [0, -0.9]): string {
   const { palette } = twine;
-  const ties = [0, ...anchors, width];
+  const stroke = (color: string, strokeWidth: number, extra = '') =>
+    `<polyline points="${points}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" ` +
+    `stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
+  return (
+    stroke(palette.plyB, 3.2) +
+    stroke(palette.plyA, 3.2, `stroke-dasharray="2.4 2.2" stroke-dashoffset="${twine.phase.toFixed(2)}"`) +
+    stroke(palette.groove, 0.7, 'stroke-opacity="0.55" stroke-dasharray="0.7 3.9"') +
+    `<g transform="translate(${glint[0]} ${glint[1]})">` +
+    stroke(palette.shine, 0.6, 'stroke-opacity="0.65" stroke-dasharray="1.5 3.1"') +
+    `</g>`
+  );
+}
+
+// The rail the tags hang from: one length of twine strung across the strip
+// between two nails, dipping between each pair of tags and knotted at each
+// tag's string. `anchors` are the knots' x positions, all at `y`; `sags` is
+// how far it dips in each span, from the left end to the right; `ends` are
+// the two nails' x positions, which railEndUri draws.
+//
+// It used to run on past both ends of the strip, off the edge of the
+// screen, which made the end of the strip look exactly like the middle: a
+// length of twine that runs off the screen could carry more tags. One tied
+// to a nail, with bare wall after it, cannot.
+export function railUri(
+  twine: Twine,
+  width: number,
+  height: number,
+  y: number,
+  anchors: number[],
+  sags: number[],
+  ends: [number, number],
+): string {
+  const { palette } = twine;
+  const ties = [ends[0], ...anchors, ends[1]];
   const points: string[] = [];
   for (let span = 0; span < ties.length - 1; span++) {
     const x0 = ties[span];
@@ -163,10 +195,6 @@ export function railUri(twine: Twine, width: number, height: number, y: number, 
       points.push(`${(x0 + (x1 - x0) * t).toFixed(1)},${(y + sag * Math.sin(Math.PI * t)).toFixed(1)}`);
     }
   }
-  const line = points.join(' ');
-  const stroke = (color: string, strokeWidth: number, extra = '') =>
-    `<polyline points="${line}" fill="none" stroke="${color}" stroke-width="${strokeWidth}" ` +
-    `stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
   const knots = anchors
     .map(
       (x) =>
@@ -177,13 +205,77 @@ export function railUri(twine: Twine, width: number, height: number, y: number, 
     .join('');
   return svgDataUri(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
-      // One ply laid along it, the other in short bands round it, a shadow
-      // in each turn and a glint along the top.
-      stroke(palette.plyB, 3.2) +
-      stroke(palette.plyA, 3.2, `stroke-dasharray="2.4 2.2" stroke-dashoffset="${twine.phase.toFixed(2)}"`) +
-      stroke(palette.groove, 0.7, 'stroke-opacity="0.55" stroke-dasharray="0.7 3.9"') +
-      `<g transform="translate(0 -0.9)">${stroke(palette.shine, 0.6, 'stroke-opacity="0.65" stroke-dasharray="1.5 3.1"')}</g>` +
+      twineAlong(twine, points.join(' ')) +
       knots +
+      `</svg>`,
+  );
+}
+
+// How wide one tied-off end's image is. Its nail is in the middle, `y` down.
+export const RAIL_END_WIDTH = 36;
+
+// How tall a tied-off end's image is, for a nail `y` down and a loose end
+// `tail` long.
+export function railEndHeight(y: number, tail: number): number {
+  return Math.ceil(y + tail + 6);
+}
+
+// One end of the rail: the twine wound twice round a nail in the wall and
+// tied off, its cut end hanging down and away from the tags, frayed. `side`
+// is -1 for the left end and 1 for the right. Drawn on its own, small, so
+// that it does not stretch when the rail gives (see PlaceTagRail): a nail
+// does not move, and the end hanging off it does not stretch.
+export function railEndUri(twine: Twine, side: -1 | 1, y: number, tail: number): string {
+  const { palette } = twine;
+  const cx = RAIL_END_WIDTH / 2;
+  const height = railEndHeight(y, tail);
+
+  // The loose end: out from under the nail's head on the side away from the
+  // tags, falling in a slight curve and swinging back in a little at the
+  // bottom, the way a short end of twine hangs.
+  const start = { x: cx + side * 1.6, y: y + 2.2 };
+  const bend = { x: cx + side * 7, y: y + tail * 0.42 };
+  const end = { x: cx + side * 4.6, y: y + tail };
+  const points: string[] = [];
+  for (let i = 0; i <= 14; i++) {
+    const t = i / 14;
+    const x = (1 - t) * (1 - t) * start.x + 2 * (1 - t) * t * bend.x + t * t * end.x;
+    const py = (1 - t) * (1 - t) * start.y + 2 * (1 - t) * t * bend.y + t * t * end.y;
+    points.push(`${x.toFixed(2)},${py.toFixed(2)}`);
+  }
+  // Cut and frayed: the end splits into a few loose hairs.
+  const hair = (dx: number, dy: number, color: string) =>
+    `<path d="M${end.x.toFixed(2)} ${end.y.toFixed(2)} l${(side * dx).toFixed(2)} ${dy.toFixed(2)}" ` +
+    `stroke="${color}" stroke-width="0.6" stroke-linecap="round" stroke-opacity="0.9"/>`;
+  const fray =
+    hair(1.6, 2.6, palette.shine) + hair(-0.8, 3, palette.plyA) + hair(2.8, 1.4, palette.shine) + hair(0.4, 3.4, palette.plyB);
+
+  // Two turns round the nail's shank, bunched under its head.
+  const wraps =
+    `<ellipse cx="${cx}" cy="${(y + 0.9).toFixed(2)}" rx="4.8" ry="2.6" fill="${palette.plyB}" ` +
+    `transform="rotate(${-12 * side} ${cx} ${y})"/>` +
+    `<ellipse cx="${(cx + side * 0.5).toFixed(2)}" cy="${(y + 2).toFixed(2)}" rx="4.3" ry="2.3" fill="${palette.plyA}" ` +
+    `transform="rotate(${10 * side} ${cx} ${y})"/>` +
+    `<path d="M${cx - 3.8} ${(y + 1.4).toFixed(2)} q3.8 2.3 7.6 0" fill="none" stroke="${palette.groove}" ` +
+    `stroke-width="0.7" stroke-opacity="0.7"/>`;
+
+  // The nail's head, domed and worn, lit from the top left, with its
+  // shadow on the wall.
+  const nail =
+    `<ellipse cx="${cx + 1.3}" cy="${(y + 1.9).toFixed(2)}" rx="4.2" ry="3.8" fill="#000000" fill-opacity="0.45"/>` +
+    `<circle cx="${cx}" cy="${y}" r="4" fill="url(#nail-head)" stroke="#3d3a33" stroke-width="0.8"/>` +
+    `<ellipse cx="${cx - 1.3}" cy="${(y - 1.4).toFixed(2)}" rx="1.4" ry="0.8" fill="#f6f2e4" fill-opacity="0.8" ` +
+    `transform="rotate(-30 ${cx - 1.3} ${y - 1.4})"/>`;
+
+  return svgDataUri(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${RAIL_END_WIDTH}" height="${height}" viewBox="0 0 ${RAIL_END_WIDTH} ${height}">` +
+      `<defs><radialGradient id="nail-head" cx="0.38" cy="0.32" r="0.78">` +
+      `<stop offset="0" stop-color="#ddd8c8"/><stop offset="0.55" stop-color="#9d988c"/><stop offset="1" stop-color="#57534a"/>` +
+      `</radialGradient></defs>` +
+      twineAlong(twine, points.join(' '), [-0.9, 0]) +
+      fray +
+      wraps +
+      nail +
       `</svg>`,
   );
 }

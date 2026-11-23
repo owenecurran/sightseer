@@ -1,4 +1,5 @@
-import { getCachedUrls } from '@/lib/media-url-cache';
+import { putImageBlob, readImageBlob, requestImageUpload } from '@/lib/media-upload';
+import { getCachedUrls, invalidateCachedUrl } from '@/lib/media-url-cache';
 import { supabase } from '@/lib/supabase';
 
 const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -16,29 +17,18 @@ export async function uploadAvatar(params: UploadAvatarParams): Promise<string> 
   const { userId, uri, mimeType } = params;
   const contentType = mimeType && ALLOWED_CONTENT_TYPES.includes(mimeType) ? mimeType : 'image/jpeg';
 
-  const { data, error: fnError } = await supabase.functions.invoke('create-avatar-upload-url', {
-    body: { contentType },
-  });
-  if (fnError) throw fnError;
-  const { uploadUrl, r2Key } = data as { uploadUrl: string; r2Key: string };
-
-  const fileResponse = await fetch(uri);
-  const blob = await fileResponse.blob();
-
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: blob,
-  });
-  if (!uploadResponse.ok) {
-    throw new Error(`Upload to storage failed (${uploadResponse.status})`);
-  }
+  const image = await readImageBlob(uri);
+  const { uploadUrl, r2Key } = await requestImageUpload('create-avatar-upload-url', { contentType }, image);
+  await putImageBlob(uploadUrl, image, contentType);
 
   const { error: updateError } = await supabase
     .from('users')
     .update({ avatar_r2_key: r2Key })
     .eq('id', userId);
   if (updateError) throw updateError;
+  avatarRevision.set(userId, r2Key);
+  noAvatarUntil.delete(userId);
+  await invalidateCachedUrl('avatar', userId);
 
   return r2Key;
 }
@@ -60,6 +50,7 @@ export async function getAvatarViewUrls(userIds: string[]): Promise<Record<strin
 // does not ask again for every card.
 const NO_AVATAR_TTL_MS = 5 * 60 * 1000;
 const noAvatarUntil = new Map<string, number>();
+const avatarRevision = new Map<string, string>();
 const queued = new Map<string, ((url: string | null) => void)[]>();
 let isFlushQueued = false;
 
@@ -82,6 +73,7 @@ export function getAvatarViewUrl(userId: string): Promise<string | null> {
 async function flushQueuedAvatars() {
   isFlushQueued = false;
   const batch = new Map(queued);
+  const revisions = new Map([...batch.keys()].map((id) => [id, avatarRevision.get(id)]));
   queued.clear();
   let urls: Record<string, string> | null = null;
   try {
@@ -92,7 +84,9 @@ async function flushQueuedAvatars() {
   for (const [userId, resolvers] of batch) {
     const url = urls?.[userId] ?? null;
     // Only a request that worked can say someone has no avatar.
-    if (urls && !url) noAvatarUntil.set(userId, Date.now() + NO_AVATAR_TTL_MS);
+    if (urls && !url && revisions.get(userId) === avatarRevision.get(userId)) {
+      noAvatarUntil.set(userId, Date.now() + NO_AVATAR_TTL_MS);
+    }
     for (const resolve of resolvers) resolve(url);
   }
 }

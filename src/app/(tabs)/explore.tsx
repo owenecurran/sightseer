@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,8 +10,9 @@ import { ThemedText } from '@/components/themed-text';
 import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 import { TextField } from '@/components/ui/text-field';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BrandColors, BrandFonts, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
@@ -26,6 +27,7 @@ import {
   type SearchTravelBookResult,
   type SearchUserResult,
 } from '@/lib/search';
+import { userErrorMessage } from '@/lib/user-error';
 
 const DEBOUNCE_MS = 300;
 
@@ -49,9 +51,9 @@ const RESULT_FILTERS: { key: Exclude<ResultFilter, 'all'>; label: string }[] = [
 ];
 
 function followLabel(status: SearchUserResult['followStatus']): string {
-  if (status === 'accepted') return 'Following';
-  if (status === 'pending') return 'Requested';
-  return 'Follow';
+  if (status === 'accepted') return 'following';
+  if (status === 'pending') return 'asked';
+  return '+ follow';
 }
 
 // Leads with the raw count (per direct feedback: "shows the number of
@@ -65,14 +67,25 @@ function mutualsLabel(mutuals: MutualFollower[]): string | null {
   return `${countLabel} · ${firstName} + ${mutuals.length - 1} other${mutuals.length > 2 ? 's' : ''}`;
 }
 
-// One line, shrunk to fit. These were the 34pt wrapping headline, so a
-// three-word name stacked three lines high and a list of people ran to a
-// screen for every three of them.
+// One line, shrunk to fit. Set in the serif the screen titles use, in its
+// own case: these were heavy capitals, and a list of names all shouting at
+// the same size was most of what made the page feel like a stack of blocks.
 function ResultTitle({ children }: { children: ReactNode }) {
   return (
-    <ThemedText type="headline" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={styles.resultTitle}>
+    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={styles.resultTitle}>
       {children}
-    </ThemedText>
+    </Text>
+  );
+}
+
+// One result, written on the page like an entry in an address book: no box
+// round it, only a faint rule under it. A column of identical rounded cards
+// read as a database's rows.
+function ResultRow({ onPress, children }: { onPress: () => void; children: ReactNode }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.resultRow, pressed && styles.rowPressed]}>
+      {children}
+    </Pressable>
   );
 }
 
@@ -129,51 +142,72 @@ export default function SearchScreen() {
       setBoards([]);
       setTravelBooks([]);
       setUsers([]);
+      setError(null);
+      setIsSearching(false);
       return;
     }
 
+    // Set once the query moves on. A slow answer to "ab" used to land after
+    // the answer to "abc" and replace it, leaving results for what was no
+    // longer in the field.
+    let stale = false;
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       setError(null);
       try {
         const result = await searchAll(query, session.user.id);
+        if (stale) return;
         setBoards(result.boards);
         setTravelBooks(result.travelBooks);
         setUsers(result.users);
 
-        const userIds = result.users.map((u) => u.id);
-        // Merged rather than replaced, so the suggested people keep their
-        // avatars when the field is cleared again.
-        if (userIds.length > 0) {
-          const urls = await getAvatarViewUrls(userIds);
-          setAvatarUrls((prev) => ({ ...prev, ...urls }));
-        }
+        // Pictures are extras. Their failing used to fail the search, and
+        // put "Search failed." over results that had already arrived.
+        try {
+          const userIds = result.users.map((u) => u.id);
+          // Merged rather than replaced, so the suggested people keep their
+          // avatars when the field is cleared again.
+          if (userIds.length > 0) {
+            const urls = await getAvatarViewUrls(userIds);
+            setAvatarUrls((prev) => ({ ...prev, ...urls }));
+          }
 
-        // Cover thumbnails: explicit cover_photo_id wins; boards without one
-        // fall back to the most-recently-added item's photo (same rule
-        // boards.tsx uses). Travel books have no such fallback.
-        const boardsWithoutCover = result.boards.filter((b) => !b.cover_photo_id);
-        const latestPhotoIdByBoard = await getLatestReviewPhotoIds(boardsWithoutCover.map((b) => b.id));
-        const photoIdByEntity: Record<string, string> = { ...latestPhotoIdByBoard };
-        for (const b of result.boards) if (b.cover_photo_id) photoIdByEntity[b.id] = b.cover_photo_id;
-        for (const t of result.travelBooks) if (t.cover_photo_id) photoIdByEntity[t.id] = t.cover_photo_id;
-        const coverPhotoIds = Object.values(photoIdByEntity);
-        const resolvedCovers = coverPhotoIds.length > 0 ? await getPhotoViewUrls(coverPhotoIds) : {};
-        setCoverUrls(
-          Object.fromEntries(
-            Object.entries(photoIdByEntity)
-              .map(([entityId, photoId]) => [entityId, resolvedCovers[photoId]])
-              .filter(([, url]) => url != null)
-          )
-        );
+          // Cover thumbnails: explicit cover_photo_id wins; boards without one
+          // fall back to the most-recently-added item's photo (same rule
+          // boards.tsx uses). Travel books have no such fallback.
+          const boardsWithoutCover = result.boards.filter((b) => !b.cover_photo_id);
+          const latestPhotoIdByBoard = await getLatestReviewPhotoIds(boardsWithoutCover.map((b) => b.id));
+          const photoIdByEntity: Record<string, string> = { ...latestPhotoIdByBoard };
+          for (const b of result.boards) if (b.cover_photo_id) photoIdByEntity[b.id] = b.cover_photo_id;
+          for (const t of result.travelBooks) if (t.cover_photo_id) photoIdByEntity[t.id] = t.cover_photo_id;
+          const coverPhotoIds = Object.values(photoIdByEntity);
+          const resolvedCovers = coverPhotoIds.length > 0 ? await getPhotoViewUrls(coverPhotoIds) : {};
+          if (stale) return;
+          setCoverUrls(
+            Object.fromEntries(
+              Object.entries(photoIdByEntity)
+                .map(([entityId, photoId]) => [entityId, resolvedCovers[photoId]])
+                .filter(([, url]) => url != null)
+            )
+          );
+        } catch {
+          // The rows show without their pictures.
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
+        if (stale) return;
+        // The last query's results would otherwise stay, under a field
+        // that now says something else.
+        setBoards([]);
+        setTravelBooks([]);
+        setUsers([]);
+        setError(userErrorMessage(err, 'Could not search just now. Try again.'));
       } finally {
-        setIsSearching(false);
+        if (!stale) setIsSearching(false);
       }
     }, DEBOUNCE_MS);
 
     return () => {
+      stale = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query, session, isPlaces]);
@@ -199,7 +233,7 @@ export default function SearchScreen() {
         setSuggestions(update);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that follow.');
+      setError(userErrorMessage(err, 'Could not update that follow.'));
     }
   }
 
@@ -213,25 +247,19 @@ export default function SearchScreen() {
   function renderUser(user: SearchUserResult) {
     const mutualLine = mutualsLabel(user.mutuals);
     return (
-      <Pressable key={user.id} onPress={() => router.push({ pathname: '/user/[id]', params: { id: user.id } })}>
-        <PaperPanel seed={`result-user-${user.id}`} style={styles.resultRow}>
-          <Avatar uri={avatarUrls[user.id]} name={user.name ?? user.handle} size={40} />
-          <View style={styles.resultInfo}>
-            <ResultTitle>{user.name ?? user.handle ?? 'Unnamed'}</ResultTitle>
-            {user.handle && (
-              <ThemedText type="small" themeColor="textMeta">
-                @{user.handle}
-              </ThemedText>
-            )}
-            {mutualLine && <ThemedText type="caption">{mutualLine}</ThemedText>}
-          </View>
-          <Pressable onPress={() => handleFollowToggle(user)} hitSlop={8}>
-            <ThemedText type="action" themeColor={user.followStatus === null ? 'sage' : 'text'}>
-              {followLabel(user.followStatus)}
-            </ThemedText>
-          </Pressable>
-        </PaperPanel>
-      </Pressable>
+      <ResultRow key={user.id} onPress={() => router.push({ pathname: '/user/[id]', params: { id: user.id } })}>
+        <Avatar uri={avatarUrls[user.id]} name={user.name ?? user.handle} size={44} />
+        <View style={styles.resultInfo}>
+          <ResultTitle>{user.name ?? user.handle ?? 'Unnamed'}</ResultTitle>
+          {user.handle && <Text style={styles.resultHandle}>@{user.handle}</Text>}
+          {mutualLine && <Text style={styles.resultNote}>{mutualLine}</Text>}
+        </View>
+        <Pressable onPress={() => handleFollowToggle(user)} hitSlop={10}>
+          <Text style={[styles.followAction, user.followStatus !== null && styles.followDone]}>
+            {followLabel(user.followStatus)}
+          </Text>
+        </Pressable>
+      </ResultRow>
     );
   }
 
@@ -245,19 +273,11 @@ export default function SearchScreen() {
           scrollEventThrottle={16}>
           <ThemedText type="displaySerif">Search</ThemedText>
 
-          <View style={styles.filterRow}>
-            {RESULT_FILTERS.map((f) => (
-              <Pressable key={f.key} onPress={() => setResultFilter((current) => (current === f.key ? 'all' : f.key))}>
-                <ThemedView
-                  type={resultFilter === f.key ? 'backgroundSelected' : 'backgroundElement'}
-                  style={styles.filterChip}>
-                  <ThemedText type="small" themeColor={resultFilter === f.key ? 'text' : 'textSecondary'}>
-                    {f.label}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
-            ))}
-          </View>
+          <CircledTabs
+            items={RESULT_FILTERS}
+            active={resultFilter === 'all' ? null : resultFilter}
+            onChange={(key) => setResultFilter((current) => (current === key ? 'all' : key))}
+          />
 
           {error && (
             <ThemedText type="small" themeColor="danger">
@@ -269,7 +289,9 @@ export default function SearchScreen() {
             <>
               <TextField placeholder="Search people, boards, or travel books" value={query} onChangeText={setQuery} />
 
-              {!isSearching && hasQuery && !hasAnyResults && (
+              {/* Not after a failed search, which has found nothing only
+                  because it did not run. */}
+              {!isSearching && !error && hasQuery && !hasAnyResults && (
                 <ThemedText type="caption">
                   Nothing matches that. Try part of a name or a handle.
                 </ThemedText>
@@ -295,38 +317,34 @@ export default function SearchScreen() {
               <View style={styles.results}>
                 {showBoards &&
                   boards.map((board) => (
-                    <Pressable
+                    <ResultRow
                       key={board.id}
                       onPress={() => router.push({ pathname: '/board/[id]', params: { id: board.id } })}>
-                      <PaperPanel seed={`result-board-${board.id}`} style={styles.resultRow}>
-                        {coverUrls[board.id] && <Image source={{ uri: coverUrls[board.id] }} style={styles.resultThumbnail} />}
-                        <View style={styles.resultInfo}>
-                          <ResultTitle>{board.name}</ResultTitle>
-                          <ThemedText type="meta">
-                            by {board.creatorName}
-                            {board.is_private ? ' · Private' : ''}
-                          </ThemedText>
-                        </View>
-                      </PaperPanel>
-                    </Pressable>
+                      {coverUrls[board.id] && <Image source={{ uri: coverUrls[board.id] }} style={styles.resultThumbnail} />}
+                      <View style={styles.resultInfo}>
+                        <ResultTitle>{board.name}</ResultTitle>
+                        <Text style={styles.resultHandle}>
+                          by {board.creatorName}
+                          {board.is_private ? ' · private' : ''}
+                        </Text>
+                      </View>
+                    </ResultRow>
                   ))}
 
                 {showTravelBooks &&
                   travelBooks.map((book) => (
-                    <Pressable
+                    <ResultRow
                       key={book.id}
                       onPress={() => router.push({ pathname: '/travel-book/[id]', params: { id: book.id } })}>
-                      <PaperPanel seed={`result-book-${book.id}`} style={styles.resultRow}>
-                        {coverUrls[book.id] && <Image source={{ uri: coverUrls[book.id] }} style={styles.resultThumbnail} />}
-                        <View style={styles.resultInfo}>
-                          <ResultTitle>{book.title}</ResultTitle>
-                          <ThemedText type="meta">
-                            by {book.creatorName}
-                            {book.is_private ? ' · Private' : ''}
-                          </ThemedText>
-                        </View>
-                      </PaperPanel>
-                    </Pressable>
+                      {coverUrls[book.id] && <Image source={{ uri: coverUrls[book.id] }} style={styles.resultThumbnail} />}
+                      <View style={styles.resultInfo}>
+                        <ResultTitle>{book.title}</ResultTitle>
+                        <Text style={styles.resultHandle}>
+                          by {book.creatorName}
+                          {book.is_private ? ' · private' : ''}
+                        </Text>
+                      </View>
+                    </ResultRow>
                   ))}
 
                 {showPeople && users.map(renderUser)}
@@ -366,43 +384,62 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.four + TopTabInset,
     gap: Spacing.three,
   },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
   sectionLabel: {
     marginBottom: Spacing.one,
   },
-  // Twelve a side rather than sixteen: with that, the four chips fit across
-  // a 411dp phone. Narrower screens wrap the last one rather than clip it.
-  filterChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: 12,
-    borderRadius: Spacing.five,
-  },
   results: {
-    gap: Spacing.two,
+    gap: 0,
   },
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
+    gap: Spacing.three,
     paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+    paddingHorizontal: Spacing.one,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(234, 231, 207, 0.16)',
+  },
+  rowPressed: {
+    opacity: 0.6,
+  },
+  resultHandle: {
+    fontFamily: BrandFonts.typewriter,
+    fontSize: 13,
+    color: 'rgba(234, 231, 207, 0.55)',
+  },
+  // Who you both know, noted beside the entry in pencil.
+  resultNote: {
+    fontFamily: BrandFonts.hand,
+    fontSize: 16,
+    color: 'rgba(160, 189, 145, 0.85)',
+    marginTop: 2,
+  },
+  followAction: {
+    fontFamily: BrandFonts.hand,
+    fontSize: 19,
+    color: BrandColors.sage,
+  },
+  followDone: {
+    fontFamily: BrandFonts.typewriter,
+    fontSize: 13,
+    color: 'rgba(234, 231, 207, 0.5)',
   },
   resultInfo: {
     flex: 1,
     gap: Spacing.half,
   },
   resultTitle: {
-    fontSize: 24,
+    fontFamily: BrandFonts.serifDisplay,
+    fontSize: 26,
+    color: BrandColors.cream,
   },
+  // A print with its white border, like the review form's photos.
   resultThumbnail: {
-    width: 40,
-    height: 40,
-    borderRadius: Spacing.one,
+    width: 46,
+    height: 46,
+    borderRadius: 1,
+    borderWidth: 3,
+    borderColor: '#f3eedb',
   },
   locationsCard: {
     paddingVertical: Spacing.four,

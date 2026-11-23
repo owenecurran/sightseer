@@ -18,6 +18,8 @@ import { getPhotoViewUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 import { goBack } from '@/lib/navigation';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function VisitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -48,7 +50,7 @@ export default function VisitDetailScreen() {
         setPhotoUrls(photos);
         setAvatarUrl(avatars[result.user_id] ?? null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load that review.'));
+      .catch((err) => setError(userErrorMessage(err, 'Could not load that review.')));
   }, [id, session]);
 
   async function handleToggleLike() {
@@ -66,7 +68,7 @@ export default function VisitDetailScreen() {
           : prev
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that like.');
+      setError(userErrorMessage(err, 'Could not update that like.'));
     }
   }
 
@@ -91,7 +93,10 @@ export default function VisitDetailScreen() {
     }
   }
 
-  if (visit === undefined) return <PageLoader />;
+  // A failed load leaves the review undefined, the same as one still on
+  // its way, so the error has to be checked too. Without it the loader
+  // stayed up for good and the notice below never showed.
+  if (visit === undefined && !error) return <PageLoader />;
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -107,11 +112,7 @@ export default function VisitDetailScreen() {
           scrollEventThrottle={16}>
         <BackLink seed="[id]" />
 
-        {error && (
-          <ThemedText type="small" themeColor="danger">
-            {error}
-          </ThemedText>
-        )}
+        {error && <ErrorNotice message={error} />}
 
         {visit === null && (
           <ThemedText type="caption">

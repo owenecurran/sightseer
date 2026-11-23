@@ -53,17 +53,30 @@ function hydrate(cache: ViewerCache) {
   return cache.hydration;
 }
 
+async function flush(cache: ViewerCache) {
+  if (active !== cache) return;
+  if (cache.flushTimer !== undefined) clearTimeout(cache.flushTimer);
+  cache.flushTimer = undefined;
+  const now = Date.now();
+  for (const [id, entry] of cache.entries) {
+    if (entry.expiresAt <= now || cache.entries.size > MAX_ENTRIES) cache.entries.delete(id);
+  }
+  await AsyncStorage.setItem(cache.storageKey, JSON.stringify(Object.fromEntries(cache.entries))).catch(() => {});
+}
+
 function scheduleFlush(cache: ViewerCache) {
-  if (cache.flushTimer) clearTimeout(cache.flushTimer);
-  cache.flushTimer = setTimeout(() => {
-    if (active !== cache) return;
-    cache.flushTimer = undefined;
-    const now = Date.now();
-    for (const [id, entry] of cache.entries) {
-      if (entry.expiresAt <= now || cache.entries.size > MAX_ENTRIES) cache.entries.delete(id);
-    }
-    void AsyncStorage.setItem(cache.storageKey, JSON.stringify(Object.fromEntries(cache.entries))).catch(() => {});
-  }, 1000);
+  if (cache.flushTimer !== undefined) clearTimeout(cache.flushTimer);
+  cache.flushTimer = setTimeout(() => { void flush(cache); }, 1000);
+}
+
+export async function invalidateCachedUrl(namespace: string, id: string) {
+  const cache = active;
+  if (!cache) return;
+  await hydrate(cache);
+  if (active !== cache) return;
+  const key = `${namespace}:${id}`;
+  cache.pending.delete(key);
+  if (cache.entries.delete(key)) await flush(cache);
 }
 
 export async function getCachedUrls(
@@ -91,22 +104,31 @@ export async function getCachedUrls(
   }
 
   if (missing.length > 0) {
+    const requests = new Map<string, Promise<string | undefined>>();
     const batch = fetchMissing(missing).then((urls) => {
       if (active !== cache) return {};
       const expiresAt = Date.now() + CACHE_TTL_MS;
-      for (const [id, url] of Object.entries(urls)) {
+      const currentUrls: Record<string, string> = {};
+      for (const [id, pending] of requests) {
         const key = `${namespace}:${id}`;
+        const url = urls[id];
+        if (!url || cache.pending.get(key) !== pending) continue;
         cache.entries.delete(key);
         cache.entries.set(key, { url, expiresAt });
+        currentUrls[id] = url;
       }
-      scheduleFlush(cache);
-      return urls;
+      if (Object.keys(currentUrls).length) scheduleFlush(cache);
+      return currentUrls;
     }).finally(() => {
-      for (const id of missing) cache.pending.delete(`${namespace}:${id}`);
+      for (const [id, pending] of requests) {
+        const key = `${namespace}:${id}`;
+        if (cache.pending.get(key) === pending) cache.pending.delete(key);
+      }
     });
 
     for (const id of missing) {
       const pending = batch.then((urls) => urls[id]);
+      requests.set(id, pending);
       cache.pending.set(`${namespace}:${id}`, pending);
       waiting.push(pending.then((url) => { if (url) result[id] = url; }));
     }

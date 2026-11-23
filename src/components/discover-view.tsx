@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Fragment, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type Ref } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, {
+  runOnJS,
   useAnimatedReaction,
   useAnimatedScrollHandler,
   useSharedValue,
@@ -11,7 +12,15 @@ import Animated, {
 } from 'react-native-reanimated';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 
-import { PLACE_TAG_EDGE, PLACE_TAG_GAP, PLACE_TAG_HEADROOM, PlaceTag, PlaceTagRail } from '@/components/place-tag';
+import {
+  PLACE_TAG_EDGE,
+  PLACE_TAG_END,
+  PLACE_TAG_GAP,
+  PLACE_TAG_HEADROOM,
+  PlaceTag,
+  PlaceTagRail,
+  placeStripWidth,
+} from '@/components/place-tag';
 import { DealIn } from '@/components/ui/deal-in';
 import { ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
 import { JourneyLine } from '@/components/ui/journey-line';
@@ -26,6 +35,7 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { listPublishedArticles, type ArticleListItem } from '@/lib/articles';
 import { listFeaturedBoards } from '@/lib/boards';
 import { getBoardThumbnailUrls } from '@/lib/collection-thumbnails';
+import type { Coordinate } from '@/lib/current-location';
 import type { Database } from '@/lib/database.types';
 import {
   getDiscoverPlaces,
@@ -40,6 +50,8 @@ import { stopOf } from '@/lib/journey';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { resolveStateCountries } from '@/lib/places-cache';
 import { shareText } from '@/lib/share';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
@@ -61,9 +73,28 @@ type BoardRow = Database['public']['Tables']['boards']['Row'];
 // they cost one query each and light up the day there is something to put in
 // them, without anyone having to remember to rebuild the section.
 
-// Enough to fill a horizontal strip twice over without paying for a long tail
-// nobody scrolls to.
-const PLACE_COUNT = 10;
+// The places strip starts with this many, enough to fill it twice over, and
+// fetches this many more each time it is scrolled near its end. It used to
+// stop at the first ten for good, so a couple of flings ran it into a dead
+// end however many places there were.
+const PLACE_BATCH = 10;
+// Never more than this on the strip. Each tag is three animated views and its
+// own photograph, and a strip this long is already a lot of swiping.
+const PLACE_MAX = 40;
+// How far short of the strip's end the next batch is fetched, in points:
+// about two tags, so on a steady swipe they are hanging by the time the strip
+// gets there instead of arriving after it has stopped.
+const PLACE_LOAD_AHEAD = 420;
+// How long to wait after a fetch fails before scrolling near the end tries
+// again, so a dropped connection is not retried on every frame of a scroll.
+const PLACE_RETRY_MS = 4000;
+// The "Places to go" label's line, and the band it takes at the top of the
+// strip. The label sits inside the strip's own area, over its top band (see
+// stripLabel), so a sideways swipe on the label or just above the twine
+// scrolls the strip. It used to sit above the strip, where the same swipe did
+// nothing at all.
+const STRIP_LABEL_LINE = 16;
+const STRIP_LABEL_BAND = STRIP_LABEL_LINE + Spacing.two;
 // Postcards are expensive — each is two mounted faces and a Skia stamp — and
 // this is the second section down. Five is a look at what is out there, not a
 // second feed.
@@ -107,13 +138,30 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
     () => ({ strip: stripMotion, page: pageMotion, offset: stripX }),
     [stripMotion, pageMotion, stripX],
   );
-  const stripScrollHandler = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      const x = event.contentOffset.x;
-      stripMotion.set(momentary(x - stripX.get()));
-      stripX.set(x);
+  // The strip's full width, from how many tags it holds, and whether the next
+  // batch has been asked for. Set from JS when the places change; read here,
+  // on the UI thread, on every frame of a scroll.
+  const stripWidth = useSharedValue(0);
+  const moreRequested = useSharedValue(true);
+  const loadMoreRef = useRef<() => void>(() => {});
+  const requestMorePlaces = useCallback(() => loadMoreRef.current(), []);
+  const stripScrollHandler = useAnimatedScrollHandler(
+    {
+      onScroll: (event) => {
+        const x = event.contentOffset.x;
+        stripMotion.set(momentary(x - stripX.get()));
+        stripX.set(x);
+        // Nearing the end: fetch the next places now, so they are hanging by
+        // the time the strip gets there.
+        const remaining = stripWidth.get() - (x + event.layoutMeasurement.width);
+        if (!moreRequested.get() && remaining < PLACE_LOAD_AHEAD) {
+          moreRequested.set(true);
+          runOnJS(requestMorePlaces)();
+        }
+      },
     },
-  });
+    [requestMorePlaces],
+  );
   // Only the scroll position goes into the worklet: the stage itself holds
   // the scroll view's ref, and a ref passed to a worklet is frozen.
   const pageScrollY = stage.scrollY;
@@ -130,6 +178,28 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
   const [loading, setLoading] = useState(true);
   const [places, setPlaces] = useState<DiscoverPlace[]>([]);
   const [placePhotoUrls, setPlacePhotoUrls] = useState<Record<string, string>>({});
+  // Whether the strip holds every place there is to show (or as many as it
+  // will hold). Until then the twine runs on past the last tag; after, it is
+  // tied off there.
+  const [placesEnded, setPlacesEnded] = useState(false);
+  // Places added as the strip was scrolled whose photos are still being
+  // looked up, and where each falls in its own batch's drop-in stagger.
+  const [pendingPlacePhotos, setPendingPlacePhotos] = useState<Set<string>>(new Set());
+  const [dropIndexes, setDropIndexes] = useState<Record<string, number>>({});
+  // What fetching more places reads: the latest of each, without the fetch
+  // having to be rebuilt (and the scroll handler with it) whenever one moves.
+  const placesRef = useRef<DiscoverPlace[]>([]);
+  const placesEndedRef = useRef(false);
+  const viewerRef = useRef<Coordinate | null>(null);
+  const loadingMorePlaces = useRef(false);
+  // Bumped by every full reload, so a batch still in flight from before one
+  // is dropped rather than appended to the new strip.
+  const loadGeneration = useRef(0);
+  // Whether the photographs and covers have been looked up, whether or not
+  // every place turned out to have one. Until then a missing photo is still
+  // on its way; after it, a place with none has none, and its tag should not
+  // show a loading icon waiting on a picture that is not coming.
+  const [decorationsLoaded, setDecorationsLoaded] = useState(false);
   const [placeRegions, setPlaceRegions] = useState<Map<string, string | null>>(new Map());
   const [reviews, setReviews] = useState<FeedVisit[]>([]);
   const [reviewPhotoUrls, setReviewPhotoUrls] = useState<Record<string, string>>({});
@@ -154,6 +224,8 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
   useEffect(() => {
     if (!viewerId) return;
     let cancelled = false;
+    loadGeneration.current += 1;
+    moreRequested.set(true);
 
     void (async () => {
       // Inside the async body rather than in the effect's own, which React's
@@ -170,16 +242,24 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
         // granted, and otherwise it is one row from `users`.
         const viewer = await resolveViewerLocation(viewerId);
         if (cancelled) return;
+        viewerRef.current = viewer;
 
         const [placeList, reviewList, articleList, boardList] = await Promise.all([
-          getDiscoverPlaces(PLACE_COUNT, viewer),
+          getDiscoverPlaces(PLACE_BATCH, viewer),
           getDiscoverReviews(REVIEW_COUNT, viewerId),
           listPublishedArticles(SHELF_COUNT),
           listFeaturedBoards(SHELF_COUNT),
         ]);
         if (cancelled) return;
 
+        // Fewer than asked for is every place there is.
+        const ended = placeList.length < PLACE_BATCH;
+        placesRef.current = placeList;
+        placesEndedRef.current = ended;
         setPlaces(placeList);
+        setPlacesEnded(ended);
+        setPendingPlacePhotos(new Set());
+        setDropIndexes({});
         setReviews(reviewList);
         setArticles(articleList);
         setFeaturedBoards(boardList);
@@ -201,17 +281,98 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
         setPlaceRegions(regions);
         setBoardThumbnailUrls(thumbnails);
         setReviewPhotoUrls(reviewPhotos);
+        setDecorationsLoaded(true);
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : 'Could not load Discover.');
+        setError(userErrorMessage(err, 'Could not load Discover.'));
         setLoading(false);
+        // Nothing more is coming after a failure either.
+        setDecorationsLoaded(true);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [viewerId, reloadNonce]);
+  }, [viewerId, reloadNonce, moreRequested]);
+
+  // The next batch of places, appended to the strip. See PLACE_BATCH.
+  //
+  // get_discover_places takes a limit and no offset, so this asks for the
+  // first N again with N one batch larger, and keeps whatever is new. The
+  // ranking can shift between calls (it decays with time), so new places are
+  // told apart by id rather than by position.
+  const loadMorePlaces = useCallback(async () => {
+    if (loadingMorePlaces.current || placesEndedRef.current) return;
+    loadingMorePlaces.current = true;
+    const generation = loadGeneration.current;
+    const have = placesRef.current;
+    const limit = Math.min(have.length + PLACE_BATCH, PLACE_MAX);
+    let failed = false;
+    try {
+      const list = await getDiscoverPlaces(limit, viewerRef.current);
+      if (generation !== loadGeneration.current) return;
+      const known = new Set(have.map((place) => place.id));
+      const fresh = list.filter((place) => !known.has(place.id));
+      const ended = list.length < limit || limit >= PLACE_MAX || fresh.length === 0;
+
+      if (fresh.length > 0) {
+        const next = [...have, ...fresh];
+        placesRef.current = next;
+        setPlaces(next);
+        setDropIndexes((current) => ({
+          ...current,
+          ...Object.fromEntries(fresh.map((place, order) => [place.id, order])),
+        }));
+      }
+      if (ended) {
+        placesEndedRef.current = true;
+        setPlacesEnded(true);
+      }
+      if (fresh.length === 0) return;
+
+      // Their photos and region lines, as the first batch had.
+      const ids = fresh.map((place) => place.id);
+      setPendingPlacePhotos((current) => new Set([...current, ...ids]));
+      try {
+        const [photos, regions] = await Promise.all([getPlacePhotoUrls(ids), resolveStateCountries(ids)]);
+        if (generation !== loadGeneration.current) return;
+        setPlacePhotoUrls((current) => ({ ...current, ...photos }));
+        setPlaceRegions((current) => new Map([...current, ...regions]));
+      } finally {
+        if (generation === loadGeneration.current) {
+          setPendingPlacePhotos((current) => {
+            const next = new Set(current);
+            for (const id of ids) next.delete(id);
+            return next;
+          });
+        }
+      }
+    } catch {
+      failed = true;
+    } finally {
+      loadingMorePlaces.current = false;
+      // Allowed to ask again once the strip has grown (the effect below
+      // re-arms it along with the new width), or after a pause if this failed.
+      if (failed && generation === loadGeneration.current && !placesEndedRef.current) {
+        setTimeout(() => {
+          if (generation === loadGeneration.current) moreRequested.set(false);
+        }, PLACE_RETRY_MS);
+      }
+    }
+  }, [moreRequested]);
+  useEffect(() => {
+    loadMoreRef.current = () => void loadMorePlaces();
+  }, [loadMorePlaces]);
+
+  // The strip's width follows the places it holds, and a strip that has
+  // grown may ask for more again once it nears its new end. Set together, so
+  // the scroll handler never compares against a width the strip has
+  // outgrown.
+  useEffect(() => {
+    stripWidth.set(placeStripWidth(places.length));
+    moreRequested.set(placesEnded || places.length === 0);
+  }, [places.length, placesEnded, stripWidth, moreRequested]);
 
   const handleToggleLike = useCallback(
     async (visit: FeedVisit) => {
@@ -256,11 +417,9 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
       showsVerticalScrollIndicator={false}
       onScroll={scrollHandler}
       scrollEventThrottle={16}>
-      {error && (
-        <ThemedText type="small" themeColor="danger">
-          {error}
-        </ThemedText>
-      )}
+      {/* Its own reload rather than the screen's: Discover is one tab, and
+          reloading the screen would reload every tab with it. */}
+      {error && <ErrorNotice message={error} onRetry={() => setReloadNonce((n) => n + 1)} />}
 
       {loading && (
         <View style={styles.loading}>
@@ -283,7 +442,6 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
             const { y, height } = event.nativeEvent.layout;
             stripBottom.set(y + height);
           }}>
-          <ThemedText type="sectionLabel">Places to go</ThemedText>
           {/* Bled past the screen's gutter so the strip runs off the edge and
               reads as scrollable, instead of stopping short and looking like
               a list that happens to be cut off. The gutter is put back as
@@ -295,12 +453,18 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
             contentContainerStyle={styles.strip}
             onScroll={stripScrollHandler}
             scrollEventThrottle={16}>
-            <PlaceTagRail count={places.length} motion={tagMotion} />
+            <PlaceTagRail
+              count={places.length}
+              motion={tagMotion}
+              top={STRIP_LABEL_BAND}
+              ended={placesEnded}
+            />
             {places.map((place, index) => (
               <PlaceTag
                 key={place.id}
                 seed={place.id}
                 index={index}
+                dropIndex={dropIndexes[place.id]}
                 motion={tagMotion}
                 name={place.name}
                 subtitle={
@@ -309,11 +473,20 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
                   `${place.reviewCount} review${place.reviewCount === 1 ? '' : 's'}`
                 }
                 photoUrl={placePhotoUrls[place.id]}
+                photoPending={!decorationsLoaded || pendingPlacePhotos.has(place.id)}
                 rating={place.avgRating}
                 onPress={() => router.push({ pathname: '/place/[id]', params: { id: place.id } })}
               />
             ))}
           </Animated.ScrollView>
+          {/* Over the strip's top band rather than above the strip, and
+              letting touches through to it. See STRIP_LABEL_BAND. Drawn after
+              the strip, so it stays on top of a tag dropping in past it. */}
+          <View pointerEvents="none" style={styles.stripLabel}>
+            <ThemedText type="sectionLabel" style={styles.stripLabelText}>
+              Places to go
+            </ThemedText>
+          </View>
         </View>
       )}
 
@@ -364,6 +537,8 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
               <ThemedView type="backgroundElement" style={styles.row}>
                 <LoadableImage
                   source={article.coverPhotoUrl ? { uri: article.coverPhotoUrl } : undefined}
+                  // The cover arrives with the article, so none means none.
+                  pending={false}
                   style={styles.thumbnail}
                 />
                 <View style={styles.rowLeading}>
@@ -390,6 +565,7 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
               <ThemedView type="backgroundElement" style={styles.row}>
                 <LoadableImage
                   source={boardThumbnailUrls[board.id] ? { uri: boardThumbnailUrls[board.id] } : undefined}
+                  pending={!decorationsLoaded}
                   style={styles.thumbnail}
                 />
                 <View style={styles.rowLeading}>
@@ -427,6 +603,16 @@ const styles = StyleSheet.create({
   },
   // Undoes the content's gutter (see scrollContent) so the strip can run to
   // both edges, and puts it back inside as padding.
+  // The label, laid over the strip's top band at the column's own edge.
+  stripLabel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  stripLabelText: {
+    lineHeight: STRIP_LABEL_LINE,
+  },
   stripBleed: {
     marginHorizontal: -Spacing.four,
     // Unclipped, so a tag falling in from above, or swinging, is not cut off
@@ -436,9 +622,12 @@ const styles = StyleSheet.create({
 
   strip: {
     gap: PLACE_TAG_GAP,
-    paddingHorizontal: PLACE_TAG_EDGE,
-    // Room above the tags for the rail and their strings.
-    paddingTop: PLACE_TAG_HEADROOM,
+    paddingLeft: PLACE_TAG_EDGE,
+    // Room past the last tag for the twine to be tied off on its nail, with
+    // bare wall after it: what shows the strip has ended. See PlaceTagRail.
+    paddingRight: PLACE_TAG_END,
+    // Room above the tags for the label, then the rail and their strings.
+    paddingTop: STRIP_LABEL_BAND + PLACE_TAG_HEADROOM,
     // And below, for the slight swing of the last row of a tag.
     paddingBottom: Spacing.two,
     alignItems: 'flex-start',

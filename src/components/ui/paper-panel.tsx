@@ -1,8 +1,11 @@
+import { Image } from 'expo-image';
 import { useMemo } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { SurfaceWearLayer } from '@/components/ui/surface-wear-layer';
 import { Colors, Spacing, StickerAccents } from '@/constants/theme';
+import { svgDataUri } from '@/lib/base64';
+import { randomFor } from '@/lib/seeded-random';
 import { buildSurfaceWear } from '@/lib/surface-wear';
 
 type PaperPanelProps = {
@@ -17,6 +20,9 @@ type PaperPanelProps = {
   // the rounded rect regardless; this only stops the panel clipping its
   // children.
   allowOverflow?: boolean;
+  // Corner rounding, for a panel that should be sharper still (see
+  // JournalPage). PANEL_RADIUS when left out.
+  radius?: number;
 };
 
 // A section of a form, as a piece of paper rather than a hairline rectangle.
@@ -78,20 +84,22 @@ export function PaperPanel({
   accentIndex,
   style,
   allowOverflow = false,
+  radius,
 }: PaperPanelProps) {
   const wear = useMemo(() => buildSurfaceWear(`panel:${seed}`), [seed]);
   const accent =
     accentIndex == null ? null : StickerAccents[accentIndex % StickerAccents.length];
+  const band = useMemo(() => (accent ? svgDataUri(bandSvg(accent, seed)) : null), [accent, seed]);
   const { panel, content } = splitStyle(style);
 
   return (
-    <View style={[styles.panel, allowOverflow && styles.noClip, panel]}>
+    <View style={[styles.panel, allowOverflow && styles.noClip, radius != null && { borderRadius: radius }, panel]}>
       {/* Every decorative layer lives in here, and THIS is what clips to the
           rounded rect — not the panel itself. Separating them is what lets a
           card hold something that deliberately hangs past its edge without
           the gloss spilling square corners over the rounding. */}
-      <View style={styles.decoration} pointerEvents="none">
-      {accent && <View style={[styles.stripe, { backgroundColor: accent }]} />}
+      <View style={[styles.decoration, radius != null && { borderRadius: radius }]} pointerEvents="none">
+      {band && <Image source={{ uri: band }} style={styles.stripe} contentFit="fill" />}
       <SurfaceWearLayer wear={wear} />
       </View>
 
@@ -100,10 +108,44 @@ export function PaperPanel({
   );
 }
 
+// Corners of a piece of card, not of an app's tile. These were 16, the same
+// rounding as every other surface in every other app, and a column of them
+// was most of what made screens like Settings read as blocks.
+const PANEL_RADIUS = 6;
+const BAND_HEIGHT = 7;
+
+// The accent along the top edge, painted on with a brush rather than ruled:
+// its top is the card's edge, and its bottom wavers and thins where the
+// brush ran dry. It was a perfectly even four-point bar.
+//
+// Drawn on a small canvas and stretched to the panel's width. That is safe
+// because it is all fill and no stroke, so nothing has a line width to
+// distort. Its pixel size is several times its view box so the stretched
+// image stays sharp.
+function bandSvg(colour: string, seed: string): string {
+  const random = randomFor(`band-${seed}`);
+  const W = 200;
+  const steps = 26;
+  const dryAt = random() < 0.5 ? 0.06 + random() * 0.2 : 0.74 + random() * 0.2;
+  let edge = '';
+  for (let i = steps; i >= 0; i--) {
+    const x = (i / steps) * W;
+    // Thinner towards the end the brush ran dry at.
+    const dry = Math.max(0, 1 - Math.abs(i / steps - dryAt) * 5);
+    const y = 4.4 + (random() - 0.5) * 2.2 - dry * 2.2;
+    edge += ` L${x.toFixed(1)} ${Math.max(1.2, y).toFixed(2)}`;
+  }
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="${BAND_HEIGHT * 4}" viewBox="0 0 ${W} ${BAND_HEIGHT}" preserveAspectRatio="none">` +
+    `<path d="M0 0 L${W} 0${edge} Z" fill="${colour}"/>` +
+    `</svg>`
+  );
+}
+
 const styles = StyleSheet.create({
   panel: {
     backgroundColor: Colors.backgroundElement,
-    borderRadius: Spacing.three,
+    borderRadius: PANEL_RADIUS,
     overflow: 'hidden',
   },
   noClip: {
@@ -117,7 +159,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    borderRadius: Spacing.three,
+    borderRadius: PANEL_RADIUS,
     overflow: 'hidden',
   },
   stripe: {
@@ -125,7 +167,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    height: 4,
+    height: BAND_HEIGHT,
   },
   body: {
     padding: Spacing.three,

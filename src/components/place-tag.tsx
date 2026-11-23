@@ -19,7 +19,17 @@ import { SurfaceWearLayer } from '@/components/ui/surface-wear-layer';
 import { BrandColors, Spacing, StickerAccents } from '@/constants/theme';
 import { randomFor } from '@/lib/seeded-random';
 import { buildSurfaceWear } from '@/lib/surface-wear';
-import { KNOT_WIDTH, TWINE_WIDTH, knotUri, railUri, twineFor, twineUri } from '@/lib/twine';
+import {
+  KNOT_WIDTH,
+  RAIL_END_WIDTH,
+  TWINE_WIDTH,
+  knotUri,
+  railEndHeight,
+  railEndUri,
+  railUri,
+  twineFor,
+  twineUri,
+} from '@/lib/twine';
 
 // Declared above the worklets that read them: a worklet takes its closure
 // where it is defined (see unfold.tsx for what happens otherwise).
@@ -34,6 +44,18 @@ export const PLACE_TAG_HEADROOM = RAIL_Y + PLACE_TAG_STRING;
 // over each one. DiscoverView lays the strip out with these.
 export const PLACE_TAG_GAP = Spacing.three;
 export const PLACE_TAG_EDGE = Spacing.four;
+// The room after the last tag: the twine runs on to a nail and is tied off
+// there, with bare wall after it. More than the room before the first tag,
+// which already sits against the screen's gutter at rest; the end has to
+// show it is an end. DiscoverView pads the strip's right side by this.
+export const PLACE_TAG_END = 72;
+// Where the rail's two nails go: the first this far in from the strip's left
+// edge, inside the room before the first tag, and the last this far past the
+// last tag, which leaves bare wall beyond it.
+const START_NAIL = 10;
+const END_NAIL = 34;
+// How far each tied-off end hangs below its nail.
+const RAIL_TAIL = 26;
 const HOLE_TOP = 10;
 const HOLE = 12;
 const PRINT_RATIO = 1.2;
@@ -94,13 +116,22 @@ export type PlaceTagMotion = {
 type PlaceTagProps = {
   // Anything stable per place: decides its colour, its lean and its wear.
   seed: string;
-  // Its place along the strip, which decides when it drops.
+  // Its place along the strip.
   index: number;
+  // Where it comes in the run of tags dropping in together, which decides
+  // how long it waits to drop. Its index, for the first tags on the strip; a
+  // tag added later as the strip is scrolled counts from the start of its own
+  // batch, so it does not wait out the whole strip's stagger before falling.
+  dropIndex?: number;
   motion: PlaceTagMotion;
   name: string;
   // The distance, or failing that where it is.
   subtitle: string;
   photoUrl: string | undefined;
+  // Whether the photo's address is still being looked up. Once it has been,
+  // a tag with no photo shows a bare print instead of a loading icon waiting
+  // on a picture that is not coming.
+  photoPending: boolean;
   rating: number | null;
   onPress: () => void;
 };
@@ -123,7 +154,18 @@ type PlaceTagProps = {
 // scrolling the page stretches their strings and sets them bobbing. All of
 // it is springs, so it settles and stops on its own. Not for anyone who has
 // asked the system for less motion: they get the tags simply hanging.
-export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating, onPress }: PlaceTagProps) {
+export function PlaceTag({
+  seed,
+  index,
+  dropIndex = index,
+  motion,
+  name,
+  subtitle,
+  photoUrl,
+  photoPending,
+  rating,
+  onPress,
+}: PlaceTagProps) {
   const reduceMotion = useReducedMotion();
   const look = useMemo(() => {
     const random = randomFor(`place-tag-${seed}`);
@@ -164,7 +206,7 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
 
   useEffect(() => {
     if (reduceMotion) return;
-    const delay = index * DROP_STAGGER_MS;
+    const delay = dropIndex * DROP_STAGGER_MS;
     // Started on the UI thread, where the animation runs, as Unfold starts
     // its own.
     scheduleOnUI(() => {
@@ -178,7 +220,7 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
       );
       swing.value = withDelay(delay, withSpring(0, SWING_SPRING));
     });
-  }, [reduceMotion, index, drop, swing, hasDropped]);
+  }, [reduceMotion, dropIndex, drop, swing, hasDropped]);
 
   // Retargeted on every frame of a scroll, which keeps each spring's speed,
   // so the tags lag behind the movement and swing back past rest when it
@@ -242,7 +284,12 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
           <View style={styles.print}>
             {/* LoadableImage covers both waits (the url, then the bytes) with
                 the same walking icon as the postcards below. */}
-            <LoadableImage source={photoUrl ? { uri: photoUrl } : undefined} style={styles.photo} contentFit="cover" />
+            <LoadableImage
+              source={photoUrl ? { uri: photoUrl } : undefined}
+              pending={photoPending}
+              style={styles.photo}
+              contentFit="cover"
+            />
           </View>
 
           <View style={styles.words}>
@@ -285,20 +332,52 @@ export function PlaceTag({ seed, index, motion, name, subtitle, photoUrl, rating
   );
 }
 
-// The rail along the top of a strip of tags: a length of twine strung across,
-// dipping between each pair of tags, with each tag's string knotted to it.
-// It was a straight rule, which under tags that swung read as static and
-// drawn; this one sags, and gives when things move, its dips deepening as
-// the page or the strip moves and springing back as they settle.
-export function PlaceTagRail({ count, motion }: { count: number; motion: PlaceTagMotion }) {
+// The rail along the top of a strip of tags: a length of twine strung
+// between two nails, dipping between each pair of tags, with each tag's
+// string knotted to it. It was a straight rule, which under tags that swung
+// read as static and drawn; this one sags, and gives when things move, its
+// dips deepening as the page or the strip moves and springing back as they
+// settle.
+//
+// The start is tied off round a nail with its cut end hanging. So is the
+// end, once there are no more places to come: that is what shows the strip
+// has stopped. The twine used to run on off the screen at both ends, so
+// scrolled to the last tag the strip looked just like it did halfway along.
+// While more places may still load, the twine runs on to the strip's edge
+// instead, which is the honest picture: there is more of it.
+type PlaceTagRailProps = {
+  count: number;
+  motion: PlaceTagMotion;
+  // How far down the strip the rail starts, for a strip with a band of its
+  // own above the rail (see DiscoverView, which lays its label there).
+  top?: number;
+  // Whether the strip has reached its true end. Ties the twine off on a nail
+  // after the last tag; until then it runs on.
+  ended?: boolean;
+};
+
+export function PlaceTagRail({ count, motion, top = 0, ended = true }: PlaceTagRailProps) {
   const reduceMotion = useReducedMotion();
-  const width = PLACE_TAG_EDGE * 2 + count * TAG_WIDTH + Math.max(0, count - 1) * PLACE_TAG_GAP;
+  const width = placeStripWidth(count);
+  const lastTagRight = width - PLACE_TAG_END;
+  const startNail = START_NAIL;
+  const endNail = ended ? lastTagRight + END_NAIL : width;
+  const twine = useMemo(() => railTwine(), []);
   const drawing = useMemo(() => {
-    const random = randomFor(`place-tag-rail-${count}`);
     const anchors = Array.from({ length: count }, (_, index) => PLACE_TAG_EDGE + index * (TAG_WIDTH + PLACE_TAG_GAP) + TAG_WIDTH / 2);
-    const sags = Array.from({ length: count + 1 }, () => RAIL_SAG_MIN + random() * (RAIL_SAG_MAX - RAIL_SAG_MIN));
-    return railUri(twineFor(random), width, RAIL_HEIGHT, RAIL_Y, anchors, sags);
-  }, [count, width]);
+    // Each dip seeded on its own, so the strip growing as more places load
+    // adds dips at the end without redrawing the ones already there.
+    const sags = Array.from({ length: count + 1 }, (_, span) => {
+      const random = randomFor(`place-tag-rail-sag-${span}`);
+      return RAIL_SAG_MIN + random() * (RAIL_SAG_MAX - RAIL_SAG_MIN);
+    });
+    return railUri(twine, width, RAIL_HEIGHT, RAIL_Y, anchors, sags, [startNail, endNail]);
+  }, [twine, count, width, startNail, endNail]);
+  const ends = useMemo(
+    () => ({ start: railEndUri(twine, -1, RAIL_Y, RAIL_TAIL), end: railEndUri(twine, 1, RAIL_Y, RAIL_TAIL) }),
+    [twine],
+  );
+  const endHeight = railEndHeight(RAIL_Y, RAIL_TAIL);
 
   const give = useSharedValue(0);
   useAnimatedReaction(
@@ -312,11 +391,46 @@ export function PlaceTagRail({ count, motion }: { count: number; motion: PlaceTa
   // to them, stay where they are.
   const railStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: 1 + give.value }] }));
 
+  // The tied-off ends: always the start, and the end once there is one.
+  const tieOffs: [string, number][] = [[ends.start, startNail]];
+  if (ended) tieOffs.push([ends.end, endNail]);
+
   return (
-    <Animated.View pointerEvents="none" style={[styles.rail, { width }, railStyle]}>
-      <Image source={{ uri: drawing }} style={{ width, height: RAIL_HEIGHT }} />
-    </Animated.View>
+    <>
+      <Animated.View pointerEvents="none" style={[styles.rail, { top, width }, railStyle]}>
+        <Image source={{ uri: drawing }} style={{ width, height: RAIL_HEIGHT }} />
+      </Animated.View>
+      {/* The tied-off ends, outside the rail's stretch: the nails are on its
+          knots' line, where it does not move anyway, and an end hanging off
+          a nail does not stretch. In a View for pointerEvents, which an
+          Image does not take. */}
+      {tieOffs.map(([uri, x]) => (
+        <View
+          key={x === startNail ? 'start' : 'end'}
+          pointerEvents="none"
+          style={[styles.railEnd, { top, left: x - RAIL_END_WIDTH / 2, height: endHeight }]}>
+          <Image source={{ uri }} style={{ width: RAIL_END_WIDTH, height: endHeight }} />
+        </View>
+      ))}
+    </>
   );
+}
+
+// How wide a strip of `count` tags is, from its left edge to the end of the
+// room after its last tag. DiscoverView compares the strip's scroll position
+// against this to fetch more places before the end is reached.
+export function placeStripWidth(count: number): number {
+  return PLACE_TAG_EDGE + count * TAG_WIDTH + Math.max(0, count - 1) * PLACE_TAG_GAP + PLACE_TAG_END;
+}
+
+// The rail's length of twine. The same one however many places the strip
+// holds, so it does not change colour as more load. Drawn exactly as the rail
+// of the original ten-tag strip drew it (eleven dips' worth of numbers first,
+// then the twine), so it is the twine that strip always had.
+function railTwine() {
+  const random = randomFor('place-tag-rail-10');
+  for (let i = 0; i < 11; i++) random();
+  return twineFor(random);
 }
 
 const PRINT_TOP = HOLE_TOP + HOLE + Spacing.two;
@@ -335,6 +449,12 @@ const styles = StyleSheet.create({
     left: 0,
     height: RAIL_HEIGHT,
     transformOrigin: [0, RAIL_Y, 0],
+  },
+  // One tied-off end, its nail on the rail's line. Placed inline.
+  railEnd: {
+    position: 'absolute',
+    top: 0,
+    width: RAIL_END_WIDTH,
   },
   string: {
     position: 'absolute',

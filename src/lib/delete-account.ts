@@ -1,6 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 export type DeleteAccountArgs = {
   // Required of accounts that actually have a password. OAuth-only accounts
@@ -32,7 +33,7 @@ async function messageFor(error: unknown): Promise<string> {
       // than one of ours. Fall through to the generic message.
     }
   }
-  return error instanceof Error ? error.message : 'Could not delete your account.';
+  return userErrorMessage(error, 'Could not delete your account.');
 }
 
 // Permanently deletes the signed-in account.

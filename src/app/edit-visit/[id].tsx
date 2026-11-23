@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,24 +23,30 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 import { pickImageFromLibrary } from '@/lib/image-picker';
-import { uploadPhotoForVisit } from '@/lib/photo-upload';
-import { deleteVisitPhoto, getVisitForEdit, updateVisitFields, type VisitForEdit } from '@/lib/visit-edit';
+import { uploadReviewPhotoAssets } from '@/lib/photo-upload';
+import { getVisitForEdit, saveVisitEdit, type UploadedEditPhoto, type VisitForEdit } from '@/lib/visit-edit';
 import { goBack } from '@/lib/navigation';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
-type PhotoSlot =
-  | { kind: 'existing'; id: string; url: string; position: number }
-  | { kind: 'new'; uri: string; width: number; height: number };
+type NewPhoto = { kind: 'new'; uri: string; width: number; height: number };
+type PhotoSlot = { kind: 'existing'; id: string; url: string } | NewPhoto;
 
 type CropTarget = { uri: string; recropIndex: number | null };
 
 export default function EditVisitScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
+  const userId = session?.user.id;
+  return <EditVisitForm key={`${userId}:${id}`} id={id} userId={userId} />;
+}
+
+function EditVisitForm({ id, userId }: { id?: string; userId?: string }) {
   const theme = useTheme();
   const bottomInset = useBottomTabInset();
   const scrollHandler = useHideOnScrollHandler();
 
-  const [visit, setVisit] = useState<VisitForEdit | null | undefined>(undefined);
+  const [visit, setVisit] = useState<VisitForEdit | null | undefined>(id && userId ? undefined : null);
   const [rating, setRating] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [visitedOn, setVisitedOn] = useState('');
@@ -48,21 +54,33 @@ export default function EditVisitScreen() {
   const [deletedPhotoIds, setDeletedPhotoIds] = useState<string[]>([]);
   const [cropTarget, setCropTarget] = useState<CropTarget | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  // A failed load and a failed save are kept apart: the first replaces the
+  // form, the second sits by its Save button.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const uploadedPhotos = useRef(new WeakMap<NewPhoto, UploadedEditPhoto>());
+  const saveInFlight = useRef(false);
 
   useEffect(() => {
-    if (!id || !session) return;
-    getVisitForEdit(id, session.user.id)
+    if (!id || !userId) return;
+    let active = true;
+    getVisitForEdit(id, userId)
       .then((result) => {
+        if (!active) return;
         setVisit(result);
         if (!result) return;
         setRating(result.rating);
         setNote(result.note ?? '');
         setVisitedOn(result.visitedOn);
-        setPhotoSlots(result.photos.map((p) => ({ kind: 'existing', id: p.id, url: p.url, position: p.position })));
+        setPhotoSlots(result.photos.map((p) => ({ kind: 'existing', id: p.id, url: p.url })));
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load that review.'));
-  }, [id, session]);
+      .catch((err) => {
+        if (!active) return;
+        setLoadError(userErrorMessage(err, 'Could not load that review.'));
+        setVisit(null);
+      });
+    return () => { active = false; };
+  }, [id, userId]);
 
   function handleRemoveSlot(index: number) {
     const slot = photoSlots[index];
@@ -93,55 +111,47 @@ export default function EditVisitScreen() {
   function handleCropConfirm(result: CroppedPhoto) {
     const recropIndex = cropTarget?.recropIndex ?? null;
     setCropTarget(null);
-    const newSlot: PhotoSlot = { kind: 'new', uri: result.uri, width: result.width, height: result.height };
+    const newSlot: NewPhoto = { kind: 'new', uri: result.uri, width: result.width, height: result.height };
 
     if (recropIndex == null) {
       setPhotoSlots((prev) => [...prev, newSlot]);
       return;
     }
-    setPhotoSlots((prev) => {
-      const target = prev[recropIndex];
-      if (target.kind === 'existing') setDeletedPhotoIds((ids) => [...ids, target.id]);
-      return prev.map((slot, i) => (i === recropIndex ? newSlot : slot));
-    });
+    const target = photoSlots[recropIndex];
+    if (!target) return;
+    if (target.kind === 'existing') setDeletedPhotoIds((ids) => [...ids, target.id]);
+    setPhotoSlots((prev) => prev.map((slot, i) => (i === recropIndex ? newSlot : slot)));
   }
 
   async function handleSave() {
-    if (!session || !visit) return;
+    if (!userId || !visit || saveInFlight.current) return;
+    saveInFlight.current = true;
     setError(null);
     setIsSaving(true);
     try {
-      await updateVisitFields(visit.id, { rating, note: note.trim() || null, visitedOn });
-
-      for (const photoId of deletedPhotoIds) {
-        await deleteVisitPhoto(photoId);
-      }
-
-      // New photos are appended after every kept existing photo's own
-      // position — positions never need compacting for correct order, only
-      // to stay higher than whatever's already there (see visit-edit.ts).
-      const maxExistingPosition = photoSlots.reduce(
-        (max, slot) => (slot.kind === 'existing' ? Math.max(max, slot.position) : max),
-        -1
-      );
-      let nextPosition = maxExistingPosition + 1;
+      const newPhotos: UploadedEditPhoto[] = [];
       for (const slot of photoSlots) {
         if (slot.kind !== 'new') continue;
-        await uploadPhotoForVisit({
-          visitId: visit.id,
-          uri: slot.uri,
-          mimeType: 'image/jpeg',
-          width: slot.width,
-          height: slot.height,
-          position: nextPosition,
-        });
-        nextPosition += 1;
+        const photo = uploadedPhotos.current.get(slot) ?? await uploadReviewPhotoAssets(
+          { visitId: visit.id }, { ...slot, mimeType: 'image/jpeg' },
+        );
+        uploadedPhotos.current.set(slot, photo);
+        newPhotos.push(photo);
       }
+      await saveVisitEdit({
+        visitId: visit.id,
+        rating,
+        note: note.trim() || null,
+        visitedOn,
+        removedPhotoIds: deletedPhotoIds,
+        newPhotos,
+      });
 
       goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your changes.');
+      setError(userErrorMessage(err, 'Could not save your changes.'));
     } finally {
+      saveInFlight.current = false;
       setIsSaving(false);
     }
   }
@@ -160,17 +170,13 @@ export default function EditVisitScreen() {
 
           <ThemedText type="displaySerif">Edit review</ThemedText>
 
-          {visit === null && (
+          {visit === null && !loadError && (
             <ThemedText type="caption">
               This review isn’t available to edit.
             </ThemedText>
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {loadError && <ErrorNotice message={loadError} />}
 
           {visit && (
             <View style={styles.form}>
@@ -216,6 +222,14 @@ export default function EditVisitScreen() {
               <TextField placeholder="Review (optional)" value={note} onChangeText={setNote} multiline />
               <DateCarousel value={visitedOn} onChange={setVisitedOn} />
               </PaperPanel>
+
+              {/* By the button, where the press was: at the top of the form
+                  a failed save showed up off screen. */}
+              {error && (
+                <ThemedText type="small" themeColor="danger">
+                  {error}
+                </ThemedText>
+              )}
 
               <Button label="Save changes" onPress={handleSave} loading={isSaving} />
             </View>

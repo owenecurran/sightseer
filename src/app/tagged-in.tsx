@@ -22,6 +22,7 @@ import {
   untagSelf,
   type TaggedVisit,
 } from "@/lib/tagged-visits";
+import { userErrorMessage } from '@/lib/user-error';
 
 // An absolute ceiling (px) on how far a rating stamp may rise above its
 // own block's bottom edge, applied to this screen only — per direct
@@ -73,9 +74,7 @@ export default function TaggedInScreen() {
           setAvatarUrls(avatars);
         } catch (err) {
           setError(
-            err instanceof Error
-              ? err.message
-              : "Could not load posts you’re tagged in.",
+            userErrorMessage(err, "Could not load posts you’re tagged in."),
           );
         } finally {
           setHasLoadedOnce(true);
@@ -108,7 +107,7 @@ export default function TaggedInScreen() {
       );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not update that like.",
+        userErrorMessage(err, "Could not update that like."),
       );
     }
   }

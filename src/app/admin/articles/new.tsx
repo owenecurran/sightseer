@@ -24,6 +24,7 @@ import { useAuth } from '@/lib/auth-context';
 import { uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { goBack } from '@/lib/navigation';
+import { userErrorMessage } from '@/lib/user-error';
 
 // One screen for both create and edit (?id=), same pattern review-form.tsx
 // already uses for a fresh review vs. resuming a draft — the form/fields are
@@ -57,7 +58,7 @@ export default function ArticleComposeScreen() {
         setBody(article.body);
         setPublished(article.published);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load that article.'))
+      .catch((err) => setError(userErrorMessage(err, 'Could not load that article.')))
       .finally(() => setHasLoadedOnce(true));
   }, [id]);
 
@@ -94,7 +95,7 @@ export default function ArticleComposeScreen() {
       }
       goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that article.');
+      setError(userErrorMessage(err, 'Could not save that article.'));
     } finally {
       setIsSaving(false);
     }
@@ -107,7 +108,7 @@ export default function ArticleComposeScreen() {
     try {
       await setArticlePublished(id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update publish state.');
+      setError(userErrorMessage(err, 'Could not update publish state.'));
       setPublished(!next);
     }
   }

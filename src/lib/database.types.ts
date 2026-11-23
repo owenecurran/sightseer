@@ -1189,6 +1189,7 @@ export type Database = {
           snapshot_place_name: string | null
           snapshot_rating: number | null
           status: string
+          target_kind: string
           visit_id: string | null
         }
         Insert: {
@@ -1203,6 +1204,7 @@ export type Database = {
           snapshot_place_name?: string | null
           snapshot_rating?: number | null
           status?: string
+          target_kind?: string
           visit_id?: string | null
         }
         Update: {
@@ -1217,6 +1219,7 @@ export type Database = {
           snapshot_place_name?: string | null
           snapshot_rating?: number | null
           status?: string
+          target_kind?: string
           visit_id?: string | null
         }
         Relationships: [
@@ -2034,9 +2037,48 @@ export type Database = {
         }[]
       }
       area_rating_shrinkage_k: { Args: never; Returns: number }
+      cache_google_place: {
+        Args: {
+          p_category: string
+          p_google_place_id: string
+          p_lat: number
+          p_lng: number
+          p_path: Json
+        }
+        Returns: {
+          boundary_geojson: string | null
+          boundary_geometry: unknown
+          cached_at: string
+          category: string | null
+          geog: unknown
+          google_place_id: string | null
+          id: string
+          lat: number | null
+          level: string
+          lng: number | null
+          name: string
+          osm_id: string | null
+          parent_id: string | null
+          source: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "places"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      can_deliver_collection_notification: {
+        Args: { p_notification_id: string }
+        Returns: boolean
+      }
       can_view_user_content: {
         Args: { owner_id: string; viewer_id: string }
         Returns: boolean
+      }
+      claim_account_media_cleanup: {
+        Args: { p_account_id?: string }
+        Returns: { object_key: string }[]
       }
       clear_contact_hashes: { Args: never; Returns: undefined }
       close_contacts: {
@@ -2045,6 +2087,10 @@ export type Database = {
           interactions: number
           other_id: string
         }[]
+      }
+      complete_account_media_cleanup: {
+        Args: { p_object_keys: string[] }
+        Returns: undefined
       }
       deepest_common_area: { Args: { p_ids: string[] }; Returns: string }
       discover_half_life_days: { Args: never; Returns: number }
@@ -2297,11 +2343,34 @@ export type Database = {
         }[]
       }
       run_close_friend_posts: { Args: never; Returns: number }
+      resolve_report: {
+        Args: { p_action: string; p_report_id: string }
+        Returns: undefined
+      }
       run_friend_review_digest: { Args: never; Returns: undefined }
       run_nearby_review_digest: { Args: never; Returns: undefined }
       run_review_nudge: { Args: never; Returns: number }
+      save_profile_prompt: {
+        Args: { p_attachments: Json; p_position: number; p_prompt_id?: string; p_prompt_slug: string }
+        Returns: undefined
+      }
+      save_review_edit: {
+        Args: {
+          p_new_photos: Json
+          p_note: string | null
+          p_rating: number | null
+          p_removed_photo_ids: string[]
+          p_visit_id: string
+          p_visited_on: string
+        }
+        Returns: undefined
+      }
       set_user_banned: {
         Args: { p_reason: string; p_user_id: string }
+        Returns: undefined
+      }
+      set_visit_tags: {
+        Args: { p_tag_slugs: string[]; p_visit_id: string }
         Returns: undefined
       }
       show_limit: { Args: never; Returns: number }
@@ -2336,37 +2405,7 @@ export type Database = {
           has_phone: boolean
         }[]
       }
-      upgrade_place_details: {
-        Args: {
-          p_category: string
-          p_google_place_id: string
-          p_lat: number
-          p_lng: number
-          place_id: string
-        }
-        Returns: {
-          boundary_geojson: string | null
-          boundary_geometry: unknown
-          cached_at: string
-          category: string | null
-          geog: unknown
-          google_place_id: string | null
-          id: string
-          lat: number | null
-          level: string
-          lng: number | null
-          name: string
-          osm_id: string | null
-          parent_id: string | null
-          source: string
-        }
-        SetofOptions: {
-          from: "*"
-          to: "places"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      take_google_place_lookup_quota: { Args: never; Returns: boolean }
       user_area_ratings: {
         Args: { uid: string }
         Returns: {

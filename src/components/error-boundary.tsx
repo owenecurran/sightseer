@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
+import { Linking, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -7,6 +7,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { Spacing } from '@/constants/theme';
 import { reportError } from '@/lib/error-report';
+import { hasSupportEmail, SUPPORT_EMAIL } from '@/lib/legal';
 
 type ErrorBoundaryProps = { children: ReactNode };
 type ErrorBoundaryState = { error: Error | null };
@@ -42,14 +43,33 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render() {
     if (this.state.error) {
+      const { error } = this.state;
       return (
         <ThemedView type="screen" style={styles.container}>
           <SafeAreaView style={styles.safeArea}>
             <ThemedText type="displaySerif">Something went wrong</ThemedText>
+            {/* Only reached when something outside any one screen breaks:
+                each screen has its own catcher (see screen-frame.tsx), which
+                keeps the rest of the app usable. Here nothing else is, so
+                the way to tell us is an email rather than the report screen,
+                which needs the app around it. */}
             <ThemedText type="caption">
-              This screen ran into a problem loading. Try again, or come back later.
+              The app ran into a problem it could not get past. It has been reported. Try again,
+              and if it keeps happening, let us know.
             </ThemedText>
             <Button label="Try again" onPress={() => this.setState({ error: null })} />
+            {hasSupportEmail && (
+              <ThemedText
+                type="link"
+                onPress={() =>
+                  void Linking.openURL(
+                    `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Sightseer stopped working')}` +
+                      `&body=${encodeURIComponent(`What I was doing:\n\n\n(For us: ${error.message.slice(0, 200)})`)}`,
+                  ).catch(() => {})
+                }>
+                Email {SUPPORT_EMAIL}
+              </ThemedText>
+            )}
           </SafeAreaView>
         </ThemedView>
       );

@@ -11,6 +11,7 @@ import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 type VisitMenuProps = {
   visitId: string;
@@ -65,7 +66,7 @@ export function VisitMenu({
     const { error: deleteError } = await supabase.from('visits').delete().eq('id', visitId);
     setIsDeleting(false);
     if (deleteError) {
-      setError(deleteError.message);
+      setError(userErrorMessage(deleteError, 'Could not delete that review.'));
       return;
     }
     setConfirmingDelete(false);
@@ -80,7 +81,7 @@ export function VisitMenu({
       await onUntagSelf();
       setIsOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that tag.');
+      setError(userErrorMessage(err, 'Could not remove that tag.'));
     } finally {
       setIsUntagging(false);
     }

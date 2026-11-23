@@ -39,6 +39,21 @@ function assertGoogleConfigured() {
   }
 }
 
+// Closing the Google or Apple sheet is the person changing their mind, not a
+// failure, so all four functions below return quietly for it, the same as
+// pressing nothing. They used to throw, and the screen answered a deliberate
+// "no thanks" with an error: "Google sign-in was cancelled or did not return
+// an identity token." for Google, "Could not sign in with Apple." for Apple.
+function isAppleCancel(error: unknown): boolean {
+  // expo-apple-authentication's documented rejection for a cancelled sheet.
+  return (error as { code?: unknown } | null)?.code === 'ERR_REQUEST_CANCELED';
+}
+
+// When a provider says yes but hands back nothing to sign in with. Rare, and
+// not the person's doing; worded for them rather than about tokens.
+const GOOGLE_NO_TOKEN = 'Google did not finish signing you in. Try again.';
+const APPLE_NO_TOKEN = 'Apple did not finish signing you in. Try again.';
+
 // Links a Google/Apple identity onto the CURRENTLY signed-in Supabase user
 // (Settings' "Connect account" action) via linkIdentity's native ID-token
 // overload — not a sign-in flow (that would create/attach to whichever
@@ -50,14 +65,20 @@ function assertGoogleConfigured() {
 export async function linkAppleAccount(): Promise<void> {
   // Dynamic import: native-only module, would fail to even load on web.
   const AppleAuthentication = await import('expo-apple-authentication');
-  const credential = await AppleAuthentication.signInAsync({
-    requestedScopes: [
-      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-      AppleAuthentication.AppleAuthenticationScope.EMAIL,
-    ],
-  });
+  let credential;
+  try {
+    credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+    });
+  } catch (err) {
+    if (isAppleCancel(err)) return;
+    throw err;
+  }
   if (!credential.identityToken) {
-    throw new Error('Apple did not return an identity token.');
+    throw new Error(APPLE_NO_TOKEN);
   }
   const { error } = await supabase.auth.linkIdentity({
     provider: 'apple',
@@ -72,8 +93,9 @@ export async function linkGoogleAccount(): Promise<void> {
   GoogleSignin.configure(googleSignInConfig());
   await GoogleSignin.hasPlayServices();
   const response = await GoogleSignin.signIn();
-  if (response.type !== 'success' || !response.data.idToken) {
-    throw new Error('Google sign-in was cancelled or did not return an identity token.');
+  if (response.type === 'cancelled') return;
+  if (!response.data.idToken) {
+    throw new Error(GOOGLE_NO_TOKEN);
   }
   const { error } = await supabase.auth.linkIdentity({
     provider: 'google',
@@ -96,15 +118,21 @@ export async function signInWithApple(): Promise<void> {
   // raw value it's handed back — standard replay protection for this flow.
   const rawNonce = Crypto.randomUUID();
   const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
-  const credential = await AppleAuthentication.signInAsync({
-    requestedScopes: [
-      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-      AppleAuthentication.AppleAuthenticationScope.EMAIL,
-    ],
-    nonce: hashedNonce,
-  });
+  let credential;
+  try {
+    credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce: hashedNonce,
+    });
+  } catch (err) {
+    if (isAppleCancel(err)) return;
+    throw err;
+  }
   if (!credential.identityToken) {
-    throw new Error('Apple did not return an identity token.');
+    throw new Error(APPLE_NO_TOKEN);
   }
   const { error } = await supabase.auth.signInWithIdToken({
     provider: 'apple',
@@ -120,8 +148,9 @@ export async function signInWithGoogle(): Promise<void> {
   GoogleSignin.configure(googleSignInConfig());
   await GoogleSignin.hasPlayServices();
   const response = await GoogleSignin.signIn();
-  if (response.type !== 'success' || !response.data.idToken) {
-    throw new Error('Google sign-in was cancelled or did not return an identity token.');
+  if (response.type === 'cancelled') return;
+  if (!response.data.idToken) {
+    throw new Error(GOOGLE_NO_TOKEN);
   }
   const { error } = await supabase.auth.signInWithIdToken({
     provider: 'google',

@@ -47,24 +47,11 @@ export function listTags(): Promise<Tag[]> {
   return vocabularyPromise;
 }
 
-// Replaces a review's tags wholesale. Delete-then-insert rather than working
-// out a diff: there are at most three, so the diff would be more code than
-// it saves, and this also converges if a previous save half-failed.
+// Replace the review's tag set in one transaction.
 export async function setVisitTags(visitId: string, slugs: string[]): Promise<void> {
   const capped = [...new Set(slugs)].slice(0, MAX_VISIT_TAGS);
-
-  const { error: deleteError } = await supabase
-    .from('visit_tags')
-    .delete()
-    .eq('visit_id', visitId);
-  if (deleteError) throw deleteError;
-
-  if (capped.length === 0) return;
-
-  const { error: insertError } = await supabase
-    .from('visit_tags')
-    .insert(capped.map((slug) => ({ visit_id: visitId, tag_slug: slug })));
-  if (insertError) throw insertError;
+  const { error } = await supabase.rpc('set_visit_tags', { p_visit_id: visitId, p_tag_slugs: capped });
+  if (error) throw error;
 }
 
 // Which tags are in use on the reviews at or under a place, with how many

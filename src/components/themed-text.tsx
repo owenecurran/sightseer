@@ -149,13 +149,14 @@ const styles = StyleSheet.create({
   // Set two points larger than body, because a serif at the same size reads
   // smaller, and given its own line height rather than inheriting body's.
   //
-  // Worth knowing: the genuinely right face here is a typewriter or a hand,
-  // and neither is in assets/fonts. This is the best of what is loaded, not
-  // the best answer.
+  // Now a hand (Patrick Hand), which is what the serif was standing in for
+  // until one was bundled: a neat, legible handwriting, so a message reads as
+  // written on the card. Add a review's message field uses the same face, so
+  // what is written there is what the card shows.
   postcardMessage: {
-    fontFamily: BrandFonts.serifDisplay,
-    fontSize: 18,
-    lineHeight: 26,
+    fontFamily: BrandFonts.hand,
+    fontSize: 19,
+    lineHeight: 25,
   },
   headline: {
     fontFamily: BrandFonts.condensedHeavy,

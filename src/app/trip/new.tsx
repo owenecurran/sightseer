@@ -14,6 +14,7 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
 import { createManualTrip, getVisitRangeForPlace } from '@/lib/trips';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -51,7 +52,7 @@ export default function NewTripScreen() {
       setRange(found);
       setIsEmpty(!found);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not work out those dates.');
+      setError(userErrorMessage(err, 'Could not work out those dates.'));
     } finally {
       setIsResolving(false);
     }
@@ -67,7 +68,7 @@ export default function NewTripScreen() {
       // it's viewable the moment it exists.
       router.replace({ pathname: '/trip', params: { user: session.user.id, start: range.startDate } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create that trip.');
+      setError(userErrorMessage(err, 'Could not create that trip.'));
       setIsCreating(false);
     }
   }

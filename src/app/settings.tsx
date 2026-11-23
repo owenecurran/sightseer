@@ -23,8 +23,9 @@ import { listBlockedUsers } from '@/lib/blocks';
 import { setDiscoverableByContacts } from '@/lib/contacts';
 import { setDistanceUnit, useDistanceUnit } from '@/lib/distance-units';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
+import { userErrorMessage } from '@/lib/user-error';
 import { supabase } from '@/lib/supabase';
-import { unregisterPush } from '@/lib/push';
+import { signOutWithPushCleanup } from '@/lib/push';
 import { hasPrivacyPolicy, hasSupportEmail, PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '@/lib/legal';
 
 export default function SettingsScreen() {
@@ -34,6 +35,7 @@ export default function SettingsScreen() {
   const bottomInset = useBottomTabInset();
 
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -45,6 +47,11 @@ export default function SettingsScreen() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const [isSavingDiscoverable, setIsSavingDiscoverable] = useState(false);
+  // The two privacy switches failed in silence: the box simply did not tick,
+  // which reads as a switch that does not work. Most of all for "Private
+  // account", where somebody could walk away believing they were hidden.
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
+  const [discoverableError, setDiscoverableError] = useState<string | null>(null);
 
   const [isLinkingApple, setIsLinkingApple] = useState(false);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
@@ -74,7 +81,7 @@ export default function SettingsScreen() {
       await linkAppleAccount();
       await refreshProfile();
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : 'Could not connect your Apple account.');
+      setLinkError(userErrorMessage(err, 'Could not connect your Apple account.'));
     } finally {
       setIsLinkingApple(false);
     }
@@ -87,20 +94,23 @@ export default function SettingsScreen() {
       await linkGoogleAccount();
       await refreshProfile();
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : 'Could not connect your Google account.');
+      setLinkError(userErrorMessage(err, 'Could not connect your Google account.'));
     } finally {
       setIsLinkingGoogle(false);
     }
   }
 
   async function handleSignOut() {
+    if (!session) return;
     setIsSigningOut(true);
-    // Before signOut, not after: the delete is RLS-scoped to auth.uid(), so
-    // once the session is gone the row can no longer be removed and the next
-    // account on this device would inherit these notifications.
-    await unregisterPush();
-    await supabase.auth.signOut();
-    setIsSigningOut(false);
+    setSignOutError(null);
+    try {
+      await signOutWithPushCleanup(session.user.id);
+    } catch (err) {
+      setSignOutError(userErrorMessage(err, 'Could not sign out. Try again.'));
+    } finally {
+      setIsSigningOut(false);
+    }
   }
 
   async function handleChangePassword() {
@@ -118,7 +128,7 @@ export default function SettingsScreen() {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setIsSavingPassword(false);
     if (error) {
-      setPasswordError(error.message);
+      setPasswordError(userErrorMessage(error, 'Could not change your password.'));
       return;
     }
     setPasswordSuccess(true);
@@ -129,22 +139,28 @@ export default function SettingsScreen() {
   async function handleTogglePrivacy() {
     if (!session || !profile) return;
     setIsSavingPrivacy(true);
+    setPrivacyError(null);
     const { error } = await supabase
       .from('users')
       .update({ is_private: !profile.is_private })
       .eq('id', session.user.id);
     setIsSavingPrivacy(false);
-    if (!error) await refreshProfile();
+    if (error) {
+      setPrivacyError(userErrorMessage(error, 'Could not change that. Try again.'));
+      return;
+    }
+    await refreshProfile();
   }
 
   async function handleToggleDiscoverable() {
     if (!session || !profile) return;
     setIsSavingDiscoverable(true);
+    setDiscoverableError(null);
     try {
       await setDiscoverableByContacts(session.user.id, !profile.discoverable_by_contacts);
       await refreshProfile();
-    } catch {
-      // Best-effort, same as handleSavePhone above.
+    } catch (err) {
+      setDiscoverableError(userErrorMessage(err, 'Could not change that. Try again.'));
     } finally {
       setIsSavingDiscoverable(false);
     }
@@ -215,6 +231,11 @@ export default function SettingsScreen() {
               onPress={handleTogglePrivacy}
               disabled={isSavingPrivacy}
             />
+            {privacyError && (
+              <ThemedText type="small" themeColor="danger">
+                {privacyError}
+              </ThemedText>
+            )}
 
             <View style={styles.divider} />
 
@@ -275,6 +296,11 @@ export default function SettingsScreen() {
               onPress={handleToggleDiscoverable}
               disabled={isSavingDiscoverable}
             />
+            {discoverableError && (
+              <ThemedText type="small" themeColor="danger">
+                {discoverableError}
+              </ThemedText>
+            )}
           </PaperPanel>
 
           {/* Sign-in credentials in one card: the providers you can sign in
@@ -357,6 +383,7 @@ export default function SettingsScreen() {
             <View style={styles.divider} />
 
             <Button label="Sign out" variant="secondary" onPress={handleSignOut} loading={isSigningOut} />
+            {signOutError && <ThemedText type="small" themeColor="danger">{signOutError}</ThemedText>}
           </PaperPanel>
 
           <PaperPanel seed="settings-about" accentIndex={4}>

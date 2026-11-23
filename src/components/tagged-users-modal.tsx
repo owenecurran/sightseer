@@ -12,6 +12,7 @@ import { followUser, rankByConnection, unfollowOrCancelRequest, type RankedUser 
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 import { PUBLIC_USER_COLUMNS, type PublicProfile } from '@/lib/public-profile';
+import { userErrorMessage } from '@/lib/user-error';
 
 // Narrowed to what the public column grant actually returns — see
 // PUBLIC_USER_COLUMNS.
@@ -60,7 +61,7 @@ export function TaggedUsersModal({ visible, onClose, userIds }: TaggedUsersModal
         setUsers(ranked);
         setAvatarUrls(avatars);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load tagged people.');
+        setError(userErrorMessage(err, 'Could not load tagged people.'));
       } finally {
         setIsLoading(false);
       }
@@ -84,7 +85,7 @@ export function TaggedUsersModal({ visible, onClose, userIds }: TaggedUsersModal
         setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, followStatus: null } : u)));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that follow.');
+      setError(userErrorMessage(err, 'Could not update that follow.'));
     } finally {
       setUpdatingId(null);
     }

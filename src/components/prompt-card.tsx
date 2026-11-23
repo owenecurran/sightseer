@@ -9,6 +9,7 @@ import { PROFILE_PROMPTS } from '@/constants/profile-prompts';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { deletePrompt, type ProfilePrompt } from '@/lib/profile-prompts';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PromptCardProps = {
   existing: ProfilePrompt | undefined;
@@ -34,7 +35,7 @@ export function PromptCard({ existing, onChanged, onDragStart }: PromptCardProps
       await deletePrompt(existing.id);
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that prompt.');
+      setError(userErrorMessage(err, 'Could not remove that prompt.'));
     }
   }
 

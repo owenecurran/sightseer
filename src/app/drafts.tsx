@@ -15,6 +15,8 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { deleteDraft, listMyDrafts, type DraftListItem } from '@/lib/drafts';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Same duplicated-not-shared relative-time helper comments-section.tsx
 // already uses for its own timestamps — small enough not to warrant a
@@ -51,7 +53,7 @@ export default function DraftsScreen() {
       setError(null);
       listMyDrafts(session.user.id)
         .then(setDrafts)
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your drafts.'))
+        .catch((err) => setError(userErrorMessage(err, 'Could not load your drafts.')))
         .finally(() => setHasLoadedOnce(true));
     }, [session])
   );
@@ -64,7 +66,7 @@ export default function DraftsScreen() {
       setDrafts((prev) => prev.filter((d) => d.id !== pendingDeleteId));
       setPendingDeleteId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not discard that draft.');
+      setError(userErrorMessage(err, 'Could not discard that draft.'));
     } finally {
       setIsDeleting(false);
     }
@@ -84,11 +86,7 @@ export default function DraftsScreen() {
 
           <ThemedText type="displaySerif">Drafts</ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {drafts.length === 0 ? (
             <View style={styles.emptyState}>

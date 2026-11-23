@@ -15,6 +15,8 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { deleteArticle, listAllArticlesForAdmin, type AdminArticleListItem } from '@/lib/articles';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Admin-only in effect (RLS blocks a non-admin from ever seeing draft rows,
 // and the only entry point is the admin-gated link on profile.tsx) — same
@@ -33,7 +35,7 @@ export default function AdminArticlesScreen() {
       setError(null);
       listAllArticlesForAdmin()
         .then(setArticles)
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load articles.'))
+        .catch((err) => setError(userErrorMessage(err, 'Could not load articles.')))
         .finally(() => setHasLoadedOnce(true));
     }, [])
   );
@@ -46,7 +48,7 @@ export default function AdminArticlesScreen() {
       setArticles((prev) => prev.filter((a) => a.id !== pendingDeleteId));
       setPendingDeleteId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete that article.');
+      setError(userErrorMessage(err, 'Could not delete that article.'));
     } finally {
       setIsDeleting(false);
     }
@@ -68,11 +70,7 @@ export default function AdminArticlesScreen() {
 
           <Button label="New article" onPress={() => router.push('/admin/articles/new')} />
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {articles.length === 0 ? (
             <ThemedText type="caption">

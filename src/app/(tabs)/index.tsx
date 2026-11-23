@@ -52,6 +52,8 @@ import { getPhotoUrls } from "@/lib/photo-view";
 import { shareText } from "@/lib/share";
 import { supabase } from "@/lib/supabase";
 import { getRecapCoverUrls, type FeedRecap } from "@/lib/travel-book-recaps";
+import { userErrorMessage } from "@/lib/user-error";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import {
   getHomeLocationSuggestion,
   getTripSuggestion,
@@ -78,6 +80,41 @@ function initialPhotoIds(items: FeedItem[]): string[] {
   }).slice(0, INITIAL_THUMBNAILS);
 }
 
+function feedMediaIds(items: FeedItem[]) {
+  const visits = items.flatMap((item) => {
+    if (item.type === "visit") return [item.visit];
+    if (item.type === "trip") return item.feedTrip.days.flatMap((day) => day.visits);
+    return [];
+  });
+  const recaps = items.flatMap((item) => item.type === "recap" ? [item.recap] : []);
+  return {
+    photoIds: [...new Set(visits.flatMap((visit) => visit.photoIds))],
+    authorIds: [...new Set([
+      ...visits.map((visit) => visit.user_id),
+      ...recaps.map((recap) => recap.authorId),
+    ])],
+    recapIds: recaps.map((recap) => recap.id),
+  };
+}
+
+type FeedMediaIds = ReturnType<typeof feedMediaIds>;
+type FeedMedia = Record<"photoUrls" | "photoThumbUrls" | "avatarUrls" | "recapCoverUrls", Record<string, string>>;
+const EMPTY_FEED_MEDIA: FeedMedia = { photoUrls: {}, photoThumbUrls: {}, avatarUrls: {}, recapCoverUrls: {} };
+
+async function loadFeedMedia(ids: FeedMediaIds): Promise<FeedMedia> {
+  const [photos, avatars, covers] = await Promise.allSettled([
+    getPhotoUrls(ids.photoIds),
+    getAvatarViewUrls(ids.authorIds),
+    getRecapCoverUrls(ids.recapIds),
+  ]);
+  return {
+    photoUrls: photos.status === "fulfilled" ? photos.value.photos : {},
+    photoThumbUrls: photos.status === "fulfilled" ? photos.value.thumbs : {},
+    avatarUrls: avatars.status === "fulfilled" ? avatars.value : {},
+    recapCoverUrls: covers.status === "fulfilled" ? covers.value : {},
+  };
+}
+
 export default function HomeScreen() {
   const { session, profile } = useAuth();
   return <HomeFeedScreen key={session?.user.id} viewerId={session?.user.id} viewedAt={profile?.feed_last_viewed_at} />;
@@ -102,13 +139,12 @@ function HomeFeedScreen({ viewerId, viewedAt }: { viewerId?: string; viewedAt?: 
   // ignoring it writes nothing, so it resurfaces here. An explicit "Not a
   // trip" is the only thing that stops it coming back.
   const [tripSuggestion, setTripSuggestion] = useState<TripSuggestion | null>(null);
-  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
-  const [photoThumbUrls, setPhotoThumbUrls] = useState<Record<string, string>>({});
-  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({});
-  const [recapCoverUrls, setRecapCoverUrls] = useState<Record<string, string>>(
-    {},
-  );
+  const [{ photoUrls, photoThumbUrls, avatarUrls, recapCoverUrls }, setFeedMedia] = useState(EMPTY_FEED_MEDIA);
+  const [deferredMedia, setDeferredMedia] = useState<{ ids: FeedMediaIds; initial: FeedMedia } | null>(null);
+  // A like or share that failed: one line, gone at the next action.
   const [error, setError] = useState<string | null>(null);
+  // The feed itself failing to load, which gets a way to try again.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
@@ -153,42 +189,26 @@ function HomeFeedScreen({ viewerId, viewedAt }: { viewerId?: string; viewedAt?: 
     if (loadInFlight.current) return loadInFlight.current;
 
     setError(null);
+    setLoadError(null);
     const request = (async () => {
       try {
         const feedItems = await getFeedItems(viewerId);
-        const visits = feedItems.flatMap((item) => {
-          if (item.type === "visit") return [item.visit];
-          if (item.type === "trip") return item.feedTrip.days.flatMap((day) => day.visits);
-          return [];
-        });
-        const recaps = feedItems.flatMap((item) => item.type === "recap" ? [item.recap] : []);
-        const authorIds = [...new Set([
-          ...visits.map((visit) => visit.user_id),
-          ...recaps.map((recap) => recap.authorId),
-        ])];
-        const orderedPhotoIds = [...new Set([
-          ...initialPhotoIds(feedItems),
-          ...visits.flatMap((visit) => visit.photoIds),
-        ])];
-
-        // The feed can still show its text and maps if a media service fails.
-        const [photoResult, avatarResult, coverResult] = await Promise.allSettled([
-          getPhotoUrls(orderedPhotoIds),
-          getAvatarViewUrls(authorIds),
-          getRecapCoverUrls(recaps.map((recap) => recap.id)),
-        ]);
-
-        if (photoResult.status === "fulfilled") {
-          const { photos, thumbs } = photoResult.value;
-          setPhotoUrls(photos);
-          setPhotoThumbUrls(thumbs);
-        }
-        if (avatarResult.status === "fulfilled") setAvatarUrls(avatarResult.value);
-        if (coverResult.status === "fulfilled") setRecapCoverUrls(coverResult.value);
+        const priority = feedMediaIds(feedItems.slice(0, INITIAL_FEED_ROWS));
+        priority.photoIds = initialPhotoIds(feedItems);
+        const initial = await loadFeedMedia(priority);
+        const all = feedMediaIds(feedItems);
+        const ids = {
+          // Retry any first-batch misses along with the rest of the feed.
+          photoIds: all.photoIds.filter((id) => !initial.photoUrls[id]),
+          authorIds: all.authorIds.filter((id) => !priority.authorIds.includes(id)),
+          recapIds: all.recapIds.filter((id) => !priority.recapIds.includes(id)),
+        };
+        setFeedMedia(initial);
+        setDeferredMedia({ ids, initial });
         setItems(feedItems);
         return true;
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load your feed.");
+        setLoadError(userErrorMessage(err, "Could not load your feed."));
         return false;
       } finally {
         loadInFlight.current = null;
@@ -215,6 +235,24 @@ function HomeFeedScreen({ viewerId, viewedAt }: { viewerId?: string; viewedAt?: 
   useEffect(() => () => {
     if (startupFrame.current != null) cancelAnimationFrame(startupFrame.current);
   }, []);
+
+  useEffect(() => {
+    if (!startupPainted || !deferredMedia) return;
+    const { ids, initial } = deferredMedia;
+    if (ids.photoIds.length + ids.authorIds.length + ids.recapIds.length === 0) return;
+
+    let cancelled = false;
+    void loadFeedMedia(ids).then((next) => {
+      if (cancelled) return;
+      startTransition(() => setFeedMedia((current) => current === initial ? {
+        photoUrls: { ...current.photoUrls, ...next.photoUrls },
+        photoThumbUrls: { ...current.photoThumbUrls, ...next.photoThumbUrls },
+        avatarUrls: { ...current.avatarUrls, ...next.avatarUrls },
+        recapCoverUrls: { ...current.recapCoverUrls, ...next.recapCoverUrls },
+      } : current));
+    });
+    return () => { cancelled = true; };
+  }, [deferredMedia, startupPainted]);
 
   async function reloadAfterChange() {
     await loadInFlight.current;
@@ -326,9 +364,7 @@ function HomeFeedScreen({ viewerId, viewedAt }: { viewerId?: string; viewedAt?: 
         ),
       );
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not update that like.",
-      );
+      setError(userErrorMessage(err, "Could not update that like."));
     }
   }, [viewerId]);
 
@@ -596,7 +632,18 @@ function HomeFeedScreen({ viewerId, viewedAt }: { viewerId?: string; viewedAt?: 
           </View>
         ) : (
           <>
-            {!isLoading && items.length === 0 && (
+            {/* Inside the tab pager, so it retries the feed alone: the
+                notice's default reloads the whole screen, every tab with it. */}
+            {loadError && (
+              <ErrorNotice
+                message={loadError}
+                onRetry={() => void handleRefresh()}
+                style={[styles.gutter, styles.notice]}
+              />
+            )}
+            {/* Not when the load failed: "No visits yet" was shown under
+                the error, as if the feed had loaded empty. */}
+            {!isLoading && !loadError && items.length === 0 && (
               <ThemedText
                 type="caption"
                 style={[styles.gutter, styles.notice]}

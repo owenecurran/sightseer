@@ -1,3 +1,4 @@
+import { putImageBlob, readImageBlob, requestImageUpload } from '@/lib/media-upload';
 import { getCachedUrls } from '@/lib/media-url-cache';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
@@ -74,23 +75,9 @@ export async function uploadRecapCover(params: { recapId: string; uri: string; m
   const { recapId, uri, mimeType } = params;
   const contentType = mimeType && ALLOWED_CONTENT_TYPES.includes(mimeType) ? mimeType : 'image/jpeg';
 
-  const { data, error: fnError } = await supabase.functions.invoke('create-recap-cover-upload-url', {
-    body: { recapId, contentType },
-  });
-  if (fnError) throw fnError;
-  const { uploadUrl, r2Key } = data as { uploadUrl: string; r2Key: string };
-
-  const fileResponse = await fetch(uri);
-  const blob = await fileResponse.blob();
-
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: blob,
-  });
-  if (!uploadResponse.ok) {
-    throw new Error(`Upload to storage failed (${uploadResponse.status})`);
-  }
+  const image = await readImageBlob(uri);
+  const { uploadUrl, r2Key } = await requestImageUpload('create-recap-cover-upload-url', { recapId, contentType }, image);
+  await putImageBlob(uploadUrl, image, contentType);
 
   const { error: updateError } = await supabase
     .from('travel_book_recaps')

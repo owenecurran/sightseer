@@ -28,6 +28,7 @@ import { followUser } from "@/lib/follows";
 import { ensureInviteCode, inviteUrl } from "@/lib/invites";
 import { shareText } from "@/lib/share";
 import { SITE_ORIGIN } from "@/lib/site";
+import { userErrorMessage } from '@/lib/user-error';
 
 type MatchedRow = { contactName: string; user: MatchedUser };
 type UnmatchedRow = { contactName: string };
@@ -186,7 +187,7 @@ export function FindFriendsPanel({
         setStatus("idle");
         return;
       }
-      setError(err instanceof Error ? err.message : "Could not sync contacts.");
+      setError(userErrorMessage(err, "Could not sync contacts."));
       setStatus("error");
     }
   }
@@ -201,7 +202,7 @@ export function FindFriendsPanel({
       setFollowingIds((prev) => new Set(prev).add(row.user.id));
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not follow that person.",
+        userErrorMessage(err, "Could not follow that person."),
       );
     }
   }

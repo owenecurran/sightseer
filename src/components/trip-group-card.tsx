@@ -14,6 +14,7 @@ import type { FeedTrip, FeedVisit } from '@/lib/feed';
 import { createTravelBookFromTrip } from '@/lib/travel-books';
 import { getAreaOptions, setTripDisplayPlace, type AreaOption } from '@/lib/trips';
 import { formatVisitedRange } from '@/lib/visited-date';
+import { userErrorMessage } from '@/lib/user-error';
 
 type TripGroupCardProps = {
   feedTrip: FeedTrip;
@@ -104,7 +105,7 @@ export function TripGroupCard({
       await setTripDisplayPlace(trip, option.placeId === trip.autoAreaPlaceId ? null : option.placeId);
     } catch (err) {
       setAreaName(trip.areaName);
-      setError(err instanceof Error ? err.message : 'Could not change how this is labeled.');
+      setError(userErrorMessage(err, 'Could not change how this is labeled.'));
     }
   }
 
@@ -116,7 +117,7 @@ export function TripGroupCard({
       onConverted(trip.key, bookId);
       router.push({ pathname: '/travel-book/[id]', params: { id: bookId } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not make a travel book from this trip.');
+      setError(userErrorMessage(err, 'Could not make a travel book from this trip.'));
     } finally {
       setIsConverting(false);
     }

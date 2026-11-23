@@ -12,6 +12,9 @@ import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { errorKind, userErrorMessage } from '@/lib/user-error';
+
+const LINK_EXPIRED = 'This reset link is invalid or has expired.';
 
 // Recovery tokens arrive in the URL fragment (#access_token=...&refresh_token=...),
 // not query params — and the client is configured with detectSessionInUrl:
@@ -25,7 +28,15 @@ function extractRecoveryTokens(fragment: string): { accessToken: string; refresh
 }
 
 export default function ResetPasswordScreen() {
-  const nativeUrl = Platform.OS === 'web' ? null : Linking.useURL();
+  // useLinkingURL, not useURL. useURL starts out null, then asks for the URL
+  // the app was LAUNCHED with. With the app already running, the reset link
+  // arrives as an event before this screen is listening, and the launch URL
+  // has no tokens in it, so every reset opened from a running app said
+  // "invalid or has expired". useLinkingURL reads the native module's latest
+  // URL at once, and each link opened overwrites it (Android onNewIntent,
+  // iOS open url). Called on every platform, so it is not a conditional hook.
+  const linkingUrl = Linking.useLinkingURL();
+  const nativeUrl = Platform.OS === 'web' ? null : linkingUrl;
   const { session } = useAuth();
   const [sessionReady, setSessionReady] = useState(false);
   const [password, setPassword] = useState('');
@@ -46,7 +57,7 @@ export default function ResetPasswordScreen() {
       const tokens = extractRecoveryTokens(fragment);
       if (!tokens) {
         // Just the fact: the buttons under it say what to do next.
-        setError('This reset link is invalid or has expired.');
+        setError(LINK_EXPIRED);
         return;
       }
 
@@ -55,9 +66,12 @@ export default function ResetPasswordScreen() {
         refresh_token: tokens.refreshToken,
       });
       if (sessionError) {
-        setError(sessionError.message);
+        // Almost always a link already used or too old; GoTrue says so as
+        // "Invalid Refresh Token: Refresh Token Not Found".
+        setError(errorKind(sessionError) === 'offline' ? userErrorMessage(sessionError, LINK_EXPIRED) : LINK_EXPIRED);
         return;
       }
+      setError(null);
       setSessionReady(true);
     })();
   }, [nativeUrl]);
@@ -69,7 +83,7 @@ export default function ResetPasswordScreen() {
     setIsSubmitting(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not change your password. Try again.'));
       return;
     }
     setDone(true);

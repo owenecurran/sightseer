@@ -25,6 +25,8 @@ import {
   type TravelBookRow,
 } from '@/lib/travel-books';
 import { type PublicProfile } from '@/lib/public-profile';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Narrowed to what the public column grant on `users` actually returns --
 // see 20260930130000_restrict_users_columns.sql.
@@ -56,7 +58,7 @@ export default function TravelBookSettingsScreen() {
           setBook(detail.book);
           setCollaborators(detail.collaborators);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this travel book.');
+          setError(userErrorMessage(err, 'Could not load this travel book.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -79,7 +81,7 @@ export default function TravelBookSettingsScreen() {
       try {
         setPeopleSuggestions(await searchUsers(peopleQuery, session.user.id));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
+        setError(userErrorMessage(err, 'Search failed.'));
       }
     }, DEBOUNCE_MS);
     return () => {
@@ -94,7 +96,7 @@ export default function TravelBookSettingsScreen() {
     try {
       await updateTravelBookPrivacy(book.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update privacy.');
+      setError(userErrorMessage(err, 'Could not update privacy.'));
     }
   }
 
@@ -111,7 +113,7 @@ export default function TravelBookSettingsScreen() {
       await addCollaborator(book.id, user.id);
     } catch (err) {
       setCollaborators((prev) => prev.filter((c) => c.userId !== user.id));
-      setError(err instanceof Error ? err.message : 'Could not add that collaborator.');
+      setError(userErrorMessage(err, 'Could not add that collaborator.'));
     }
   }
 
@@ -123,7 +125,7 @@ export default function TravelBookSettingsScreen() {
       await removeCollaborator(book.id, userId);
     } catch (err) {
       if (removed) setCollaborators((prev) => [...prev, removed]);
-      setError(err instanceof Error ? err.message : 'Could not remove that collaborator.');
+      setError(userErrorMessage(err, 'Could not remove that collaborator.'));
     }
   }
 
@@ -142,7 +144,7 @@ export default function TravelBookSettingsScreen() {
       // counts as a re-tap. Without it the pager stays where it was.
       if (router.canDismiss()) router.dismissAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete this travel book.');
+      setError(userErrorMessage(err, 'Could not delete this travel book.'));
       setIsConfirmingDelete(false);
       setIsDeleting(false);
     }
@@ -219,11 +221,7 @@ export default function TravelBookSettingsScreen() {
             </>
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
         </KeyboardAwareScroll>
       </SafeAreaView>
 

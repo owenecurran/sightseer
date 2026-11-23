@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
@@ -65,6 +66,36 @@ function getPushToken() {
   return Notifications!.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
 }
 
+const knownTokens = new Map<string, string[]>();
+let pushOperation: Promise<unknown> = Promise.resolve();
+
+function queuePushOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const task = pushOperation.then(operation);
+  pushOperation = task.catch(() => {});
+  return task;
+}
+
+function pushTokenKey(userId: string) {
+  return `push-tokens-v1:${userId}`;
+}
+
+async function cachedPushTokens(userId: string): Promise<string[]> {
+  const inMemory = knownTokens.get(userId);
+  if (inMemory) return inMemory;
+  try {
+    const stored = JSON.parse(await AsyncStorage.getItem(pushTokenKey(userId)) ?? '[]');
+    return Array.isArray(stored) ? stored.filter((token): token is string => typeof token === 'string' && !!token) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function isCurrentUser(userId: string) {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  return data.session?.user.id === userId;
+}
+
 // Registers this device for push and stores the token against the signed-in
 // user. Safe to call on every launch: push_tokens is keyed on the token, so
 // re-registering the same device updates in place.
@@ -73,7 +104,11 @@ function getPushToken() {
 // no module, a simulator, web, declined permission — because none of those
 // are things the caller can act on, and a rejection here would surface as a
 // crash on a screen that has nothing to do with notifications.
-export async function registerForPush(userId: string): Promise<string | null> {
+export function registerForPush(userId: string): Promise<string | null> {
+  return queuePushOperation(() => registerDevice(userId));
+}
+
+async function registerDevice(userId: string): Promise<string | null> {
   if (!Notifications) return null;
   // iOS simulators genuinely cannot receive push — there is no APNs client
   // in them, so registering is guaranteed to fail. Android emulators are a
@@ -84,6 +119,7 @@ export async function registerForPush(userId: string): Promise<string | null> {
   if (!Device.isDevice && Platform.OS === 'ios') return null;
 
   try {
+    if (!await isCurrentUser(userId)) return null;
     const existing = await Notifications.getPermissionsAsync();
     let status = existing.status;
     // Only ask if we have never asked. Re-prompting someone who declined
@@ -104,7 +140,13 @@ export async function registerForPush(userId: string): Promise<string | null> {
     const { data: token } = await getPushToken();
     if (!token) return null;
 
-    await supabase.from('push_tokens').upsert(
+    // Keep the token even if the response is lost after the database write.
+    const tokens = [...new Set([...(await cachedPushTokens(userId)), token])];
+    knownTokens.set(userId, tokens);
+    await AsyncStorage.setItem(pushTokenKey(userId), JSON.stringify(tokens)).catch(() => {});
+    if (!await isCurrentUser(userId)) return null;
+
+    const { error } = await supabase.from('push_tokens').upsert(
       {
         token,
         user_id: userId,
@@ -114,7 +156,7 @@ export async function registerForPush(userId: string): Promise<string | null> {
       { onConflict: 'token' }
     );
 
-    return token;
+    return error ? null : token;
   } catch {
     // Push is an enhancement; nothing above is worth interrupting the app for.
     return null;
@@ -141,20 +183,33 @@ export async function getPushPermissionState(): Promise<PushPermissionState> {
   }
 }
 
-// Called on sign-out. Without it the next person to sign in on this device
-// keeps receiving the previous account's notifications, since the token
-// belongs to the device and the row still points at the old user.
-export async function unregisterPush(): Promise<void> {
-  // Must match registerForPush's guard exactly: anything that can register a
-  // token has to be able to clear it, or that device keeps receiving the
-  // previous account's notifications after a sign-out.
-  if (!Notifications || (!Device.isDevice && Platform.OS === 'ios')) return;
-  try {
-    const { data: token } = await getPushToken();
-    if (token) await supabase.from('push_tokens').delete().eq('token', token);
-  } catch {
-    // A device that cannot produce a token has nothing registered to remove.
-  }
+export function signOutWithPushCleanup(userId: string): Promise<void> {
+  return queuePushOperation(async () => {
+    if (!await isCurrentUser(userId)) return;
+    try {
+      let tokens = await cachedPushTokens(userId);
+      if (tokens.length === 0 && Notifications && (Device.isDevice || Platform.OS !== 'ios')
+        && (await Notifications.getPermissionsAsync()).status === 'granted') {
+        // Earlier builds did not remember the token after registration.
+        const { data: token } = await getPushToken();
+        if (!token) throw new Error('Push token unavailable');
+        tokens = [token];
+      }
+      if (tokens.length > 0) {
+        const { error } = await supabase.from('push_tokens').delete().eq('user_id', userId).in('token', tokens);
+        if (error) throw error;
+      }
+    } catch {
+      throw new Error('Could not disconnect notifications from this device. Try signing out again.');
+    }
+
+    if (!await isCurrentUser(userId)) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+
+    knownTokens.delete(userId);
+    await AsyncStorage.removeItem(pushTokenKey(userId)).catch(() => {});
+  });
 }
 
 // Where a tapped notification should land. Mirrors the in-app notifications

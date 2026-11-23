@@ -26,6 +26,7 @@ import {
   type GeoTaggedAsset,
 } from '@/lib/photo-clustering';
 import { cachePlaceHierarchy } from '@/lib/places-cache';
+import { userErrorMessage } from '@/lib/user-error';
 
 // Local date, not toISOString() — same reasoning as review-form.tsx's own
 // todayIsoDate() (UTC rolls over to "tomorrow" in the evening for any
@@ -151,7 +152,7 @@ export default function BulkUploadScreen() {
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not create some drafts.');
+        setError(userErrorMessage(err, 'Could not create some drafts.'));
       }
       setProgress({ done: index + 1, total: clusters.length });
     }

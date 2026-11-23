@@ -27,6 +27,8 @@ import {
   upsertRecapDraft,
   type TravelBookRecapRow,
 } from '@/lib/travel-book-recaps';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function TravelBookRecapScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -62,7 +64,7 @@ export default function TravelBookRecapScreen() {
             }
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this recap.');
+          setError(userErrorMessage(err, 'Could not load this recap.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -84,7 +86,7 @@ export default function TravelBookRecapScreen() {
       });
       setRecap(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save this recap.');
+      setError(userErrorMessage(err, 'Could not save this recap.'));
     } finally {
       setIsSaving(false);
     }
@@ -102,7 +104,7 @@ export default function TravelBookRecapScreen() {
       }
       setRecap({ ...recap, is_published: !recap.is_published });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update publish status.');
+      setError(userErrorMessage(err, 'Could not update publish status.'));
     } finally {
       setIsSaving(false);
     }
@@ -128,7 +130,7 @@ export default function TravelBookRecapScreen() {
       await uploadRecapCover({ recapId: recap.id, uri: cropped.uri, mimeType: 'image/jpeg' });
       setCoverUrl(cropped.uri);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that photo.');
+      setError(userErrorMessage(err, 'Could not upload that photo.'));
     } finally {
       setIsUploadingCover(false);
     }
@@ -164,11 +166,7 @@ export default function TravelBookRecapScreen() {
           <TextField placeholder="How was the trip?" value={body} onChangeText={setBody} multiline />
           <RatingSliderWithPreview value={rating} onChange={setRating} />
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           <Button label="Save draft" onPress={handleSaveDraft} loading={isSaving} disabled={!title.trim()} />
           {recap && (

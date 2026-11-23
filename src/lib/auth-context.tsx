@@ -1,5 +1,5 @@
 import type { Session } from '@supabase/supabase-js';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { consumePendingInvite } from '@/lib/invites';
 import { setMediaCacheViewer } from '@/lib/media-url-cache';
@@ -12,127 +12,126 @@ type AuthContextValue = {
   session: Session | null;
   profile: Profile | null;
   isLoading: boolean;
+  // True when the last try at fetching the profile failed, as opposed to
+  // there being no profile yet. Both leave `profile` null, and the root
+  // layout used to read either one as an account that had not finished
+  // signing up: open the app offline and a long-standing account was sent
+  // to the Terms screen, the first step of signup, and kept there.
+  profileFailed: boolean;
   refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function fetchProfile(userId: string): Promise<Profile | null> {
-  // Through get_my_profile rather than a table read, because this row needs
-  // the columns the public grant no longer covers — the signup gates, the
-  // notify preferences, hashed_phone. A column grant cannot say "these
-  // columns, but only for your own row"; a definer function can.
-  // See 20260930130000_restrict_users_columns.sql.
+async function fetchProfile(userId: string): Promise<Profile | null | undefined> {
   const { data, error } = await supabase.rpc('get_my_profile');
+  if (error) throw error;
 
-  if (error) {
-    // This is the single worst thing that can fail in the app: a null profile
-    // reads as "has not finished signing up", so every gate in _layout.tsx
-    // opens and the person is walked back through onboarding. Loud on
-    // purpose.
-    console.error('Failed to fetch profile', error);
-    return null;
-  }
-
-  // Deliberately tolerant of BOTH shapes, rather than calling .single().
-  //
-  // get_my_profile returns `public.users`, a composite rather than a set, and
-  // PostgREST returns a composite unwrapped — so the result is an object, not
-  // a one-element array. .single() asks for the object representation and is
-  // very likely fine, but "very likely" is not a good enough bet on the one
-  // call that decides whether anybody is signed in. Accepting either costs
-  // two lines and cannot be wrong.
-  const row = Array.isArray(data) ? (data[0] ?? null) : data;
-  if (!row) {
-    console.error('Failed to fetch profile', `get_my_profile returned nothing for ${userId}`);
-    return null;
-  }
-  return row as Profile;
+  // PostgREST can return a composite as an object or a single-element array.
+  const row = (Array.isArray(data) ? data[0] : data) as Profile | null | undefined;
+  if (!row?.id) return null;
+  return row.id === userId ? row : undefined;
 }
+
+type ActiveAccount = {
+  userId: string;
+  profileRequest: number;
+  inviteToken?: string;
+  pendingInvite?: Promise<boolean>;
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  // Tracks the current session outside React state, so onAuthStateChange's
-  // callback (created once, inside an empty-deps effect) can tell whether a
-  // new session is a *fresh* sign-in without closing over a stale `session`
-  // value from mount time.
-  const sessionRef = useRef<Session | null>(null);
+  const [profileFailed, setProfileFailed] = useState(false);
+  const activeAccount = useRef<ActiveAccount | null>(null);
+
+  const refreshAccount = useCallback(async (account: ActiveAccount) => {
+    if (activeAccount.current !== account) return;
+    const request = ++account.profileRequest;
+    const isCurrent = () => activeAccount.current === account && account.profileRequest === request;
+
+    try {
+      if (account.inviteToken) {
+        const token = account.inviteToken;
+        account.inviteToken = undefined;
+        account.pendingInvite = consumePendingInvite(token, () => activeAccount.current === account);
+      }
+      await account.pendingInvite;
+      if (!isCurrent()) return;
+
+      const nextProfile = await fetchProfile(account.userId);
+      if (isCurrent() && nextProfile !== undefined) setProfile(nextProfile);
+      if (isCurrent()) setProfileFailed(false);
+    } catch (error) {
+      if (isCurrent()) {
+        console.error('Failed to fetch profile', error);
+        setProfileFailed(true);
+      }
+    } finally {
+      if (isCurrent()) setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
-
-    async function loadInitialSession() {
-      const {
-        data: { session: initialSession },
-      } = await supabase.auth.getSession();
-      if (!isMounted) return;
-
-      setMediaCacheViewer(initialSession?.user.id);
-      sessionRef.current = initialSession;
-      setSession(initialSession);
-      if (initialSession) {
-        setProfile(await fetchProfile(initialSession.user.id));
-      }
-      setIsLoading(false);
-    }
-
-    loadInitialSession();
+    let receivedSession = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      if (!isMounted) return;
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      // INITIAL_SESSION supplies startup state. An auth change received
+      // before it already has a newer session.
+      if (!isMounted || (event === 'INITIAL_SESSION' && receivedSession)) return;
+      receivedSession = true;
 
-      // A fresh sign-in (no session -> a session) needs its profile fetched
-      // before the root layout's Stack.Protected guards re-evaluate, or
-      // there's a render in between where session is already set but
-      // profile is still whatever it was before (null) — hasCompletedOnboarding
-      // reads false during that exact gap, which briefly routes to the
-      // onboarding screen instead of straight into the app. Re-using
-      // isLoading (which already makes the root layout render nothing
-      // until it's false) closes that gap the same way it already does for
-      // the very first app load. Scoped to just this transition — token
-      // refreshes and sign-outs don't have a stale-profile problem, and
-      // blanking the whole app during a routine background token refresh
-      // would be a worse regression than the bug this fixes.
-      const isFreshSignIn = sessionRef.current === null && nextSession !== null;
-      if (isFreshSignIn) setIsLoading(true);
+      if (refreshTimer !== undefined) clearTimeout(refreshTimer);
+      let account = activeAccount.current;
+      const userId = nextSession?.user.id;
+      if (!nextSession || !userId) {
+        account = null;
+        activeAccount.current = null;
+        setProfile(null);
+        setProfileFailed(false);
+        setIsLoading(false);
+      } else if (account?.userId !== userId) {
+        account = {
+          userId,
+          profileRequest: 0,
+          inviteToken: event === 'SIGNED_IN' ? nextSession.access_token : undefined,
+        };
+        activeAccount.current = account;
+        setProfile(null);
+        setProfileFailed(false);
+        setIsLoading(true);
+      }
 
-      setMediaCacheViewer(nextSession?.user.id);
-      sessionRef.current = nextSession;
+      setMediaCacheViewer(userId);
       setSession(nextSession);
-
-      // Attribution, at the first moment there is an account to attach it
-      // to. Before fetchProfile rather than after, so the profile the guards
-      // then read already carries invited_by instead of needing a second
-      // round trip to notice it.
-      //
-      // Only on a fresh sign-in: redeem_invite is write-once server-side, so
-      // running it on every token refresh would be harmless but pointless.
-      // It is awaited inside the isLoading window the comment above opens,
-      // which is what keeps it off the critical path of a routine refresh.
-      if (isFreshSignIn) await consumePendingInvite();
-
-      setProfile(nextSession ? await fetchProfile(nextSession.user.id) : null);
-
-      if (isFreshSignIn) setIsLoading(false);
+      if (nextSession && account) {
+        const accountToRefresh = account;
+        // Run network calls outside Supabase's auth callback.
+        refreshTimer = setTimeout(() => { void refreshAccount(accountToRefresh); }, 0);
+      }
     });
 
     return () => {
       isMounted = false;
+      activeAccount.current = null;
+      if (refreshTimer !== undefined) clearTimeout(refreshTimer);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [refreshAccount]);
 
-  async function refreshProfile() {
-    if (!session) return;
-    setProfile(await fetchProfile(session.user.id));
-  }
+  const refreshProfile = useCallback(async () => {
+    const account = activeAccount.current;
+    if (account) await refreshAccount(account);
+  }, [refreshAccount]);
 
   return (
-    <AuthContext.Provider value={{ session, profile, isLoading, refreshProfile }}>
+    <AuthContext.Provider value={{ session, profile, isLoading, profileFailed, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

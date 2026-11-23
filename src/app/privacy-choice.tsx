@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 type Choice = 'public' | 'private';
 
@@ -46,7 +47,7 @@ export default function PrivacyChoiceScreen() {
     setIsSubmitting(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save that. Try again.'));
       return;
     }
     await refreshProfile();

@@ -14,6 +14,7 @@ import { flagSelfUnderage, MIN_AGE_YEARS } from '@/lib/bans';
 import type { Database } from '@/lib/database.types';
 import { addHomeLocation } from '@/lib/home-locations';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -112,7 +113,7 @@ export default function DemographicsScreen() {
     setIsSubmitting(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save that. Try again.'));
       return;
     }
     await refreshProfile();

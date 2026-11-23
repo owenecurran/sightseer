@@ -31,6 +31,8 @@ import { getPhotoViewUrls } from '@/lib/photo-view';
 import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { supabase } from '@/lib/supabase';
 import { PUBLIC_USER_COLUMNS, type PublicProfile } from '@/lib/public-profile';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Narrowed to what the public column grant actually returns — see
 // PUBLIC_USER_COLUMNS.
@@ -105,7 +107,7 @@ export default function UserProfileScreen() {
           const photoId = firstPhotoId(showcase.latestVisit);
           setLatestVisitPhotoUrl(photoId ? (await getPhotoViewUrls([photoId]))[photoId] : undefined);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this profile.');
+          setError(userErrorMessage(err, 'Could not load this profile.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -129,7 +131,7 @@ export default function UserProfileScreen() {
         setFollowStatus(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that follow.');
+      setError(userErrorMessage(err, 'Could not update that follow.'));
     } finally {
       setIsUpdatingFollow(false);
     }
@@ -145,7 +147,7 @@ export default function UserProfileScreen() {
       setFollowStatus(null);
       setTargetFollowsMe(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not block that user.');
+      setError(userErrorMessage(err, 'Could not block that user.'));
     } finally {
       setIsUpdatingBlock(false);
     }
@@ -159,7 +161,7 @@ export default function UserProfileScreen() {
       await unblockUser(session.user.id, user.id);
       setIsBlocked(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unblock that user.');
+      setError(userErrorMessage(err, 'Could not unblock that user.'));
     } finally {
       setIsUpdatingBlock(false);
     }
@@ -173,7 +175,7 @@ export default function UserProfileScreen() {
       await removeFollower(session.user.id, user.id);
       setTargetFollowsMe(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that follower.');
+      setError(userErrorMessage(err, 'Could not remove that follower.'));
     } finally {
       setIsRemovingFollower(false);
     }
@@ -275,7 +277,7 @@ export default function UserProfileScreen() {
               </Pressable>
             </View>
 
-            {error && <ThemedText type="small">{error}</ThemedText>}
+            {error && <ErrorNotice message={error} />}
 
             {!canSeeContent && (
               <ThemedText type="caption">

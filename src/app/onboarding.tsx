@@ -10,6 +10,7 @@ import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 const HANDLE_PATTERN = /^[a-z0-9_]{3,20}$/;
 
@@ -43,7 +44,7 @@ export default function OnboardingScreen() {
 
     if (updateError) {
       setError(
-        updateError.code === '23505' ? 'That username is taken.' : updateError.message
+        updateError.code === '23505' ? 'That username is taken.' : userErrorMessage(updateError, 'Could not save that. Try again.')
       );
       return;
     }

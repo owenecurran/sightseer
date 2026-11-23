@@ -121,6 +121,12 @@ export const BrandFonts = {
   regionGrotesqueLight: 'AntarcticanLight',
   regionDidone: 'BohemianSoul',
   regionDeco: 'BuenaparkJf',
+  // Things written and typed rather than printed, for the parts of the app
+  // that are a journal being filled in: a typewriter's labels, a neat hand
+  // for what someone writes, and a quick scrawl for notes in the margin.
+  typewriter: 'SpecialElite',
+  hand: 'PatrickHand',
+  scrawl: 'ReenieBeanie',
 } as const;
 
 export const Fonts = Platform.select({

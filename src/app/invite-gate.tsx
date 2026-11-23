@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context';
 import { ensureInviteCode, inviteUrl } from '@/lib/invites';
 import { shareText } from '@/lib/share';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 // The last gate before the app.
 //
@@ -77,7 +78,7 @@ export default function InviteGateScreen() {
     setIsSubmitting(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save that. Try again.'));
       return;
     }
 

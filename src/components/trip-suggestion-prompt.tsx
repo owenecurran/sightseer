@@ -5,6 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { declineTripPrompt, promoteToTrip, type TripSuggestion } from '@/lib/trips';
+import { userErrorMessage } from '@/lib/user-error';
 
 type TripSuggestionPromptProps = {
   userId: string;
@@ -33,7 +34,7 @@ export function TripSuggestionPrompt({ userId, suggestion, onResolved }: TripSug
       else await declineTripPrompt(userId, suggestion.date);
       onResolved(promoted);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that.');
+      setError(userErrorMessage(err, 'Could not save that.'));
       setIsBusy(false);
     }
   }

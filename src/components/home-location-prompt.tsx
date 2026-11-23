@@ -7,6 +7,7 @@ import { Spacing } from '@/constants/theme';
 import { addHomeLocation } from '@/lib/home-locations';
 import { dismissHomeLocationPrompt, type HomeLocationSuggestion } from '@/lib/trips';
 import type { Database } from '@/lib/database.types';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -41,7 +42,7 @@ export function HomeLocationPrompt({ suggestion, onResolved }: HomeLocationPromp
       } as PlaceRow);
       onResolved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that home location.');
+      setError(userErrorMessage(err, 'Could not add that home location.'));
       setIsBusy(false);
     }
   }

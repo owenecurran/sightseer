@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { guardCardPress } from "@/lib/card-drag-guard";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import Animated, {
   runOnJS,
@@ -40,8 +40,12 @@ import { turnMarkClearance } from "@/components/ui/postcard-turn-mark";
 import { PostcardPhotos } from "@/components/ui/postcard-photos";
 import { Postmark } from "@/components/ui/postmark";
 import { StretchText } from "@/components/ui/stretch-text";
-import { TagSticker } from "@/components/ui/tag-sticker";
-import { TagStickerGraphic } from "@/components/ui/tag-sticker-graphic";
+import {
+  BackStickerLayer,
+  FrontStickers,
+  frontStickerRow,
+  useBackStickers,
+} from "@/components/ui/card-stickers";
 import { VisitActionsRow } from "@/components/visit-actions-row";
 import { VisitMenu } from "@/components/visit-menu";
 import { BrandColors, MaxContentWidth, Spacing } from "@/constants/theme";
@@ -132,6 +136,19 @@ const REGION_TUCK_SHARE = 0.16;
 // bottom row on the deckle and their top row against the underside of the
 // photograph. Filling a band edge to edge is not sitting in it.
 const STICKER_BAND_CLEARANCE = Spacing.two;
+// How deep the scans' torn bottom edge goes, as a share of the card's width:
+// the first row up from the bottom where the paper is solid across, read off
+// the alpha of every card-*.png. The deepest of them, so the sticker band
+// stops above the deckle on every sheet: 1.3 to 2.2% on the landscape sheets,
+// 1.7 to 3.8% on the portrait ones.
+const FRONT_DECKLE = { horizontal: 0.022, vertical: 0.038 } as const;
+// Clear card between the front's stickers and that line. Less than above
+// them, because on most sheets the solid paper starts below it anyway: on a
+// typical one this leaves about as much card under the row as over it.
+const STICKER_DECKLE_CLEARANCE = Spacing.one;
+// How much of the band's width the front's sticker row may use. The rest is
+// left bare, so a row never reaches the turn-over mark in the bottom-right.
+const FRONT_ROW_SHARE = 0.6;
 // What share of the card's height the name is lettered at. Fixed, so every
 // card in a feed carries its name at the same size relative to the card rather
 // than at whatever size its own character count produced — a short name was
@@ -153,6 +170,11 @@ const BACK_FLIP_REACH = 26;
 // stamp (64) and the postmark (56) here, and giving it the landscape width
 // took 40pt off a message column that the card's side margins already cost.
 const BACK_COLUMN_WIDTH = { horizontal: 112, vertical: 72 } as const;
+// The message area's least height: enough that the ruled line reads as a
+// divider running down a card rather than an underline between two short
+// rows. The tag stickers can raise it when the writing leaves them no bare
+// card (see useBackStickers).
+const BACK_BODY_MIN_HEIGHT = 120;
 
 // How much of the photograph's colour reaches the written side. A tint in
 // the stock rather than a coloured panel -- see panelWash.
@@ -605,25 +627,9 @@ export function VisitCard({
   // smaller than it is today — this only ever lets it grow.
   const stampCap = Math.max(STAMP_SIZE, Math.round(cardWidth * STAMP_WIDTH_SHARE));
   const stampSize = Math.round(Math.min(stampCap, Math.max(MIN_STAMP, stampMargin * 1.1)));
-  // The labels only go on the front when there is genuinely a clean band for
-  // them. Two things can take that band away, and both were letting them
-  // through onto the picture:
-  //
-  //  - The NAME, when it is set along the foot of the card. That is the same
-  //    strip the labels sit in, so they printed straight over each other.
-  //  - Their own number. The row wraps, and it used to be given a box of a
-  //    fixed height — so a second row of labels did not make the box taller,
-  //    it hung out of the top of it and over the photograph.
-  //
-  // The first is known up front. The second is only knowable once the row has
-  // been laid out and measured, which is what stickerRowHeight is for.
-  //
-  // Nothing is lost by dropping them: every tag is printed on the written
-  // side regardless, which is where a card carries them anyway.
-  const [stickerRowHeight, setStickerRowHeight] = useState(0);
-  const stickersMeasured = stickerRowHeight > 0;
-  const stickersFit =
-    stickersMeasured && stickerRowHeight + 2 * STICKER_BAND_CLEARANCE <= topMargin;
+  // The written side's stickers, set out as a group wherever the writing
+  // leaves bare card rather than stacked under it.
+  const backStickers = useBackStickers(visit.tags, visit.id, BACK_BODY_MIN_HEIGHT);
   // The right margin is not always free. The stamp sits in the card's
   // top-right corner, so a region line drawn there too ends up underneath it
   // — confirmed on a card whose line read "PROVENCE," with "FRANCE" behind
@@ -637,11 +643,45 @@ export function VisitCard({
   const regionAlignRight =
     headline.region.alignRight &&
     !(captionAnchor === "top" && headline.region.above && showFrontStamp);
+  // The stickers only go on the front when there is a clean band of bare card
+  // under the picture for them. The name takes that band away when it is set
+  // along the foot of the card: it is the same strip, and the two printed
+  // straight over each other.
   const showFrontStickers =
     visit.tags.length > 0 &&
     !captionBelow &&
     captionAnchor !== "bottom" &&
     topMargin >= MIN_ORNAMENT_BAND;
+  // The same stickers as the written side and the tag picker (drawings,
+  // colours, cut and lean all match the back), sized to the band: as large as
+  // fits with clear card above and below, or none at all when only an
+  // illegibly small size would. Nothing is lost then: every tag is on the
+  // written side regardless, which is where a card carries them anyway.
+  //
+  // Worked out from the stickers' own shapes, so the row never has to be laid
+  // out and measured first. It used to be: a row of printed labels that could
+  // wrap, hidden until its height was known.
+  const frontStickerBand = cardWidth - 2 * pictureInset;
+  // The band runs from the picture down to the card's edge, but the bottom of
+  // that is the scan's torn deckle, and a few points of nothing beyond it. The
+  // stickers were centred in all of it, so they sat low and the largest ones
+  // hung over the edge of the paper. The band now stops at the deepest the
+  // deckle goes on any scan (see FRONT_DECKLE).
+  const frontStickerDeckle = Math.round(cardWidth * FRONT_DECKLE[orientation]);
+  const frontStickerHeight = Math.max(0, topMargin - frontStickerDeckle);
+  const frontRow = useMemo(
+    () =>
+      showFrontStickers
+        ? frontStickerRow(
+            visit.tags,
+            frontStickerBand * FRONT_ROW_SHARE,
+            frontStickerHeight,
+            { above: STICKER_BAND_CLEARANCE, below: STICKER_DECKLE_CLEARANCE },
+            visit.id,
+          )
+        : null,
+    [showFrontStickers, visit.tags, frontStickerBand, frontStickerHeight, visit.id],
+  );
 
   const picture =
     photos.length > 0 ? (
@@ -695,39 +735,29 @@ export function VisitCard({
   const ornaments = (
     <>
       {/* Laid along the bare card under the picture, never on top of it.
-          Only the horizontal margin is ever wide enough: a stack of wide
-          labels cannot fit in the 40-odd points a side column leaves. */}
-      {showFrontStickers && (
+          Only the horizontal margin is ever wide enough: a side column is
+          too narrow for a row of stickers. */}
+      {frontRow && (
         <View
           style={[
             styles.frontStickers,
             {
-              // No fixed height — that is what let a wrapped second row hang
-              // out of the box. The row takes its own height and is centred
-              // in the band once that height is known.
-              bottom: stickersMeasured ? Math.max((topMargin - stickerRowHeight) / 2, 0) : 0,
-              // Held off the deckle by the same distance the picture is, so a
-              // label never starts on the torn edge of the card.
-              left: pictureInset + Spacing.three,
-              right: pictureInset + Spacing.three,
-              // Transparent until measured, so a row that turns out not to
-              // fit is never seen doing it. It stays mounted rather than
-              // being torn out — unmounting would lose the measurement and
-              // the two would chase each other forever.
-              opacity: stickersFit ? 1 : 0,
+              // The band from the picture down to the deckle: frontStickerRow
+              // centres each sticker in it.
+              bottom: frontStickerDeckle,
+              height: frontStickerHeight,
+              // Held off the deckle by the same distance the picture is, so
+              // the first sticker's edge lines up with the picture's. It was
+              // 16 points further in, room for a sticker's lean, and lined up
+              // with nothing; the stickers' footprints include their lean
+              // now.
+              left: pictureInset,
+              right: pictureInset,
             },
           ]}
           pointerEvents="none"
-          onLayout={(e) => setStickerRowHeight(e.nativeEvent.layout.height)}
         >
-          {visit.tags.map((tag) => (
-            <TagSticker
-              key={tag.slug}
-              slug={tag.slug}
-              label={tag.label}
-              placementSeed={visit.id}
-            />
-          ))}
+          <FrontStickers tags={visit.tags} row={frontRow} seed={visit.id} />
         </View>
       )}
 
@@ -1037,6 +1067,9 @@ export function VisitCard({
     <PostcardPaper
       sheet={sheet}
       onFlip={() => setFlipped(false)}
+      // Stretched to the picture side's height when it is the shorter face.
+      // See backAtLeastFront.
+      style={styles.backPaper}
       flipLabel="Show the picture side"
       flipReach={BACK_FLIP_REACH}
       onDoubleTap={handleDoubleTap}
@@ -1056,7 +1089,13 @@ export function VisitCard({
       // card's own ink.
       turnMark
     >
-    <ThemedView type="backgroundElement" style={styles.back} collapsable={false}>
+    <ThemedView
+      type="backgroundElement"
+      style={styles.back}
+      collapsable={false}
+      // The panel's size, so a tapped sticker's name is put where it fits.
+      onLayout={backStickers.onPanelLayout}
+    >
       {/* The wash, under everything and catching nothing. */}
       {panelWash != null && (
         <View
@@ -1115,41 +1154,42 @@ export function VisitCard({
 
       <View style={styles.rule} />
 
-      <View style={styles.backBody}>
+      <View
+        style={[styles.backBody, { minHeight: backStickers.room }]}
+        onLayout={backStickers.onAreaLayout}
+      >
+        {/* The message column sits at the area's origin, so the writing's
+            own layout is already in the area's coordinates. */}
         <View style={styles.message}>
           {visit.note ? (
-            <ThemedText type="postcardMessage">{visit.note}</ThemedText>
+            <ThemedText
+              type="postcardMessage"
+              onLayout={backStickers.onWritingLayout}
+              onTextLayout={backStickers.onWritingTextLayout}
+            >
+              {visit.note}
+            </ThemedText>
           ) : (
-            <ThemedText type="caption" style={styles.noMessage}>
+            <ThemedText
+              type="caption"
+              style={styles.noMessage}
+              onLayout={backStickers.onWritingLayout}
+              onTextLayout={backStickers.onWritingTextLayout}
+            >
               No message
             </ThemedText>
-          )}
-
-          {/* Under the message rather than in the address column beside it.
-              They went in the column first, to match the sketch, and a
-              128px column broke every one of them across two lines — a tag
-              is a printed label, and a label that wraps stops looking like
-              one. Here they get the card's full text width, and the front
-              edge shows as many as happen to fit up there. */}
-          {visit.tags.length > 0 && (
-            <View style={styles.backStickers}>
-              {visit.tags.map((tag) => (
-                <TagStickerGraphic
-                  key={tag.slug}
-                  slug={tag.slug}
-                  label={tag.label}
-                  placementSeed={visit.id}
-                />
-              ))}
-            </View>
           )}
         </View>
 
         {/* On a real card this separates what you wrote from who it is going
-            to; here it separates the message from where and when. */}
-        <View style={styles.backDivider} />
+            to; here it separates the message from where and when. The
+            stickers keep clear of it (see useBackStickers). */}
+        <View style={styles.backDivider} onLayout={backStickers.onDividerLayout} />
 
-        <View style={[styles.backColumn, { width: BACK_COLUMN_WIDTH[orientation] }]}>
+        <View
+          style={[styles.backColumn, { width: BACK_COLUMN_WIDTH[orientation] }]}
+          onLayout={backStickers.onColumnLayout}
+        >
           {/* Top of the address column, which is where a card actually
               carries its stamp — the picture side only gets one when the
               photo leaves a margin wide enough to stick it in. */}
@@ -1179,6 +1219,15 @@ export function VisitCard({
               the action row instead. */}
           {orientation === "horizontal" && backMap}
         </View>
+
+        {/* Last, so they and their name labels are drawn over everything
+            else in the area. */}
+        <BackStickerLayer
+          tags={visit.tags}
+          spots={backStickers.spots}
+          sides={backStickers.sides}
+          seed={visit.id}
+        />
       </View>
 
       {isCommentsOpen && (
@@ -1224,7 +1273,7 @@ export function VisitCard({
           or the feed shoves itself around as each one arrives. */}
       <View>
         <Animated.View style={fadeSettled ? styles.settled : revealStyle}>
-          <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
+          <PostcardFlip isFlipped={isFlipped} front={front} back={back} backAtLeastFront />
         </Animated.View>
 
         {/* Something to look at while the card is still at opacity 0.
@@ -1314,16 +1363,11 @@ const styles = StyleSheet.create({
     // here costs nothing in the ordinary case and removes that whole class.
     maxWidth: "100%",
   },
-  // A row along the bare card under the picture. `height` is set inline to
-  // whatever margin the picture actually left.
+  // The bare card under the picture, which the front's stickers are placed
+  // in. Its height and sides are set inline to the margin the picture left.
   frontStickers: {
     position: "absolute",
-    left: Spacing.three,
-    right: Spacing.three,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: Spacing.two,
+    bottom: 0,
   },
   // The box the stamp anchors inside — one of the two margins the picture
   // left. Sized and sided inline.
@@ -1385,10 +1429,16 @@ const styles = StyleSheet.create({
   },
 
   // --- written side ---
+  backPaper: {
+    flexGrow: 1,
+  },
   back: {
     padding: Spacing.three,
     gap: Spacing.two,
     overflow: 'hidden',
+    // Down the chain from backAtLeastFront to the message area, which is
+    // what takes the extra height.
+    flexGrow: 1,
   },
   backHeader: {
     flexDirection: "row",
@@ -1409,25 +1459,18 @@ const styles = StyleSheet.create({
   },
   backBody: {
     flexDirection: "row",
-    // Enough that the ruled line reads as a divider running down a card
-    // rather than an underline between two short rows.
-    minHeight: 120,
-    // Tight, because every point taken here comes off the message column,
-    // and the longest tag labels need about 175 to stay on one line.
+    // minHeight inline: BACK_BODY_MIN_HEIGHT, or more when the stickers
+    // need it.
+    // Tight, because every point taken here comes off the message column.
     gap: Spacing.two,
+    // The bare card a back held to its front's height has spare goes here,
+    // under the writing, where the stickers can use it.
+    flexGrow: 1,
   },
   message: {
     flex: 1,
     paddingTop: Spacing.one,
     gap: Spacing.three,
-  },
-  // The stickers in a row under the message, each a picture rather than a
-  // word now (see TagStickerGraphic), so three fit across with room.
-  backStickers: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: Spacing.two,
   },
   // No italic: this is the serif caption now, and iOS will not fake a slant
   // for a custom face the way Android does, so the two platforms drew it
@@ -1444,6 +1487,9 @@ const styles = StyleSheet.create({
     // Width per orientation; see BACK_COLUMN_WIDTH.
     alignItems: "flex-end",
     gap: Spacing.two,
+    // Only as tall as what is in it, not stretched down the row, so its
+    // measured box is the part of the column the stickers have to keep off.
+    alignSelf: "flex-start",
   },
   backFooter: {
     flexDirection: "row",

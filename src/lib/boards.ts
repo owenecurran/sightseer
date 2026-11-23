@@ -358,9 +358,7 @@ export async function deleteBoard(boardId: string): Promise<void> {
   if (!data || data.length === 0) throw new Error('Could not delete this board.');
 }
 
-// Admin-only in practice — authorized by the additive boards_update_admin
-// RLS policy (full-row grant, same trust model as visits_delete_admin),
-// not by anything this function checks client-side.
+// The database checks admin access when the featured flag changes.
 export async function setBoardFeatured(boardId: string, featured: boolean): Promise<void> {
   await updateBoardOrThrow(boardId, { is_featured: featured }, 'Could not update featured status. You may not have permission.');
 }

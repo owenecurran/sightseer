@@ -412,7 +412,7 @@ export async function getFeedItems(myUserId: string): Promise<FeedItem[]> {
   ] as const));
   const [[visits, trips], recaps] = await Promise.all([
     visitsAndTrips,
-    getFeedRecaps(followedIds),
+    getFeedRecaps(followedIds).catch(() => []),
   ]);
 
   const items: FeedItem[] = [

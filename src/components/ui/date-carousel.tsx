@@ -4,7 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { BrandFonts, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 const ITEM_HEIGHT = 40;
@@ -45,12 +45,13 @@ type WheelPickerProps = {
   selectedIndex: number;
   renderLabel: (index: number) => string;
   onChange: (index: number) => void;
+  typed?: boolean;
 };
 
 // One independently-draggable vertical wheel — same absolute-position
 // Pan/snap mechanics originally built for the horizontal day carousel, just
 // on the Y axis, generalized to any fixed-length list of labels.
-function WheelPicker({ itemCount, enabledCount = itemCount, selectedIndex, renderLabel, onChange }: WheelPickerProps) {
+function WheelPicker({ itemCount, enabledCount = itemCount, selectedIndex, renderLabel, onChange, typed = false }: WheelPickerProps) {
   const theme = useTheme();
   const translateY = useSharedValue(0);
   const maxIndex = Math.min(enabledCount, itemCount) - 1;
@@ -82,12 +83,19 @@ function WheelPicker({ itemCount, enabledCount = itemCount, selectedIndex, rende
       <View style={styles.track}>
         <View
           pointerEvents="none"
-          style={[styles.centerIndicator, { top: TOP_PADDING, backgroundColor: theme.backgroundSelected }]}
+          style={[
+            styles.centerIndicator,
+            { top: TOP_PADDING },
+            typed ? styles.typedIndicator : { backgroundColor: theme.backgroundSelected },
+          ]}
         />
         <Animated.View style={[styles.column, columnStyle, { paddingVertical: TOP_PADDING }]}>
           {Array.from({ length: itemCount }, (_, index) => (
             <View key={index} style={[styles.item, index > maxIndex && styles.itemDisabled]}>
-              <ThemedText type="default" themeColor={index === selectedIndex ? 'text' : 'textSecondary'}>
+              <ThemedText
+                type="default"
+                themeColor={index === selectedIndex ? 'text' : 'textSecondary'}
+                style={typed && styles.typedLabel}>
                 {renderLabel(index)}
               </ThemedText>
             </View>
@@ -106,9 +114,12 @@ type DateCarouselProps = {
   // (e.g. 100), so this is a prop rather than the module constant it used
   // to be.
   yearsBack?: number;
+  // Typewritten, with the chosen date ruled off above and below rather than
+  // sitting on a filled block: for the journal (see Add a review).
+  typed?: boolean;
 };
 
-export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK }: DateCarouselProps) {
+export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK, typed = false }: DateCarouselProps) {
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -179,6 +190,7 @@ export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK }
             selectedIndex={month}
             renderLabel={(i) => MONTH_LABELS[i]}
             onChange={(i) => commit(year, i, day)}
+            typed={typed}
           />
         </View>
         <View style={styles.wheelWrap}>
@@ -188,6 +200,7 @@ export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK }
             selectedIndex={day - 1}
             renderLabel={(i) => String(i + 1)}
             onChange={(i) => commit(year, month, i + 1)}
+            typed={typed}
           />
         </View>
         <View style={styles.wheelWrap}>
@@ -197,6 +210,7 @@ export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK }
             selectedIndex={years.indexOf(year)}
             renderLabel={(i) => String(years[0] + i)}
             onChange={(i) => commit(years[i], month, day)}
+            typed={typed}
           />
         </View>
       </View>
@@ -237,5 +251,15 @@ const styles = StyleSheet.create({
   },
   itemDisabled: {
     opacity: 0.3,
+  },
+  typedIndicator: {
+    borderRadius: 0,
+    borderTopWidth: 1.2,
+    borderBottomWidth: 1.2,
+    borderColor: 'rgba(234, 231, 207, 0.4)',
+  },
+  typedLabel: {
+    fontFamily: BrandFonts.typewriter,
+    fontSize: 18,
   },
 });

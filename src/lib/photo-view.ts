@@ -10,27 +10,29 @@ export async function getPhotoUrls(photoIds: string[]) {
   const ids = [...new Set(photoIds)];
   if (ids.length === 0) return { photos: {}, thumbs: {} };
 
-  const cached = await getCachedUrls('photo', ids.flatMap((id) => [id, `${THUMB_PREFIX}${id}`]), async (missingKeys) => {
-    const missingIds = [...new Set(missingKeys.map((key) => key.startsWith(THUMB_PREFIX)
-      ? key.slice(THUMB_PREFIX.length)
-      : key))];
-    const batches = [];
-    for (let index = 0; index < missingIds.length; index += SIGNING_BATCH_SIZE) {
-      batches.push(missingIds.slice(index, index + SIGNING_BATCH_SIZE));
-    }
-    const rows = await Promise.all(batches.map(async (batch) => {
+  const batches: Promise<Record<string, string>>[] = [];
+  for (let index = 0; index < ids.length; index += SIGNING_BATCH_SIZE) {
+    const cacheKeys = ids.slice(index, index + SIGNING_BATCH_SIZE)
+      .flatMap((id) => [id, `${THUMB_PREFIX}${id}`]);
+    batches.push(getCachedUrls('photo', cacheKeys, async (missingKeys) => {
+      const missingIds = [...new Set(missingKeys.map((key) => key.startsWith(THUMB_PREFIX)
+        ? key.slice(THUMB_PREFIX.length)
+        : key))];
       const { data, error } = await supabase.functions.invoke('get-photo-urls', {
-        body: { photoIds: batch },
+        body: { photoIds: missingIds },
       });
       if (error) throw error;
-      return (data as { urls: SignedPhoto[] }).urls;
+      return Object.fromEntries((data as { urls: SignedPhoto[] }).urls.flatMap(({ photoId, url, thumbUrl }) => [
+        [photoId, url],
+        [`${THUMB_PREFIX}${photoId}`, thumbUrl ?? url],
+      ]));
     }));
+  }
 
-    return Object.fromEntries(rows.flat().flatMap(({ photoId, url, thumbUrl }) => [
-      [photoId, url],
-      [`${THUMB_PREFIX}${photoId}`, thumbUrl ?? url],
-    ]));
-  });
+  const results = await Promise.allSettled(batches);
+  const successful = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+  if (successful.length === 0 && results[0].status === 'rejected') throw results[0].reason;
+  const cached: Record<string, string> = Object.assign({}, ...successful);
 
   const photos: Record<string, string> = {};
   const thumbs: Record<string, string> = {};

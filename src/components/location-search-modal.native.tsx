@@ -24,6 +24,7 @@ import {
 } from '@/lib/google-places';
 import { getNearbyReviewedPlaces, getPlacePreviewReview, type NearbyPlace, type PlacePreview } from '@/lib/nearby-places';
 import { cachePlaceHierarchy, getLocalityName } from '@/lib/places-cache';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -189,7 +190,7 @@ export function LocationSearchModal({
       try {
         setSuggestions(await autocompletePlaces(query, sessionTokenRef.current));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
+        setError(userErrorMessage(err, 'Search failed.'));
       } finally {
         setIsSearching(false);
       }
@@ -229,7 +230,7 @@ export function LocationSearchModal({
         router.push({ pathname: '/place/[id]', params: { id: cached.id } });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load that place.');
+      setError(userErrorMessage(err, 'Could not load that place.'));
     }
   }
 
@@ -256,7 +257,7 @@ export function LocationSearchModal({
       const cached = await cachePlaceHierarchy(target);
       onSelect?.(cached);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not use that place.');
+      setError(userErrorMessage(err, 'Could not use that place.'));
     } finally {
       setIsConfirming(false);
     }
@@ -277,7 +278,7 @@ export function LocationSearchModal({
       onCancel();
       router.push({ pathname: '/place/[id]', params: { id: cached.id } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not open that place.');
+      setError(userErrorMessage(err, 'Could not open that place.'));
     }
   }
 

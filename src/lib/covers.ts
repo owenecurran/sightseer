@@ -1,3 +1,4 @@
+import { putImageBlob, readImageBlob, requestImageUpload } from '@/lib/media-upload';
 import { getCachedUrls } from '@/lib/media-url-cache';
 import { supabase } from '@/lib/supabase';
 
@@ -21,23 +22,9 @@ export async function uploadCoverPhoto(params: UploadCoverParams): Promise<strin
   const { table, id, uri, mimeType } = params;
   const contentType = mimeType && ALLOWED_CONTENT_TYPES.includes(mimeType) ? mimeType : 'image/jpeg';
 
-  const { data, error: fnError } = await supabase.functions.invoke('create-cover-upload-url', {
-    body: { table, id, contentType },
-  });
-  if (fnError) throw fnError;
-  const { uploadUrl, r2Key } = data as { uploadUrl: string; r2Key: string };
-
-  const fileResponse = await fetch(uri);
-  const blob = await fileResponse.blob();
-
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: blob,
-  });
-  if (!uploadResponse.ok) {
-    throw new Error(`Upload to storage failed (${uploadResponse.status})`);
-  }
+  const image = await readImageBlob(uri);
+  const { uploadUrl, r2Key } = await requestImageUpload('create-cover-upload-url', { table, id, contentType }, image);
+  await putImageBlob(uploadUrl, image, contentType);
 
   const { error: updateError } = await supabase.from(table).update({ cover_photo_r2_key: r2Key }).eq('id', id);
   if (updateError) throw updateError;

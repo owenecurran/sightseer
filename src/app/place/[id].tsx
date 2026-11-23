@@ -28,6 +28,8 @@ import { getPlaceAncestors, type PlaceAncestor } from '@/lib/places-cache';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
 import { countTagsForVisits } from '@/lib/visit-tags';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -163,7 +165,7 @@ export default function PlaceDetailScreen() {
           setPhotoUrls(await getPhotoViewUrls(photoIds));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load this place.');
+        setError(userErrorMessage(err, 'Could not load this place.'));
       } finally {
         setHasLoadedOnce(true);
       }
@@ -342,11 +344,7 @@ export default function PlaceDetailScreen() {
                 onPress={() => router.push({ pathname: '/review-form', params: { placeId: id } })}
               />
 
-              {error && (
-                <ThemedText type="small" themeColor="danger">
-                  {error}
-                </ThemedText>
-              )}
+              {error && <ErrorNotice message={error} />}
 
               {visits.length > 0 && (
                 <View style={styles.controls}>

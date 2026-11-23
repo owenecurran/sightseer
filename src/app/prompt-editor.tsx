@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -45,6 +45,8 @@ import { supabase } from '@/lib/supabase';
 import { listUserTravelBooks } from '@/lib/travel-books';
 import { goBack } from '@/lib/navigation';
 import { OWN_VISITS_CAP } from '@/lib/query-caps';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -127,6 +129,7 @@ export default function PromptEditorScreen() {
   const bottomInset = useBottomTabInset();
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [existingId, setExistingId] = useState<string | undefined>(undefined);
   const [position, setPosition] = useState(0);
   const [usedSlugs, setUsedSlugs] = useState<string[]>([]);
@@ -275,7 +278,12 @@ export default function PromptEditorScreen() {
       }
 
       setIsLoaded(true);
-    })();
+    })().catch((err) => {
+      // Without this a failed fetch left the loader up for good: nothing
+      // ever set isLoaded. The form is not shown half-filled instead,
+      // because saving it could write over the prompt that failed to load.
+      setLoadError(userErrorMessage(err, 'Could not load your prompts.'));
+    });
   }, [session, promptId]);
 
   function handleSelectVisit(index: number, visitId: string) {
@@ -555,7 +563,6 @@ export default function PromptEditorScreen() {
 
       await savePrompt({
         id: existingId,
-        userId: session.user.id,
         promptSlug,
         position,
         attachments: resolved,
@@ -563,7 +570,7 @@ export default function PromptEditorScreen() {
 
       goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that prompt.');
+      setError(userErrorMessage(err, 'Could not save that prompt.'));
       setIsSaving(false);
     }
   }
@@ -575,8 +582,24 @@ export default function PromptEditorScreen() {
       await deletePrompt(existingId);
       goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that prompt.');
+      setError(userErrorMessage(err, 'Could not remove that prompt.'));
     }
+  }
+
+  if (loadError) {
+    return (
+      <ThemedView type="screen" style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.header}>
+            <BackLink seed="prompt-editor" />
+            <ThemedText type="displaySerif">{promptId ? 'Edit prompt' : 'Add a prompt'}</ThemedText>
+          </View>
+          <View style={styles.scrollContent}>
+            <ErrorNotice message={loadError} />
+          </View>
+        </SafeAreaView>
+      </ThemedView>
+    );
   }
 
   if (!isLoaded) return <PageLoader />;
@@ -592,12 +615,6 @@ export default function PromptEditorScreen() {
         <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}>
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
-
           <PromptQuestionPicker
             categories={categories}
             selectedCategory={selectedCategory}
@@ -826,6 +843,15 @@ export default function PromptEditorScreen() {
               )}
             </View>
           ))}
+
+          {/* By the Save button, where the press was. It used to sit at the
+              top of a long form, so a failed save or "Pick a prompt." showed
+              up off screen and Save seemed to do nothing. */}
+          {error && (
+            <ThemedText type="small" themeColor="danger">
+              {error}
+            </ThemedText>
+          )}
 
           <View style={styles.row}>
             <Button label="Save" onPress={handleSave} loading={isSaving} />

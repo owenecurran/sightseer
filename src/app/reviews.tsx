@@ -14,6 +14,8 @@ import { useAuth } from '@/lib/auth-context';
 import { getMyVisitItems, type BoardVisitItem } from '@/lib/boards';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // `userId` optional (not a required route param the way collections/[userId]
 // needs one) — plain `/reviews` from profile.tsx's own "Latest reviews"
@@ -57,7 +59,7 @@ export default function AllReviewsScreen() {
             setPhotoUrls(await getPhotoViewUrls(photoIds));
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load these reviews.');
+          setError(userErrorMessage(err, 'Could not load these reviews.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -69,7 +71,7 @@ export default function AllReviewsScreen() {
     setError(null);
     const { error: deleteError } = await supabase.from('visits').delete().eq('id', visitId);
     if (deleteError) {
-      setError(deleteError.message);
+      setError(userErrorMessage(deleteError, 'Could not remove that review.'));
       return;
     }
     setItems((prev) => prev.filter((item) => item.id !== visitId));
@@ -87,11 +89,7 @@ export default function AllReviewsScreen() {
             {isSelf ? 'Your reviews' : targetUserName ? `${targetUserName}'s reviews` : 'Reviews'}
           </ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
         </View>
 

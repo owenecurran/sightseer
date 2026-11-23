@@ -1,3 +1,4 @@
+import { putImageBlob, readImageBlob, requestImageUpload } from '@/lib/media-upload';
 import { getCachedUrls } from '@/lib/media-url-cache';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
@@ -169,63 +170,36 @@ export type AttachmentInput = {
 
 type SavePromptParams = {
   id?: string;
-  userId: string;
   promptSlug: string;
   position: number;
   attachments: AttachmentInput[];
 };
 
-// Full-replace on save (delete all attachments for this prompt, then
-// re-insert the current list) rather than diffing individual rows —
-// simpler and safe enough for a table only its own owner ever writes.
+// Save the prompt and its replacement attachments in one transaction.
 export async function savePrompt(params: SavePromptParams): Promise<void> {
-  let promptId = params.id;
-
-  if (promptId) {
-    const { error } = await supabase
-      .from('profile_prompts')
-      .update({ prompt_slug: params.promptSlug, position: params.position })
-      .eq('id', promptId);
-    if (error) throw error;
-  } else {
-    const { data, error } = await supabase
-      .from('profile_prompts')
-      .insert({ user_id: params.userId, prompt_slug: params.promptSlug, position: params.position })
-      .select('id')
-      .single();
-    if (error) throw error;
-    promptId = data.id;
-  }
-
-  const { error: deleteError } = await supabase
-    .from('profile_prompt_attachments')
-    .delete()
-    .eq('prompt_id', promptId);
-  if (deleteError) throw deleteError;
-
-  if (params.attachments.length > 0) {
-    const { error: insertError } = await supabase.from('profile_prompt_attachments').insert(
-      params.attachments.map((a, index) => ({
-        prompt_id: promptId,
-        position: index,
-        attachment_type: a.attachmentType,
-        text_value: a.textValue ?? null,
-        photo_r2_key: a.photoR2Key ?? null,
-        visit_id: a.visitId ?? null,
-        board_id: a.boardId ?? null,
-        place_id: a.placeId ?? null,
-        travel_book_id: a.travelBookId ?? null,
-        visit_photo_id: a.visitPhotoId ?? null,
-        cover_photo_id: a.coverPhotoId ?? null,
-        display_mode: a.displayMode ?? null,
-        grid_photo_ids: a.gridPhotoIds && a.gridPhotoIds.length > 0 ? a.gridPhotoIds : null,
-        show_note: a.showNote ?? true,
-        show_rating_stamp: a.showRatingStamp ?? true,
-        show_postcard: a.showPostcard ?? true,
-      }))
-    );
-    if (insertError) throw insertError;
-  }
+  const { error } = await supabase.rpc('save_profile_prompt', {
+    p_prompt_id: params.id,
+    p_prompt_slug: params.promptSlug,
+    p_position: params.position,
+    p_attachments: params.attachments.map((attachment, position) => ({
+      position,
+      attachment_type: attachment.attachmentType,
+      text_value: attachment.textValue,
+      photo_r2_key: attachment.photoR2Key,
+      visit_id: attachment.visitId,
+      board_id: attachment.boardId,
+      place_id: attachment.placeId,
+      travel_book_id: attachment.travelBookId,
+      visit_photo_id: attachment.visitPhotoId,
+      cover_photo_id: attachment.coverPhotoId,
+      display_mode: attachment.displayMode,
+      grid_photo_ids: attachment.gridPhotoIds?.length ? attachment.gridPhotoIds : null,
+      show_note: attachment.showNote,
+      show_rating_stamp: attachment.showRatingStamp,
+      show_postcard: attachment.showPostcard,
+    })),
+  });
+  if (error) throw error;
 }
 
 export async function deletePrompt(promptId: string): Promise<void> {
@@ -249,23 +223,9 @@ const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export async function uploadPromptPhoto(uri: string, mimeType?: string): Promise<string> {
   const contentType = mimeType && ALLOWED_CONTENT_TYPES.includes(mimeType) ? mimeType : 'image/jpeg';
 
-  const { data, error: fnError } = await supabase.functions.invoke('create-prompt-photo-upload-url', {
-    body: { contentType },
-  });
-  if (fnError) throw fnError;
-  const { uploadUrl, r2Key } = data as { uploadUrl: string; r2Key: string };
-
-  const fileResponse = await fetch(uri);
-  const blob = await fileResponse.blob();
-
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: blob,
-  });
-  if (!uploadResponse.ok) {
-    throw new Error(`Upload to storage failed (${uploadResponse.status})`);
-  }
+  const image = await readImageBlob(uri);
+  const { uploadUrl, r2Key } = await requestImageUpload('create-prompt-photo-upload-url', { contentType }, image);
+  await putImageBlob(uploadUrl, image, contentType);
 
   return r2Key;
 }

@@ -36,6 +36,7 @@ import { supabase } from '@/lib/supabase';
 import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
 import { goBack } from '@/lib/navigation';
 import { Avatar } from '@/components/ui/avatar';
+import { userErrorMessage } from '@/lib/user-error';
 
 const BIO_MAX_LENGTH = 160;
 const PROMPT_SLOT_COUNT = 6;
@@ -161,7 +162,7 @@ export default function EditProfileScreen() {
       const urls = await getAvatarViewUrls([session.user.id]);
       setAvatarUrl(urls[session.user.id]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update your photo.');
+      setError(userErrorMessage(err, 'Could not update your photo.'));
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -186,7 +187,7 @@ export default function EditProfileScreen() {
     setIsSaving(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save your profile.'));
       return;
     }
     await refreshProfile();
@@ -198,7 +199,7 @@ export default function EditProfileScreen() {
     try {
       await reorderPrompts(next.map((p) => p.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reorder your prompts.');
+      setError(userErrorMessage(err, 'Could not reorder your prompts.'));
     }
   }
 
@@ -209,7 +210,7 @@ export default function EditProfileScreen() {
       await saveProfileSectionOrder(session.user.id, next);
       await refreshProfile();
     } catch (err) {
-      setLayoutError(err instanceof Error ? err.message : 'Could not save that order.');
+      setLayoutError(userErrorMessage(err, 'Could not save that order.'));
     }
   }
 

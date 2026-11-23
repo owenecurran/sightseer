@@ -28,6 +28,7 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { colorForRating } from '@/lib/rating-gradient';
+import { userErrorMessage } from '@/lib/user-error';
 
 // The full reasoning behind a harmony score, on its own screen rather than
 // expanded inline under the meter: the list can run long, every row links
@@ -86,7 +87,7 @@ export default function HarmonyScreen() {
           setPhotoUrls(photos);
           setAvatarUrls(avatars);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not work that out.');
+          setError(userErrorMessage(err, 'Could not work that out.'));
         } finally {
           setHasLoadedOnce(true);
         }

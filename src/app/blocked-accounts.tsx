@@ -15,6 +15,8 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { listBlockedUsers, unblockUser, type BlockedUser } from '@/lib/blocks';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Its own screen rather than a block on Settings, because the list has no
 // ceiling — one person blocked reads fine inline, thirty pushes everything
@@ -35,7 +37,7 @@ export default function BlockedAccountsScreen() {
       listBlockedUsers(session.user.id)
         .then(setBlockedUsers)
         .catch((err) =>
-          setError(err instanceof Error ? err.message : 'Could not load blocked accounts.')
+          setError(userErrorMessage(err, 'Could not load blocked accounts.'))
         )
         .finally(() => setHasLoadedOnce(true));
     }, [session])
@@ -49,7 +51,7 @@ export default function BlockedAccountsScreen() {
       await unblockUser(session.user.id, blockedId);
       setBlockedUsers((prev) => prev.filter((u) => u.id !== blockedId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unblock that account.');
+      setError(userErrorMessage(err, 'Could not unblock that account.'));
     } finally {
       setUnblockingId(null);
     }
@@ -73,11 +75,7 @@ export default function BlockedAccountsScreen() {
             Blocked accounts cannot see your profile or reviews, and you will not see theirs.
           </ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {blockedUsers.length === 0 ? (
             <ThemedText type="caption">

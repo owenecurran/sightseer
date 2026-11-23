@@ -353,6 +353,11 @@ const styles = StyleSheet.create({
   },
   body: {
     gap: Spacing.two,
+    // Takes whatever height the card is given beyond its content, for a face
+    // held to its other side's height (see PostcardFlip's backAtLeastFront).
+    // Anywhere else the card is exactly its content's height and this does
+    // nothing.
+    flexGrow: 1,
   },
   edge: {
     position: 'absolute',

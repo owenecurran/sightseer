@@ -20,6 +20,8 @@ import { likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 import { excludeVisitFromTrip, getTripsForUsers, type Trip } from '@/lib/trips';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Every day of one trip, scrollable — the feed only ever previews a single
 // day of a long trip (see TripGroupCard), and this is where "see all N
@@ -62,7 +64,7 @@ export default function TripScreen() {
           setPhotoUrls(photos);
           setAvatarUrls(avatars);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this trip.');
+          setError(userErrorMessage(err, 'Could not load this trip.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -86,7 +88,7 @@ export default function TripScreen() {
         }))
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that like.');
+      setError(userErrorMessage(err, 'Could not update that like.'));
     }
   }
 
@@ -112,7 +114,7 @@ export default function TripScreen() {
     try {
       await excludeVisitFromTrip(session.user.id, visitId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that review from the trip.');
+      setError(userErrorMessage(err, 'Could not remove that review from the trip.'));
     }
   }
 
@@ -159,11 +161,7 @@ export default function TripScreen() {
                 </View>
               </View>
 
-              {error && (
-                <ThemedText type="small" themeColor="danger">
-                  {error}
-                </ThemedText>
-              )}
+              {error && <ErrorNotice message={error} />}
 
               {/* Newest first, same order as the feed's own preview — the
                   day number stays chronological. */}

@@ -18,6 +18,7 @@ import { useAuth } from '@/lib/auth-context';
 import { createBoard } from '@/lib/boards';
 import { uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
+import { userErrorMessage } from '@/lib/user-error';
 
 type ListStyle = 'collection' | 'ranked';
 
@@ -73,7 +74,7 @@ export default function NewBoardScreen() {
       }
       router.replace({ pathname: '/board/[id]', params: { id: board.id } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create that board.');
+      setError(userErrorMessage(err, 'Could not create that board.'));
     } finally {
       setIsCreating(false);
     }

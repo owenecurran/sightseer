@@ -26,6 +26,8 @@ import {
   markNotificationRead,
   type AppNotification,
 } from '@/lib/notifications';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // How many faces a grouped row shows before the names take over.
 const MAX_FACES = 3;
@@ -165,7 +167,7 @@ export default function NotificationsScreen() {
             await markAllNotificationsRead(session.user.id);
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load notifications.');
+          setError(userErrorMessage(err, 'Could not load notifications.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -254,11 +256,7 @@ export default function NotificationsScreen() {
             <>
               <BackLink seed="notifications" />
               <ThemedText type="displaySerif">Notifications</ThemedText>
-              {error && (
-                <ThemedText type="small" themeColor="danger">
-                  {error}
-                </ThemedText>
-              )}
+              {error && <ErrorNotice message={error} />}
             </>
           }
           ListEmptyComponent={

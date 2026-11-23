@@ -1,8 +1,4 @@
-import { Pressable, StyleSheet, View } from 'react-native';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 
 export type CollectionMode = 'boards' | 'travel_books' | 'trips';
 
@@ -22,32 +18,5 @@ const MODES: { key: CollectionMode; label: string }[] = [
   { key: 'trips', label: 'Trips' },
 ];
 export function CollectionsSwitcher({ active, onChange }: CollectionsSwitcherProps) {
-  return (
-    <View style={styles.row}>
-      {MODES.map((mode) => (
-        <Pressable key={mode.key} onPress={() => onChange(mode.key)}>
-          <ThemedView
-            type={active === mode.key ? 'backgroundSelected' : 'backgroundElement'}
-            style={styles.chip}>
-            <ThemedText type="small" themeColor={active === mode.key ? 'text' : 'textSecondary'}>
-              {mode.label}
-            </ThemedText>
-          </ThemedView>
-        </Pressable>
-      ))}
-    </View>
-  );
+  return <CircledTabs items={MODES} active={active} onChange={onChange} />;
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  chip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
-  },
-});

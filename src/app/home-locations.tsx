@@ -20,6 +20,8 @@ import {
   removeHomeLocation,
   type HomeLocation,
 } from '@/lib/home-locations';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -42,7 +44,7 @@ export default function HomeLocationsScreen() {
       setError(null);
       listHomeLocations(session.user.id)
         .then(setLocations)
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your home locations.'))
+        .catch((err) => setError(userErrorMessage(err, 'Could not load your home locations.')))
         .finally(() => setHasLoadedOnce(true));
     }, [session])
   );
@@ -55,7 +57,7 @@ export default function HomeLocationsScreen() {
       await addHomeLocation(session.user.id, place);
       setLocations(await listHomeLocations(session.user.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that home location.');
+      setError(userErrorMessage(err, 'Could not add that home location.'));
     }
   }
 
@@ -66,7 +68,7 @@ export default function HomeLocationsScreen() {
       await removeHomeLocation(id);
       setLocations((prev) => prev.filter((l) => l.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that home location.');
+      setError(userErrorMessage(err, 'Could not remove that home location.'));
     } finally {
       setBusyId(null);
     }
@@ -90,11 +92,7 @@ export default function HomeLocationsScreen() {
             like.
           </ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {locations.length === 0 ? (
             <ThemedText type="caption">

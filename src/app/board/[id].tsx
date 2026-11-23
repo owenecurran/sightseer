@@ -43,6 +43,8 @@ import {
   unsaveBoardForUpdates,
 } from '@/lib/saved-collections';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
@@ -141,7 +143,7 @@ export default function BoardDetailScreen() {
           setOwnRatings(await getOwnRatingsForPlaces(session.user.id, placeIds));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load this board.');
+        setError(userErrorMessage(err, 'Could not load this board.'));
       } finally {
         setHasLoadedOnce(true);
       }
@@ -153,7 +155,7 @@ export default function BoardDetailScreen() {
     setError(null);
     const { error: deleteError } = await supabase.from('board_items').delete().eq('id', itemId);
     if (deleteError) {
-      setError(deleteError.message);
+      setError(userErrorMessage(deleteError, 'Could not remove that from the board.'));
       return;
     }
     setItems((prev) => prev.filter((item) => item.id !== itemId));
@@ -168,7 +170,7 @@ export default function BoardDetailScreen() {
     try {
       await reorderBoardItems(orderedItems.map((item) => item.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that order.');
+      setError(userErrorMessage(err, 'Could not save that order.'));
     }
   }
 
@@ -180,7 +182,7 @@ export default function BoardDetailScreen() {
       await saveBoardForUpdates(session.user.id, board.id, false);
       setSavedState({ notifyOnNewItems: false });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that board.');
+      setError(userErrorMessage(err, 'Could not save that board.'));
     } finally {
       setIsSaving(false);
     }
@@ -194,7 +196,7 @@ export default function BoardDetailScreen() {
       await unsaveBoardForUpdates(session.user.id, board.id);
       setSavedState(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unsave that board.');
+      setError(userErrorMessage(err, 'Could not unsave that board.'));
     } finally {
       setIsSaving(false);
     }
@@ -207,7 +209,7 @@ export default function BoardDetailScreen() {
     try {
       await setSavedBoardNotify(session.user.id, board.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update notifications.');
+      setError(userErrorMessage(err, 'Could not update notifications.'));
     }
   }
 
@@ -224,7 +226,7 @@ export default function BoardDetailScreen() {
       if (isChecked) await uncheckBoardItem(session.user.id, item.id);
       else await checkBoardItem(session.user.id, board.id, item.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that checklist item.');
+      setError(userErrorMessage(err, 'Could not update that checklist item.'));
       setCheckedItemIds((prev) => {
         const next = new Set(prev);
         if (isChecked) next.add(item.id);
@@ -241,7 +243,7 @@ export default function BoardDetailScreen() {
       await setBoardCoverPhoto(board.id, photoId);
       setBoard({ ...board, cover_photo_id: photoId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not set that cover photo.');
+      setError(userErrorMessage(err, 'Could not set that cover photo.'));
     }
   }
 
@@ -261,7 +263,7 @@ export default function BoardDetailScreen() {
       const urls = await getCoverViewUrls('boards', [board.id]);
       setCustomCoverUrl(urls[board.id]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that cover photo.');
+      setError(userErrorMessage(err, 'Could not upload that cover photo.'));
     } finally {
       setIsUploadingCover(false);
     }
@@ -321,11 +323,7 @@ export default function BoardDetailScreen() {
             />
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           <View style={styles.modeRow}>
             {VIEW_MODES.filter((mode) => mode.key !== 'ranked' || board?.list_style === 'ranked').map((mode) => (

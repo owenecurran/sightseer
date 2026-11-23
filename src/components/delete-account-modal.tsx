@@ -8,6 +8,7 @@ import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
 import { Turnstile, isTurnstileConfigured } from '@/components/auth/turnstile';
 import { accountHasPassword, deleteAccount } from '@/lib/delete-account';
+import { userErrorMessage } from '@/lib/user-error';
 
 type DeleteAccountModalProps = {
   visible: boolean;
@@ -83,7 +84,7 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
       reset();
       onDeleted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete your account.');
+      setError(userErrorMessage(err, 'Could not delete your account.'));
       // The token just spent is dead whether or not it was the problem.
       setCaptchaToken(null);
       setCaptchaNonce((n) => n + 1);

@@ -62,6 +62,8 @@ import {
 } from '@/lib/saved-collections';
 import type { Database } from '@/lib/database.types';
 import type { TaggedVisit } from '@/lib/tagged-visits';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -199,7 +201,7 @@ export default function TravelBookDetailScreen() {
           const placeIds = bookItems.map((item) => item.placeId);
           setOwnRatings(await getOwnRatingsForPlaces(session.user.id, placeIds));
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this travel book.');
+          setError(userErrorMessage(err, 'Could not load this travel book.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -214,7 +216,7 @@ export default function TravelBookDetailScreen() {
     try {
       setEligibleVisits(await getEligibleVisitsForTravelBook(session.user.id, id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load your eligible reviews.');
+      setError(userErrorMessage(err, 'Could not load your eligible reviews.'));
     } finally {
       setIsLoadingEligible(false);
     }
@@ -228,7 +230,7 @@ export default function TravelBookDetailScreen() {
       setEligibleVisits((prev) => prev.filter((v) => v.id !== visit.id));
       setItems(await getTravelBookItems(id, session.user.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that review.');
+      setError(userErrorMessage(err, 'Could not add that review.'));
     }
   }
 
@@ -238,7 +240,7 @@ export default function TravelBookDetailScreen() {
       await removeVisitFromTravelBook(item.itemId);
       setItems((prev) => prev.filter((i) => i.itemId !== item.itemId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that review.');
+      setError(userErrorMessage(err, 'Could not remove that review.'));
     }
   }
 
@@ -255,7 +257,7 @@ export default function TravelBookDetailScreen() {
       if (isChecked) await uncheckTravelBookItem(session.user.id, item.itemId);
       else await checkTravelBookItem(session.user.id, book.id, item.itemId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that checklist item.');
+      setError(userErrorMessage(err, 'Could not update that checklist item.'));
       setCheckedItemIds((prev) => {
         const next = new Set(prev);
         if (isChecked) next.add(item.itemId);
@@ -272,7 +274,7 @@ export default function TravelBookDetailScreen() {
       await setTravelBookCoverPhoto(book.id, photoId);
       setBook({ ...book, cover_photo_id: photoId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not set that cover photo.');
+      setError(userErrorMessage(err, 'Could not set that cover photo.'));
     }
   }
 
@@ -297,7 +299,7 @@ export default function TravelBookDetailScreen() {
       const urls = await getCoverViewUrls('travel_books', [book.id]);
       setCustomCoverUrl(urls[book.id]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that cover photo.');
+      setError(userErrorMessage(err, 'Could not upload that cover photo.'));
     } finally {
       setIsUploadingCover(false);
     }
@@ -312,7 +314,7 @@ export default function TravelBookDetailScreen() {
     if (ratingSaveTimeout.current) clearTimeout(ratingSaveTimeout.current);
     ratingSaveTimeout.current = setTimeout(() => {
       setTravelBookRating(book.id, rating).catch((err) =>
-        setError(err instanceof Error ? err.message : 'Could not save that rating.')
+        setError(userErrorMessage(err, 'Could not save that rating.'))
       );
     }, 400);
   }
@@ -326,7 +328,7 @@ export default function TravelBookDetailScreen() {
       setBook({ ...book, location_place_id: place.id });
       setLocationName(place.name);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that location.');
+      setError(userErrorMessage(err, 'Could not update that location.'));
     }
   }
 
@@ -338,7 +340,7 @@ export default function TravelBookDetailScreen() {
       await saveTravelBookForUpdates(session.user.id, book.id, false);
       setSavedState({ notifyOnNewItems: false });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that travel book.');
+      setError(userErrorMessage(err, 'Could not save that travel book.'));
     } finally {
       setIsSaving(false);
     }
@@ -352,7 +354,7 @@ export default function TravelBookDetailScreen() {
       await unsaveTravelBookForUpdates(session.user.id, book.id);
       setSavedState(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unsave that travel book.');
+      setError(userErrorMessage(err, 'Could not unsave that travel book.'));
     } finally {
       setIsSaving(false);
     }
@@ -365,7 +367,7 @@ export default function TravelBookDetailScreen() {
     try {
       await setSavedTravelBookNotify(session.user.id, book.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update notifications.');
+      setError(userErrorMessage(err, 'Could not update notifications.'));
     }
   }
 
@@ -460,11 +462,7 @@ export default function TravelBookDetailScreen() {
             </View>
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {items.length > 0 && (
             <View style={styles.modeRow}>

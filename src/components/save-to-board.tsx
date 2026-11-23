@@ -26,6 +26,7 @@ import {
   removeVisitFromTravelBookByVisit,
   type TravelBookListItem,
 } from '@/lib/travel-books';
+import { userErrorMessage } from '@/lib/user-error';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
@@ -73,7 +74,7 @@ export function SaveToBoard({
           setSavedTravelBookIds(await getTravelBookIdsContainingVisit(myTravelBooks.map((b) => b.id), visitId));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load your boards.');
+        setError(userErrorMessage(err, 'Could not load your boards.'));
       } finally {
         setIsLoading(false);
       }
@@ -96,7 +97,7 @@ export function SaveToBoard({
         setSavedBoardIds((prev) => new Set(prev).add(boardId));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that board.');
+      setError(userErrorMessage(err, 'Could not update that board.'));
     }
   }
 
@@ -117,7 +118,7 @@ export function SaveToBoard({
         setSavedTravelBookIds((prev) => new Set(prev).add(bookId));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that travel book.');
+      setError(userErrorMessage(err, 'Could not update that travel book.'));
     }
   }
 
@@ -132,7 +133,7 @@ export function SaveToBoard({
       setSavedBoardIds((prev) => new Set(prev).add(board.id));
       setNewBoardName('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create that board.');
+      setError(userErrorMessage(err, 'Could not create that board.'));
     } finally {
       setIsLoading(false);
     }

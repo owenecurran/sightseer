@@ -9,6 +9,7 @@ import { ProfilePromptsSection } from '@/components/profile-prompts-section';
 import { UserCollectionsSection } from '@/components/user-collections-section';
 import { ThemedText } from '@/components/themed-text';
 import { PaperPanel } from '@/components/ui/paper-panel';
+import { PaperNote } from '@/components/ui/journal';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,8 @@ import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/prof
 import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
 import { getVisitsByIds, likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
 import { shareText } from '@/lib/share';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function ProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
@@ -119,7 +122,7 @@ export default function ProfileScreen() {
         setAvatarUrl(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load your profile.');
+      setError(userErrorMessage(err, 'Could not load your profile.'));
     }
   }, [session, profile?.avatar_r2_key]);
 
@@ -143,7 +146,7 @@ export default function ProfileScreen() {
       await acceptFollowRequest(followerId, session.user.id);
       setRequests((prev) => prev.filter((r) => r.follower_id !== followerId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not accept that request.');
+      setError(userErrorMessage(err, 'Could not accept that request.'));
     }
   }
 
@@ -154,7 +157,7 @@ export default function ProfileScreen() {
       await rejectFollowRequest(followerId, session.user.id);
       setRequests((prev) => prev.filter((r) => r.follower_id !== followerId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reject that request.');
+      setError(userErrorMessage(err, 'Could not reject that request.'));
     }
   }
 
@@ -173,7 +176,7 @@ export default function ProfileScreen() {
       await uploadAvatar({ userId: session.user.id, uri: result.uri, mimeType: result.mimeType });
       await refreshProfile();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that photo.');
+      setError(userErrorMessage(err, 'Could not upload that photo.'));
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -330,25 +333,18 @@ ${latestCard.note ?? ''}`.trim());
                 completion. Add an avatar or a bio and it goes, because the
                 thing it was asking for has happened. */}
             {needsSetup && (
-              <PaperPanel seed="profile-setup" accentIndex={1} style={styles.setupPrompt}>
-                <ThemedText type="sectionLabel">Make it yours</ThemedText>
-                <ThemedText type="caption">
-                  Add a photo and a line about yourself so people who find your reviews know
-                  whose they are.
-                </ThemedText>
-                <Button
-                  label="Set up my profile"
-                  variant="secondary"
-                  onPress={() => router.push('/edit-profile')}
-                />
-              </PaperPanel>
+              <PaperNote
+                seed="profile-setup"
+                title="Make it yours"
+                body="Add a photo and a line about yourself, so people who find your reviews know whose they are."
+                actionLabel="set up my profile"
+                onPress={() => router.push('/edit-profile')}
+              />
             )}
 
-            {error && (
-              <ThemedText type="small" themeColor="danger">
-                {error}
-              </ThemedText>
-            )}
+            {/* Retries this tab alone: the notice's default reloads the
+                whole screen, which inside the tab pager is every tab. */}
+            {error && <ErrorNotice message={error} onRetry={() => void loadProfile()} />}
 
             {sectionOrder.map((key) => sectionMap[key])}
 
@@ -398,9 +394,6 @@ ${latestCard.note ?? ''}`.trim());
 }
 
 const styles = StyleSheet.create({
-  setupPrompt: {
-    gap: Spacing.two,
-  },
   container: {
     flex: 1,
   },

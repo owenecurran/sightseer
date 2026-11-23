@@ -20,6 +20,7 @@ import type { Database } from '@/lib/database.types';
 import { searchUsers } from '@/lib/search';
 import { addCollaborator, createTravelBook } from '@/lib/travel-books';
 import { type PublicProfile } from '@/lib/public-profile';
+import { userErrorMessage } from '@/lib/user-error';
 
 // Narrowed to what the public column grant on `users` actually returns --
 // see 20260930130000_restrict_users_columns.sql.
@@ -56,7 +57,7 @@ export default function NewTravelBookScreen() {
       try {
         setPeopleSuggestions(await searchUsers(peopleQuery, session.user.id));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
+        setError(userErrorMessage(err, 'Search failed.'));
       }
     }, DEBOUNCE_MS);
     return () => {
@@ -91,7 +92,7 @@ export default function NewTravelBookScreen() {
       }
       router.replace({ pathname: '/travel-book/[id]', params: { id: book.id } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create that travel book.');
+      setError(userErrorMessage(err, 'Could not create that travel book.'));
     } finally {
       setIsCreating(false);
     }

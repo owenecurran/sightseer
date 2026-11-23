@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { addComment, deleteComment, listComments, type Comment } from '@/lib/comments';
+import { userErrorMessage } from '@/lib/user-error';
 
 // Short, glanceable relative time ("2h", "3d") rather than a full date/time —
 // matches how the rest of this app favors compact stat-style labels over
@@ -109,7 +110,7 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
         return getAvatarViewUrls([...new Set(fetched.map((c) => c.userId))]);
       })
       .then(setAvatarUrls)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load comments.'))
+      .catch((err) => setError(userErrorMessage(err, 'Could not load comments.')))
       .finally(() => setIsLoading(false));
   }, [visitId]);
 
@@ -129,7 +130,7 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
       }
       setNewComment('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that comment.');
+      setError(userErrorMessage(err, 'Could not add that comment.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -148,7 +149,7 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
       });
       setPendingDeleteId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete that comment.');
+      setError(userErrorMessage(err, 'Could not delete that comment.'));
     } finally {
       setIsDeleting(false);
     }
