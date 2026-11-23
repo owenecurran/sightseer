@@ -77,14 +77,19 @@ export default function TravelBookSettingsScreen() {
       setPeopleSuggestions([]);
       return;
     }
+    // Set once the query moves on, so a slow answer to an earlier query
+    // cannot land over the answer to the one now in the field.
+    let stale = false;
     peopleDebounceRef.current = setTimeout(async () => {
       try {
-        setPeopleSuggestions(await searchUsers(peopleQuery, session.user.id));
+        const found = await searchUsers(peopleQuery, session.user.id);
+        if (!stale) setPeopleSuggestions(found);
       } catch (err) {
-        setError(userErrorMessage(err, 'Search failed.'));
+        if (!stale) setError(userErrorMessage(err, 'Could not search people just now. Try again.'));
       }
     }, DEBOUNCE_MS);
     return () => {
+      stale = true;
       if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     };
   }, [peopleQuery, session]);

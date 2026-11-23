@@ -35,6 +35,9 @@ export default function HomeLocationsScreen() {
   const [locations, setLocations] = useState<HomeLocation[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The load itself failed, as opposed to an action on the list. The empty
+  // line is not shown then: it said there was nothing here, under the error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
@@ -42,9 +45,13 @@ export default function HomeLocationsScreen() {
     useCallback(() => {
       if (!session) return;
       setError(null);
+      setLoadFailed(false);
       listHomeLocations(session.user.id)
         .then(setLocations)
-        .catch((err) => setError(userErrorMessage(err, 'Could not load your home locations.')))
+        .catch((err) => {
+          setLoadFailed(true);
+          setError(userErrorMessage(err, 'Could not load your home locations.'));
+        })
         .finally(() => setHasLoadedOnce(true));
     }, [session])
   );
@@ -95,9 +102,11 @@ export default function HomeLocationsScreen() {
           {error && <ErrorNotice message={error} />}
 
           {locations.length === 0 ? (
-            <ThemedText type="caption">
-              No home locations yet. Until you add one, none of your reviews are grouped into trips.
-            </ThemedText>
+            loadFailed ? null : (
+              <ThemedText type="caption">
+                No home locations yet. Until you add one, none of your reviews are grouped into trips.
+              </ThemedText>
+            )
           ) : (
             <View style={styles.list}>
               {locations.map((location) => (

@@ -49,6 +49,9 @@ type CollectionsListProps = {
   // "New board" — it read as a boards-only page.
   headerAction?: ReactNode;
   isLoading: boolean;
+  // The collections failed to load. The empty lines are not shown then:
+  // "No boards yet." under the error read as an empty account.
+  loadFailed?: boolean;
   emptyBoardsMessage: string;
   emptyTravelBooksMessage: string;
 };
@@ -93,6 +96,7 @@ export function CollectionsList({
   tripAverageRatings,
   headerAction,
   isLoading,
+  loadFailed = false,
   emptyBoardsMessage,
   emptyTravelBooksMessage,
 }: CollectionsListProps) {
@@ -122,18 +126,18 @@ export function CollectionsList({
         {headerAction}
       </View>
 
-      {mode === 'boards' && !isLoading && boards.length === 0 && (
+      {mode === 'boards' && !isLoading && !loadFailed && boards.length === 0 && (
         <ThemedText type="caption" style={styles.gutter}>
           {emptyBoardsMessage}
         </ThemedText>
       )}
-      {mode === 'trips' && !isLoading && trips.length === 0 && (
+      {mode === 'trips' && !isLoading && !loadFailed && trips.length === 0 && (
         <ThemedText type="caption" style={styles.gutter}>
           No trips yet. Post a couple of reviews away from your home locations and they'll be grouped
           into one automatically.
         </ThemedText>
       )}
-      {mode === 'travel_books' && !isLoading && travelBooks.length === 0 && (
+      {mode === 'travel_books' && !isLoading && !loadFailed && travelBooks.length === 0 && (
         <ThemedText type="caption" style={styles.gutter}>
           {emptyTravelBooksMessage}
         </ThemedText>

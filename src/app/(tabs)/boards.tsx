@@ -144,6 +144,7 @@ export default function BoardsScreen() {
           trips={trips}
           tripAverageRatings={tripAverageRatings}
           isLoading={isLoading}
+          loadFailed={error != null}
           emptyBoardsMessage="No boards yet. Create one above, or tap the bookmark on any postcard to save it to a board."
           emptyTravelBooksMessage="No travel books yet. Start one to keep a chronological log of a trip."
         />

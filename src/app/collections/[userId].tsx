@@ -150,6 +150,7 @@ export default function UserCollectionsScreen() {
           trips={trips}
           tripAverageRatings={tripAverageRatings}
           isLoading={isLoading}
+          loadFailed={error != null}
           emptyBoardsMessage={isSelf ? 'No boards yet.' : 'No boards to show.'}
           emptyTravelBooksMessage={isSelf ? 'No travel books yet.' : 'No travel books to show.'}
         />

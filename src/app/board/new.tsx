@@ -11,6 +11,7 @@ import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
+import { FormError } from '@/components/ui/error-notice';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -19,6 +20,7 @@ import { createBoard } from '@/lib/boards';
 import { uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
 
 type ListStyle = 'collection' | 'ranked';
 
@@ -50,7 +52,7 @@ export default function NewBoardScreen() {
   async function handlePickCover() {
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -64,15 +66,27 @@ export default function NewBoardScreen() {
     setIsCreating(true);
     try {
       const board = await createBoard({ userId: session.user.id, name: name.trim(), isPrivate, listStyle });
+      // The board exists from here. A cover that failed to upload used to
+      // leave this form up saying "Could not create that board.", and
+      // pressing Create again made a second one. Now it goes to the board,
+      // which says the cover is missing.
+      let coverFailed = false;
       if (pendingCoverUri) {
-        await uploadCoverPhoto({
-          table: 'boards',
-          id: board.id,
-          uri: pendingCoverUri,
-          mimeType: pendingCoverMimeType,
-        });
+        try {
+          await uploadCoverPhoto({
+            table: 'boards',
+            id: board.id,
+            uri: pendingCoverUri,
+            mimeType: pendingCoverMimeType,
+          });
+        } catch {
+          coverFailed = true;
+        }
       }
-      router.replace({ pathname: '/board/[id]', params: { id: board.id } });
+      router.replace({
+        pathname: '/board/[id]',
+        params: coverFailed ? { id: board.id, missing: 'cover' } : { id: board.id },
+      });
     } catch (err) {
       setError(userErrorMessage(err, 'Could not create that board.'));
     } finally {
@@ -121,11 +135,7 @@ export default function NewBoardScreen() {
             onPress={handlePickCover}
           />
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <FormError message={error} />}
 
           <Button label="Create board" onPress={handleCreate} loading={isCreating} disabled={!name.trim()} />
         </KeyboardAwareScroll>

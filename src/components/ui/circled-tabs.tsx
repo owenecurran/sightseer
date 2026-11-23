@@ -8,19 +8,36 @@ import { randomFor } from '@/lib/seeded-random';
 
 type CircledTabsProps<K extends string> = {
   items: readonly { key: K; label: string }[];
-  // null when nothing is picked (Search's filters can all be off).
-  active: K | null;
+  // The one picked, or null when nothing is (Search's filters can all be
+  // off). A list where several can be on at once, each ringed: the map's
+  // layers. onChange then reports the word pressed, to turn it on or off.
+  active: K | null | readonly K[];
   onChange: (key: K) => void;
+  // What the words are, for screen readers: tabs that switch a view (the
+  // default), or a choice on a form ("circle one"). A list of several is
+  // always read as checkboxes.
+  role?: 'tab' | 'radio';
 };
 
 // A row of choices typed across the page, with the one picked ringed in pen,
 // the way you would circle a word on a printed list. These replace rows of
 // pill chips, which are what every app's tabs and filters are made of.
-export function CircledTabs<K extends string>({ items, active, onChange }: CircledTabsProps<K>) {
+export function CircledTabs<K extends string>({ items, active, onChange, role = 'tab' }: CircledTabsProps<K>) {
+  const isMany = Array.isArray(active);
   return (
-    <View style={styles.row}>
+    // Wider apart when several can be ringed at once: each ring reaches
+    // REACH_X past its word, so at the usual spacing two rings side by side
+    // ran into each other.
+    <View style={[styles.row, isMany && styles.rowMany]}>
       {items.map((item) => (
-        <Tab key={item.key} label={item.label} seed={item.key} selected={item.key === active} onPress={() => onChange(item.key)} />
+        <Tab
+          key={item.key}
+          label={item.label}
+          seed={item.key}
+          selected={isMany ? (active as readonly K[]).includes(item.key) : item.key === active}
+          role={isMany ? 'checkbox' : role}
+          onPress={() => onChange(item.key)}
+        />
       ))}
     </View>
   );
@@ -30,7 +47,15 @@ export function CircledTabs<K extends string>({ items, active, onChange }: Circl
 const REACH_X = 10;
 const REACH_Y = 7;
 
-function Tab({ label, seed, selected, onPress }: { label: string; seed: string; selected: boolean; onPress: () => void }) {
+type TabProps = {
+  label: string;
+  seed: string;
+  selected: boolean;
+  role: 'tab' | 'radio' | 'checkbox';
+  onPress: () => void;
+};
+
+function Tab({ label, seed, selected, role, onPress }: TabProps) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const onLayout = (event: LayoutChangeEvent) => {
     const w = Math.round(event.nativeEvent.layout.width);
@@ -43,8 +68,8 @@ function Tab({ label, seed, selected, onPress }: { label: string; seed: string; 
     <Pressable
       onPress={onPress}
       hitSlop={8}
-      accessibilityRole="tab"
-      accessibilityState={{ selected }}
+      accessibilityRole={role}
+      accessibilityState={role === 'tab' ? { selected } : { checked: selected }}
       onLayout={onLayout}
       style={({ pressed }) => [styles.tab, pressed && styles.pressed]}>
       {selected && ring && <Image source={{ uri: ring }} style={styles.ring} />}
@@ -101,6 +126,11 @@ const styles = StyleSheet.create({
     rowGap: Spacing.two,
     paddingVertical: REACH_Y - 2,
     paddingLeft: Spacing.one,
+  },
+  rowMany: {
+    columnGap: REACH_X * 2 + 4,
+    rowGap: REACH_Y * 2 + 2,
+    paddingLeft: REACH_X - 2,
   },
   tab: {
     paddingVertical: 2,

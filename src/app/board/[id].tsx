@@ -13,6 +13,7 @@ import { RankedListView } from '@/components/board-views/ranked-list-view';
 import { SaveCollectionButton } from '@/components/save-collection-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
@@ -44,6 +45,7 @@ import {
 } from '@/lib/saved-collections';
 import { supabase } from '@/lib/supabase';
 import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
 import { ErrorNotice } from '@/components/ui/error-notice';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
@@ -57,7 +59,9 @@ const VIEW_MODES: { key: CollectionViewMode; label: string }[] = [
 ];
 
 export default function BoardDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `missing` is set by New board when the board was made but its cover
+  // did not upload.
+  const { id, missing } = useLocalSearchParams<{ id: string; missing?: string }>();
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [board, setBoard] = useState<BoardRow | null>(null);
@@ -251,7 +255,7 @@ export default function BoardDetailScreen() {
     if (!board) return;
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -304,6 +308,12 @@ export default function BoardDetailScreen() {
             </Pressable>
           )}
 
+          {missing === 'cover' && isOwner && !customCoverUrl && (
+            <ThemedText type="small" themeColor="danger">
+              The board was made, but its cover photo did not upload. Add it again above.
+            </ThemedText>
+          )}
+
           {isOwner && board && (
             <Pressable onPress={() => router.push({ pathname: '/board/[id]/settings', params: { id: board.id } })}>
               <ThemedText type="small" themeColor="sage">
@@ -312,7 +322,8 @@ export default function BoardDetailScreen() {
             </Pressable>
           )}
 
-          {!isOwner && session && (
+          {/* Not for a board that failed to load: there is nothing to save. */}
+          {!isOwner && session && board && (
             <SaveCollectionButton
               isSaved={savedState != null}
               notifyOnNewItems={savedState?.notifyOnNewItems ?? false}
@@ -325,21 +336,22 @@ export default function BoardDetailScreen() {
 
           {error && <ErrorNotice message={error} />}
 
-          <View style={styles.modeRow}>
-            {VIEW_MODES.filter((mode) => mode.key !== 'ranked' || board?.list_style === 'ranked').map((mode) => (
-              <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
-                <ThemedView type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.modeChip}>
-                  <ThemedText type="small" themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
-                    {mode.label}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
-            ))}
-          </View>
+          {/* Typed and ringed in pen, as Search's filters and the feed's
+              switcher are, where these were the last pill chips of their
+              kind. Not for a board that failed to load. */}
+          {board && (
+            <CircledTabs
+              items={VIEW_MODES.filter((mode) => available.includes(mode.key))}
+              active={viewMode}
+              onChange={setViewMode}
+            />
+          )}
         </View>
 
+        {/* A failed load has no items either; the empty line is only for a
+            board that loaded and is empty. */}
         {items.length === 0 ? (
-          <View style={styles.emptyState}>
+          board && <View style={styles.emptyState}>
             <ThemedText type="caption">
               No reviews saved to this board yet.
             </ThemedText>
@@ -419,17 +431,6 @@ const styles = StyleSheet.create({
   cover: {
     width: '100%',
     height: '100%',
-  },
-  modeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  modeChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
   },
   emptyState: {
     flex: 1,

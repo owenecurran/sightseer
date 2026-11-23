@@ -5,12 +5,13 @@ import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/ui/avatar';
+import { InkBlot } from '@/components/ui/ink-blot';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { BackLink } from '@/components/ui/back-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { BrandColors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
@@ -260,83 +261,91 @@ export default function NotificationsScreen() {
             </>
           }
           ListEmptyComponent={
-            <ThemedText type="caption">
-              No notifications yet. Likes, comments, new followers and tags will show up here.
-            </ThemedText>
+            // Not under a failed load, which has nothing in it either.
+            error ? null : (
+              <ThemedText type="caption">
+                No notifications yet. Likes, comments, new followers and tags will show up here.
+              </ThemedText>
+            )
           }
           renderItem={({ item }: { item: NotificationGroup }) => {
             const actorId = item.latest.actorUserId;
             const state = actorId ? followBack[actorId] : undefined;
             return (
-              <Pressable onPress={() => handlePress(item.latest)}>
-                <ThemedView
-                  type={item.isRead ? 'backgroundElement' : 'backgroundSelected'}
-                  style={styles.row}>
-                  {/* Up to three faces, overlapped. Beyond three the names in
-                      the line already say how many there were, and a fourth
-                      circle only makes the row taller. */}
-                  <View style={styles.avatars}>
-                    {item.actors.slice(0, MAX_FACES).map((actor, index) => (
-                      <View
-                        key={actor.id}
-                        style={index === 0 ? undefined : styles.stackedAvatar}>
-                        <Avatar uri={avatarUrls[actor.id]} name={actor.name} size={AVATAR_SIZE} />
-                      </View>
-                    ))}
-                  </View>
+              // An address-book row, as Search's results are: a hairline
+              // under each, with what is new marked by a dot of ink. These
+              // were slabs, the unread ones a lighter slab.
+              <Pressable
+                onPress={() => handlePress(item.latest)}
+                accessibilityHint={item.isRead ? undefined : 'New'}
+                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+                <View style={styles.unreadMark}>
+                  {!item.isRead && <InkBlot size={9} seed={`unread:${item.key}`} color={BrandColors.sage} />}
+                </View>
+                {/* Up to three faces, overlapped. Beyond three the names in
+                    the line already say how many there were, and a fourth
+                    circle only makes the row taller. */}
+                <View style={styles.avatars}>
+                  {item.actors.slice(0, MAX_FACES).map((actor, index) => (
+                    <View
+                      key={actor.id}
+                      style={index === 0 ? undefined : styles.stackedAvatar}>
+                      <Avatar uri={avatarUrls[actor.id]} name={actor.name} size={AVATAR_SIZE} />
+                    </View>
+                  ))}
+                </View>
 
-                  <View style={styles.rowText}>
-                    <ThemedText type="default">{describe(item.latest, item.actors)}</ThemedText>
+                <View style={styles.rowText}>
+                  <ThemedText type="default">{describe(item.latest, item.actors)}</ThemedText>
+                  <ThemedText type="meta">
+                    {relativeTime(item.latest.createdAt)}
+                  </ThemedText>
+                </View>
+
+                {/* What the notification is ABOUT, where that is a review.
+                    A line of text names the place; the picture is what
+                    actually identifies which of your reviews this is. */}
+                {item.latest.visitPhotoId && previewUrls[item.latest.visitPhotoId] && (
+                  <LoadableImage
+                    source={{ uri: previewUrls[item.latest.visitPhotoId] }}
+                    style={styles.preview}
+                  />
+                )}
+
+                {/* Only on a follow, and only where there is something to
+                    do about it. Someone you already follow gets the word
+                    rather than a button that would unfollow them by
+                    accident. */}
+                {item.latest.type === 'follow' && actorId && (
+                  state === 'following' ? (
                     <ThemedText type="meta">
-                      {relativeTime(item.latest.createdAt)}
+                      Following
                     </ThemedText>
-                  </View>
-
-                  {/* What the notification is ABOUT, where that is a review.
-                      A line of text names the place; the picture is what
-                      actually identifies which of your reviews this is. */}
-                  {item.latest.visitPhotoId && previewUrls[item.latest.visitPhotoId] && (
-                    <LoadableImage
-                      source={{ uri: previewUrls[item.latest.visitPhotoId] }}
-                      style={styles.preview}
-                    />
-                  )}
-
-                  {/* Only on a follow, and only where there is something to
-                      do about it. Someone you already follow gets the word
-                      rather than a button that would unfollow them by
-                      accident. */}
-                  {item.latest.type === 'follow' && actorId && (
-                    state === 'following' ? (
-                      <ThemedText type="meta">
-                        Following
+                  ) : state === 'pending' ? (
+                    <ThemedText type="meta">
+                      Requested
+                    </ThemedText>
+                  ) : (
+                    // Typed, as the text action beside a row's content is
+                    // everywhere else. This was a pill.
+                    <Pressable
+                      onPress={() => void handleFollowBack(item.latest)}
+                      hitSlop={10}
+                      disabled={state === 'working'}>
+                      <ThemedText type="action" themeColor="sage">
+                        {/* "Follow back" only when there is something to
+                            follow back. Someone who simply joined has not
+                            followed you, and telling them they have is a
+                            small lie the button does not need. */}
+                        {state === 'working'
+                          ? '…'
+                          : item.latest.type === 'follow'
+                            ? 'Follow back'
+                            : 'Follow'}
                       </ThemedText>
-                    ) : state === 'pending' ? (
-                      <ThemedText type="meta">
-                        Requested
-                      </ThemedText>
-                    ) : (
-                      <Pressable
-                        onPress={() => void handleFollowBack(item.latest)}
-                        hitSlop={8}
-                        disabled={state === 'working'}>
-                        <ThemedView type="backgroundSelected" style={styles.followButton}>
-                          <ThemedText type="smallBold">
-                            {/* "Follow back" only when there is something to
-                                follow back. Someone who simply joined has not
-                                followed you, and telling them they have is a
-                                small lie the button does not need. */}
-                            {state === 'working'
-                              ? '…'
-                              : item.latest.type === 'follow'
-                                ? 'Follow back'
-                                : 'Follow'}
-                          </ThemedText>
-                        </ThemedView>
-                      </Pressable>
-                    )
-                  )}
-                </ThemedView>
+                    </Pressable>
+                  )
+                )}
               </Pressable>
             );
           }}
@@ -360,14 +369,23 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   list: {
-    gap: Spacing.two,
+    gap: 0,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
+    paddingVertical: Spacing.three,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(234, 231, 207, 0.16)',
+  },
+  rowPressed: {
+    opacity: 0.6,
+  },
+  // Kept the same width read or unread, so the faces line up down the list.
+  unreadMark: {
+    width: 9,
+    alignItems: 'center',
   },
   rowText: {
     flex: 1,
@@ -384,14 +402,12 @@ const styles = StyleSheet.create({
   },
   // A square, so a portrait and a landscape photograph both read as the same
   // object in the column rather than as rows of different heights.
+  // A print with its white border, as Search's thumbnails are.
   preview: {
     width: PREVIEW_SIZE,
     height: PREVIEW_SIZE,
-    borderRadius: Spacing.two,
-  },
-  followButton: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.four,
+    borderRadius: 1,
+    borderWidth: 3,
+    borderColor: '#f3eedb',
   },
 });

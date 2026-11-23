@@ -11,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
+import { FormError } from '@/components/ui/error-notice';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -25,6 +26,7 @@ import { uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { goBack } from '@/lib/navigation';
 import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
 
 // One screen for both create and edit (?id=), same pattern review-form.tsx
 // already uses for a fresh review vs. resuming a draft — the form/fields are
@@ -65,7 +67,7 @@ export default function ArticleComposeScreen() {
   async function handlePickCover() {
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -152,11 +154,7 @@ export default function ArticleComposeScreen() {
             />
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <FormError message={error} />}
 
           <Button
             label={id ? 'Save changes' : 'Save draft'}

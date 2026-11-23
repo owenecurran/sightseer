@@ -67,6 +67,12 @@ export default function UserProfileScreen() {
   const [targetFollowsMe, setTargetFollowsMe] = useState(false);
   const [isRemovingFollower, setIsRemovingFollower] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // Set once the account and its follow state have both loaded. Until then
+  // the counts, the sights-seen line and the Follow button are starting
+  // values, not facts: a failed load used to show "0 following 0
+  // followers", "0 sights seen" and a live Follow button for an account
+  // that never loaded.
+  const [isLoaded, setIsLoaded] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
   useFocusEffect(
@@ -100,6 +106,7 @@ export default function UserProfileScreen() {
           setTotalVisits(showcase.totalVisits);
           setLatestVisit(showcase.latestVisit);
           setIsBlocked(blocked);
+          setIsLoaded(true);
 
           // First photo by position, matching profile.tsx's own "Latest
           // reviews" teaser — a multi-photo review shows its first photo
@@ -239,15 +246,17 @@ export default function UserProfileScreen() {
                     @{user.handle}
                   </ThemedText>
                 )}
-                <ThemedText type="roundedStat" themeColor="sage">
-                  {totalVisits} sight{totalVisits === 1 ? '' : 's'} seen
-                </ThemedText>
+                {isLoaded && (
+                  <ThemedText type="roundedStat" themeColor="sage">
+                    {totalVisits} sight{totalVisits === 1 ? '' : 's'} seen
+                  </ThemedText>
+                )}
               </View>
             </View>
 
             {user?.bio && <ThemedText type="default">{user.bio}</ThemedText>}
 
-            {!isSelf && !isBlocked && (
+            {isLoaded && !isSelf && !isBlocked && (
               <Button
                 label={followLabel(followStatus)}
                 variant={followStatus === 'accepted' ? 'secondary' : 'primary'}
@@ -256,26 +265,28 @@ export default function UserProfileScreen() {
               />
             )}
 
-            <View style={styles.statsRow}>
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: '/follow-list',
-                    params: { type: 'following', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
-                  })
-                }>
-                <ThemedText type="statLine">{followCounts.following} following</ThemedText>
-              </Pressable>
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: '/follow-list',
-                    params: { type: 'followers', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
-                  })
-                }>
-                <ThemedText type="statLine">{followCounts.followers} followers</ThemedText>
-              </Pressable>
-            </View>
+            {isLoaded && (
+              <View style={styles.statsRow}>
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: '/follow-list',
+                      params: { type: 'following', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
+                    })
+                  }>
+                  <ThemedText type="statLine">{followCounts.following} following</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: '/follow-list',
+                      params: { type: 'followers', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
+                    })
+                  }>
+                  <ThemedText type="statLine">{followCounts.followers} followers</ThemedText>
+                </Pressable>
+              </View>
+            )}
 
             {error && <ErrorNotice message={error} />}
 

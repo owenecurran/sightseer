@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fold, Unfold } from '@/components/ui/unfold';
 import { Avatar } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 import { TextField } from '@/components/ui/text-field';
-import { BrandColors, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { submitReport, type ReportReason } from '@/lib/reports';
 import { userErrorMessage } from '@/lib/user-error';
 
@@ -87,11 +89,9 @@ function ReportForm({
               </ThemedText>
             </Fold>
             <Fold>
-              <Pressable onPress={onClose} style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}>
-                <ThemedText type="roundedStat" themeColor="background" style={styles.buttonLabel}>
-                  Done
-                </ThemedText>
-              </Pressable>
+              {/* The app's own button, as every other form ends with. This
+                  and Submit were sage pills of their own. */}
+              <Button label="Done" onPress={onClose} style={styles.doneButton} />
             </Fold>
           </>
         ) : (
@@ -129,26 +129,17 @@ function ReportForm({
                   What&apos;s wrong?
                 </ThemedText>
               </Fold>
-              {/* Each reason is its own fold; the reasons that share a line
-                  are one panel between them. */}
-              <View style={styles.reasonGrid}>
-                {REPORT_REASONS.map((r) => {
-                  const isSelected = reason === r.value;
-                  return (
-                    <Fold key={r.value}>
-                      <Pressable onPress={() => setReason(r.value)}>
-                        <ThemedView
-                          type={isSelected ? 'backgroundSelected' : 'backgroundElement'}
-                          style={styles.reasonChip}>
-                          <ThemedText type="small" themeColor={isSelected ? 'background' : 'text'}>
-                            {r.label}
-                          </ThemedText>
-                        </ThemedView>
-                      </Pressable>
-                    </Fold>
-                  );
-                })}
-              </View>
+              {/* Circle one, as on a printed form: the typed words with the
+                  chosen one ringed in pen, as Search's filters are. These
+                  were pill chips. One fold for the line of them. */}
+              <Fold>
+                <CircledTabs
+                  items={REPORT_REASONS.map((r) => ({ key: r.value, label: r.label }))}
+                  active={reason}
+                  onChange={setReason}
+                  role="radio"
+                />
+              </Fold>
             </View>
 
             <View style={styles.section}>
@@ -181,23 +172,12 @@ function ReportForm({
                   Cancel
                 </ThemedText>
               </Pressable>
-              <Pressable
+              <Button
+                label="Submit report"
                 onPress={handleSubmit}
-                disabled={isSubmitting || !reason}
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.submitButton,
-                  (isSubmitting || !reason) && styles.submitButtonDisabled,
-                  pressed && styles.pressed,
-                ]}>
-                {isSubmitting ? (
-                  <ActivityIndicator color={BrandColors.background} size="small" />
-                ) : (
-                  <ThemedText type="roundedStat" themeColor="background" style={styles.buttonLabel}>
-                    Submit report
-                  </ThemedText>
-                )}
-              </Pressable>
+                disabled={!reason}
+                loading={isSubmitting}
+              />
             </Fold>
           </ScrollView>
         )}
@@ -241,46 +221,14 @@ const styles = StyleSheet.create({
   section: {
     gap: Spacing.two,
   },
-  reasonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  reasonChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
-  },
   actionsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: Spacing.four,
     alignItems: 'center',
   },
-  submitButton: {
-    backgroundColor: BrandColors.sage,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    borderRadius: Spacing.three,
-    minWidth: 140,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitButtonDisabled: {
-    opacity: 0.5,
-  },
   doneButton: {
     alignSelf: 'center',
-    backgroundColor: BrandColors.sage,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.five,
-    borderRadius: Spacing.three,
-  },
-  pressed: {
-    opacity: 0.8,
-  },
-  // The size the app's own Button sets this face at.
-  buttonLabel: {
-    fontSize: 16,
+    minWidth: 160,
   },
 });

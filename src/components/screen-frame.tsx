@@ -1,13 +1,16 @@
 import { router } from 'expo-router';
 import { Component, createContext, useCallback, useContext, useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { PaperNote } from '@/components/ui/journal';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useAuth } from '@/lib/auth-context';
 import { reportError } from '@/lib/error-report';
+import { hasSupportEmail, SUPPORT_EMAIL } from '@/lib/legal';
 
 // Every screen in the app, framed so that a problem in one of them is never a
 // dead end.
@@ -47,9 +50,16 @@ export function ScreenFrame({ children, routeName, canGoBack, goBack }: FramePro
   // Bumped to load the screen again: a new key mounts everything inside anew.
   const [attempt, setAttempt] = useState(0);
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
+  const { session } = useAuth();
   return (
     <ReloadContext.Provider value={reload}>
-      <ScreenCrashCatcher key={attempt} routeName={routeName} reload={reload} canGoBack={canGoBack} goBack={goBack}>
+      <ScreenCrashCatcher
+        key={attempt}
+        routeName={routeName}
+        signedIn={session != null}
+        reload={reload}
+        canGoBack={canGoBack}
+        goBack={goBack}>
         {children}
       </ScreenCrashCatcher>
     </ReloadContext.Provider>
@@ -59,6 +69,10 @@ export function ScreenFrame({ children, routeName, canGoBack, goBack }: FramePro
 type CatcherProps = {
   children: ReactNode;
   routeName: string;
+  // The report screen needs an account; signed out, the app sends anyone
+  // who opens it straight back to the welcome screen. So signed out, the
+  // way to tell us is an email instead.
+  signedIn: boolean;
   reload: () => void;
   canGoBack: () => boolean;
   goBack: () => void;
@@ -81,30 +95,51 @@ class ScreenCrashCatcher extends Component<CatcherProps, CatcherState> {
 
   render() {
     if (this.state.error == null) return this.props.children;
-    const { routeName, reload, canGoBack, goBack } = this.props;
+    const { routeName, signedIn, reload, canGoBack, goBack } = this.props;
     const back = canGoBack();
     return (
       <ThemedView type="screen" style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.content}>
-            <ThemedText type="displaySerif">This page hit a snag</ThemedText>
-            <ThemedText type="caption">
-              Something on it broke while it was loading. That has been reported, so it can be
-              fixed. Try it again, or head back and carry on with the rest of the app.
-            </ThemedText>
-            <Button label="Try again" onPress={reload} />
-            {back ? (
-              <Button label="Go back" variant="secondary" onPress={goBack} />
-            ) : (
-              // The first screen in the app has nowhere to go back to; the
-              // feed is the one place that always exists.
-              <Button label="Go to the feed" variant="secondary" onPress={() => router.replace('/')} />
-            )}
-            <ThemedText
-              type="link"
-              onPress={() => router.push({ pathname: '/report-bug', params: { from: routeName } })}>
-              Tell us what you were doing
-            </ThemedText>
+            {/* The note the app leaves for the person, as Profile's "Make it
+                yours" is: the same piece of card, scrawl and red pen, rather
+                than a title, a paragraph and a stack of buttons. Its red-pen
+                line is the first thing to try. */}
+            <PaperNote
+              seed={`snag-${routeName}`}
+              title="This page hit a snag"
+              body="Something on it broke while it was loading. That has been reported, so it can be fixed."
+              actionLabel="try it again"
+              onPress={reload}
+            />
+            <View style={styles.after}>
+              {back ? (
+                <Button label="Go back" variant="secondary" onPress={goBack} />
+              ) : (
+                // The first screen in the app has nowhere to go back to; the
+                // feed is the one place that always exists.
+                <Button label="Go to the feed" variant="secondary" onPress={() => router.replace('/')} />
+              )}
+              {signedIn ? (
+                <ThemedText
+                  type="action"
+                  onPress={() => router.push({ pathname: '/report-bug', params: { from: routeName } })}>
+                  Tell us what you were doing
+                </ThemedText>
+              ) : (
+                hasSupportEmail && (
+                  <ThemedText
+                    type="action"
+                    onPress={() =>
+                      void Linking.openURL(
+                        `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(`Sightseer: ${routeName} stopped working`)}`,
+                      ).catch(() => {})
+                    }>
+                    Email us about it
+                  </ThemedText>
+                )
+              )}
+            </View>
           </View>
         </SafeAreaView>
       </ThemedView>
@@ -125,6 +160,12 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     paddingHorizontal: Spacing.four,
+    gap: Spacing.five,
+  },
+  // A way back, and a way to tell us: the pen-drawn button and the typed
+  // action that sit under a form's main button everywhere else.
+  after: {
+    alignItems: 'center',
     gap: Spacing.three,
   },
 });

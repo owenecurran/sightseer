@@ -182,20 +182,26 @@ export function LocationSearchModal({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
       setSuggestions([]);
+      setIsSearching(false);
       return;
     }
+    // Set once the query moves on, so a slow answer to an earlier query
+    // cannot land over the answer to the one now in the field.
+    let stale = false;
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       setError(null);
       try {
-        setSuggestions(await autocompletePlaces(query, sessionTokenRef.current));
+        const found = await autocompletePlaces(query, sessionTokenRef.current);
+        if (!stale) setSuggestions(found);
       } catch (err) {
-        setError(userErrorMessage(err, 'Search failed.'));
+        if (!stale) setError(userErrorMessage(err, 'Could not search places just now. Try again.'));
       } finally {
-        setIsSearching(false);
+        if (!stale) setIsSearching(false);
       }
     }, DEBOUNCE_MS);
     return () => {
+      stale = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query]);

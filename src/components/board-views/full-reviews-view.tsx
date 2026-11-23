@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { keyboardAwareScrollRenderer } from '@/components/keyboard-aware-scroll';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { Fold } from '@/components/ui/unfold';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { VisitCard } from '@/components/visit-card';
 import { Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -180,18 +179,17 @@ export function FullReviewsView({
                 <OwnRatingLine rating={ownRating} />
               </View>
             )}
+            {/* A box to tick under each card, ticked on the chosen one, as
+                the app's other choices are. It was a pill that relabelled
+                itself "Featured ✓". */}
             {onSelectVisit && visit && (
-              <Pressable onPress={() => onSelectVisit(visit.id)}>
-                <ThemedView
-                  type={selectedVisitId === visit.id ? 'backgroundSelected' : 'backgroundElement'}
-                  style={styles.selectButton}>
-                  <ThemedText
-                    type="small"
-                    themeColor={selectedVisitId === visit.id ? 'text' : 'textSecondary'}>
-                    {selectedVisitId === visit.id ? 'Featured ✓' : 'Feature this one'}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
+              <View style={styles.selectRow}>
+                <CheckboxRow
+                  label="Feature this one"
+                  checked={selectedVisitId === visit.id}
+                  onPress={() => onSelectVisit(visit.id)}
+                />
+              </View>
             )}
           </Fold>
         );
@@ -215,11 +213,11 @@ const styles = StyleSheet.create({
   ownRating: {
     paddingHorizontal: Spacing.one,
   },
-  selectButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.four,
+  // Full width, not shrunk to fit: CheckboxRow's label takes the slack with
+  // flex 1, and in a shrink-to-fit box that slack is nothing, so only the
+  // box showed.
+  selectRow: {
+    paddingTop: Spacing.one,
   },
   // Two thirds of the card's width, which is about what a landscape postcard
   // stands at — near enough that a row settling into place does not shove

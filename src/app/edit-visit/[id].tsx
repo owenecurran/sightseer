@@ -27,7 +27,8 @@ import { uploadReviewPhotoAssets } from '@/lib/photo-upload';
 import { getVisitForEdit, saveVisitEdit, type UploadedEditPhoto, type VisitForEdit } from '@/lib/visit-edit';
 import { goBack } from '@/lib/navigation';
 import { userErrorMessage } from '@/lib/user-error';
-import { ErrorNotice } from '@/components/ui/error-notice';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
+import { ErrorNotice, FormError } from '@/components/ui/error-notice';
 
 type NewPhoto = { kind: 'new'; uri: string; width: number; height: number };
 type PhotoSlot = { kind: 'existing'; id: string; url: string } | NewPhoto;
@@ -98,7 +99,7 @@ function EditVisitForm({ id, userId }: { id?: string; userId?: string }) {
     setError(null);
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required to add photos.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (result) setCropTarget({ uri: result.uri, recropIndex: null });
@@ -225,11 +226,7 @@ function EditVisitForm({ id, userId }: { id?: string; userId?: string }) {
 
               {/* By the button, where the press was: at the top of the form
                   a failed save showed up off screen. */}
-              {error && (
-                <ThemedText type="small" themeColor="danger">
-                  {error}
-                </ThemedText>
-              )}
+              {error && <FormError message={error} />}
 
               <Button label="Save changes" onPress={handleSave} loading={isSaving} />
             </View>

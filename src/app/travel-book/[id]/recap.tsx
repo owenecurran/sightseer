@@ -28,6 +28,7 @@ import {
   type TravelBookRecapRow,
 } from '@/lib/travel-book-recaps';
 import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
 import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function TravelBookRecapScreen() {
@@ -113,7 +114,7 @@ export default function TravelBookRecapScreen() {
   async function handlePickCover() {
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required to set a cover photo.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (result) setCropSource(result.uri);

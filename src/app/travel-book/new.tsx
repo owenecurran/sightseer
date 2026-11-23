@@ -53,14 +53,19 @@ export default function NewTravelBookScreen() {
       setPeopleSuggestions([]);
       return;
     }
+    // Set once the query moves on, so a slow answer to an earlier query
+    // cannot land over the answer to the one now in the field.
+    let stale = false;
     peopleDebounceRef.current = setTimeout(async () => {
       try {
-        setPeopleSuggestions(await searchUsers(peopleQuery, session.user.id));
+        const found = await searchUsers(peopleQuery, session.user.id);
+        if (!stale) setPeopleSuggestions(found);
       } catch (err) {
-        setError(userErrorMessage(err, 'Search failed.'));
+        if (!stale) setError(userErrorMessage(err, 'Could not search people just now. Try again.'));
       }
     }, DEBOUNCE_MS);
     return () => {
+      stale = true;
       if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     };
   }, [peopleQuery, session]);
@@ -87,10 +92,22 @@ export default function NewTravelBookScreen() {
         isPrivate,
         locationPlaceId: location?.id,
       });
+      // The book exists from here. A collaborator who could not be added
+      // used to leave this form up saying "Could not create that travel
+      // book.", and pressing Create again made a second one. Now it goes to
+      // the book, which says how many are missing.
+      let notAdded = 0;
       for (const collaborator of collaborators) {
-        await addCollaborator(book.id, collaborator.id);
+        try {
+          await addCollaborator(book.id, collaborator.id);
+        } catch {
+          notAdded += 1;
+        }
       }
-      router.replace({ pathname: '/travel-book/[id]', params: { id: book.id } });
+      router.replace({
+        pathname: '/travel-book/[id]',
+        params: notAdded > 0 ? { id: book.id, missing: String(notAdded) } : { id: book.id },
+      });
     } catch (err) {
       setError(userErrorMessage(err, 'Could not create that travel book.'));
     } finally {

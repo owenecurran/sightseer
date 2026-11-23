@@ -34,24 +34,11 @@ import {
 import { formatVisitedPostmark } from '@/lib/visited-date';
 import { pickStampDesign } from '@/lib/stamp-matching';
 import { BLANK_COUNT, GRAIN_COUNT } from '@/lib/postcard-stock';
-
-// Which sheet and which dust plate this review gets. At module scope because
-// the React Compiler's lint counts Math.random() inside a component as an
-// impure call during render — it cannot see that this only ever runs inside
-// the submit handler.
-// The preview's handlers. A preview has nothing to like, share or delete.
-function noop() {}
-
-function drawCard() {
-  return {
-    stock: Math.floor(Math.random() * BLANK_COUNT),
-    grain: Math.floor(Math.random() * GRAIN_COUNT),
-  };
-}
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { TagStickerGraphic } from '@/components/ui/tag-sticker-graphic';
 import { VisitCard, type VisitCardVisit } from '@/components/visit-card';
 import { TagPickerModal } from '@/components/tag-picker-modal';
+import { FormError } from '@/components/ui/error-notice';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -70,6 +57,21 @@ import { listTags, setVisitTags, MAX_VISIT_TAGS, type Tag } from '@/lib/visit-ta
 import { goBack } from '@/lib/navigation';
 import { type PublicProfile } from '@/lib/public-profile';
 import { userErrorMessage } from '@/lib/user-error';
+import { CAMERA_NEEDED, PHOTOS_NEEDED } from '@/lib/permissions';
+
+// The preview's handlers. A preview has nothing to like, share or delete.
+function noop() {}
+
+// Which sheet and which dust plate this review gets. At module scope because
+// the React Compiler's lint counts Math.random() inside a component as an
+// impure call during render — it cannot see that this only ever runs inside
+// the submit handler.
+function drawCard() {
+  return {
+    stock: Math.floor(Math.random() * BLANK_COUNT),
+    grain: Math.floor(Math.random() * GRAIN_COUNT),
+  };
+}
 
 // Mirrors edit-visit/[id].tsx's own PhotoSlot pattern — needed only for
 // resuming a draft, which (unlike a fresh review) can arrive with photos
@@ -209,17 +211,23 @@ export default function ReviewFormScreen() {
     // rule is pointing at.
     if (!peopleQuery.trim()) return;
 
+    // Set once the query moves on, so a slow answer to an earlier query
+    // cannot land over the answer to the one now in the field.
+    let stale = false;
     peopleDebounceRef.current = setTimeout(async () => {
       try {
         const results = await searchUsers(peopleQuery, session.user.id);
+        if (stale) return;
         setPeopleSuggestions(results);
-        setPeopleAvatarUrls(results.length > 0 ? await getAvatarViewUrls(results.map((u) => u.id)) : {});
+        const avatars = results.length > 0 ? await getAvatarViewUrls(results.map((u) => u.id)).catch(() => ({})) : {};
+        if (!stale) setPeopleAvatarUrls(avatars);
       } catch (err) {
-        setError(userErrorMessage(err, 'Search failed.'));
+        if (!stale) setError(userErrorMessage(err, 'Could not search people just now. Try again.'));
       }
     }, DEBOUNCE_MS);
 
     return () => {
+      stale = true;
       if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     };
   }, [peopleQuery, session]);
@@ -420,8 +428,8 @@ export default function ReviewFormScreen() {
     if (result === 'denied') {
       setError(
         source === 'camera'
-          ? 'Camera permission is required to take photos.'
-          : 'Photo library permission is required to add photos.'
+          ? CAMERA_NEEDED
+          : PHOTOS_NEEDED
       );
       pickImageResolveRef.current?.(null);
     } else {
@@ -677,8 +685,17 @@ export default function ReviewFormScreen() {
           .insert(taggedUsers.map((user) => ({ visit_id: visitId, user_id: user.id })));
       }
 
+      // From here on the review exists, so nothing below may throw into the
+      // catch at the end: that says "Could not save that visit." about a
+      // visit that saved, and skipped the photo uploads after it, losing
+      // them without a word. Each part that fails is named instead.
+      let tagsFailed = false;
       if (selectedTagSlugs.length > 0) {
-        await setVisitTags(visitId, selectedTagSlugs);
+        try {
+          await setVisitTags(visitId, selectedTagSlugs);
+        } catch {
+          tagsFailed = true;
+        }
       }
 
       // The draft path already uploaded its new photo slots above, before
@@ -703,9 +720,15 @@ export default function ReviewFormScreen() {
         }
         setPendingPhotos(stillPending);
         if (stillPending.length > 0) {
-          setError(`Visit saved, but ${stillPending.length} photo(s) failed to upload. Try again below.`);
+          setError(
+            tagsFailed
+              ? `Visit saved, but its tags could not be added and ${stillPending.length} photo(s) failed to upload. Try the photos again below.`
+              : `Visit saved, but ${stillPending.length} photo(s) failed to upload. Try again below.`,
+          );
+          return;
         }
       }
+      if (tagsFailed) setError('Visit saved, but its tags could not be added.');
     } catch (err) {
       setError(userErrorMessage(err, isPublishingDraft ? 'Could not publish that draft.' : 'Could not save that visit.'));
     } finally {
@@ -714,6 +737,7 @@ export default function ReviewFormScreen() {
   }
 
   const totalPhotoCount = pendingPhotos.length + uploadedPhotoUris.length;
+  const errorLine = error ? <FormError message={error} /> : null;
 
   // Whichever photo model is currently active (draft slots vs. a fresh
   // review's pending/uploaded pair) reduced to the same {url, aspectRatio}
@@ -793,11 +817,11 @@ export default function ReviewFormScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
-        {error && (
-          <ThemedText type="small" themeColor="danger">
-            {error}
-          </ThemedText>
-        )}
+        {/* Up here only before a place is picked, when there is nothing
+            further down to press. After that it sits by the button that was
+            pressed: up here, a failed save on this long form showed up
+            off screen and Save seemed to do nothing. */}
+        {!selectedPlace && errorLine}
 
         <JournalPage seed="form-0" accentIndex={0}>
           <Chapter number={1} title="Where did you go?" seed="form-0" />
@@ -1123,6 +1147,8 @@ export default function ReviewFormScreen() {
                 />
               </View>
 
+              {errorLine}
+
               <Button
                 label={currentDraftId ? 'Publish' : 'Save visit'}
                 onPress={handleSaveVisit}
@@ -1133,6 +1159,8 @@ export default function ReviewFormScreen() {
           ) : (
             <JournalPage seed="form-2" accentIndex={2}>
               <Chapter number={5} title="Posted." seed="form-2" />
+
+              {errorLine}
 
               {uploadedPhotoUris.length > 0 && (
                 <View style={styles.photoRow}>

@@ -9,6 +9,7 @@ import { MAX_VISIT_PHOTOS } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/error-notice';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -27,6 +28,7 @@ import {
 } from '@/lib/photo-clustering';
 import { cachePlaceHierarchy } from '@/lib/places-cache';
 import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
 
 // Local date, not toISOString() — same reasoning as review-form.tsx's own
 // todayIsoDate() (UTC rolls over to "tomorrow" in the evening for any
@@ -74,13 +76,16 @@ export default function BulkUploadScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Some drafts were made but not everything went: offer the way to them.
+  const [hasDrafts, setHasDrafts] = useState(false);
 
   async function handleChoosePhotos() {
     if (!session) return;
     setError(null);
+    setHasDrafts(false);
     const result = await pickMultipleImagesFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -109,6 +114,8 @@ export default function BulkUploadScreen() {
 
     let failedPhotoCount = 0;
     let cappedPhotoCount = 0;
+    let createdCount = 0;
+    let lastDraftError: unknown = null;
 
     for (const [index, cluster] of clusters.entries()) {
       try {
@@ -133,6 +140,7 @@ export default function BulkUploadScreen() {
         // usable EXIF date at all.
         const visitedOn = earliestTakenOn(cluster.photos) ?? todayIsoDate();
         const draft = await createDraft({ userId: session.user.id, placeId, visitedOn });
+        createdCount += 1;
 
         const photosToUpload = cluster.photos.slice(0, MAX_VISIT_PHOTOS);
         cappedPhotoCount += cluster.photos.length - photosToUpload.length;
@@ -152,17 +160,32 @@ export default function BulkUploadScreen() {
           }
         }
       } catch (err) {
-        setError(userErrorMessage(err, 'Could not create some drafts.'));
+        lastDraftError = err;
       }
       setProgress({ done: index + 1, total: clusters.length });
     }
 
     setIsProcessing(false);
-    if (failedPhotoCount > 0 || cappedPhotoCount > 0) {
-      const parts: string[] = [];
-      if (failedPhotoCount > 0) parts.push(`${failedPhotoCount} photo${failedPhotoCount === 1 ? '' : 's'} failed to upload`);
-      if (cappedPhotoCount > 0) parts.push(`${cappedPhotoCount} photo${cappedPhotoCount === 1 ? '' : 's'} skipped (max ${MAX_VISIT_PHOTOS} per draft)`);
+    setProgress(null);
+
+    // Every one of these used to be set and then left behind at once, by
+    // going straight to Drafts: nobody saw them. When nothing could be made
+    // at all (no connection, say) that landed on an empty Drafts screen with
+    // no word of why. Now this screen stays up whenever there is something
+    // to say, and only goes on by itself when everything worked.
+    if (createdCount === 0) {
+      setError(userErrorMessage(lastDraftError, 'Could not create those drafts. Try again.'));
+      return;
+    }
+    const parts: string[] = [];
+    const notMade = clusters.length - createdCount;
+    if (notMade > 0) parts.push(`${notMade} draft${notMade === 1 ? '' : 's'} could not be made`);
+    if (failedPhotoCount > 0) parts.push(`${failedPhotoCount} photo${failedPhotoCount === 1 ? '' : 's'} failed to upload`);
+    if (cappedPhotoCount > 0) parts.push(`${cappedPhotoCount} photo${cappedPhotoCount === 1 ? '' : 's'} skipped (max ${MAX_VISIT_PHOTOS} per draft)`);
+    if (parts.length > 0) {
       setError(`Drafts created, but ${parts.join(' and ')}. You can add more from each draft.`);
+      setHasDrafts(true);
+      return;
     }
     router.replace('/drafts');
   }
@@ -182,11 +205,7 @@ export default function BulkUploadScreen() {
             {copy.blurb}
           </ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="danger">
-              {error}
-            </ThemedText>
-          )}
+          {error && <FormError message={error} />}
 
           {progress && (
             <ThemedText type="meta">
@@ -194,7 +213,14 @@ export default function BulkUploadScreen() {
             </ThemedText>
           )}
 
-          <Button label="Choose photos" onPress={handleChoosePhotos} loading={isProcessing} />
+          {hasDrafts && <Button label="See your drafts" onPress={() => router.replace('/drafts')} />}
+
+          <Button
+            label="Choose photos"
+            variant={hasDrafts ? 'secondary' : 'primary'}
+            onPress={handleChoosePhotos}
+            loading={isProcessing}
+          />
         </Animated.ScrollView>
       </SafeAreaView>
     </ThemedView>

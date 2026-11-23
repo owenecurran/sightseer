@@ -94,15 +94,20 @@ export default function AllReviewsScreen() {
         </View>
 
         <View style={styles.browser}>
-          <ReviewBrowser
-            items={items}
-            photoUrls={photoUrls}
-            viewerId={session?.user.id}
-            isOwner={isSelf}
-            onRemove={handleRemove}
-            removeMessage="Delete this review? This can't be undone."
-            contentPaddingBottom={bottomInset}
-          />
+          {/* Not when the load failed and there is nothing to show: the
+              browser's own "No reviews yet." read as an empty account under
+              the error. A failed delete leaves the list, so it still shows. */}
+          {(items.length > 0 || !error) && (
+            <ReviewBrowser
+              items={items}
+              photoUrls={photoUrls}
+              viewerId={session?.user.id}
+              isOwner={isSelf}
+              onRemove={handleRemove}
+              removeMessage="Delete this review? This can't be undone."
+              contentPaddingBottom={bottomInset}
+            />
+          )}
         </View>
       </SafeAreaView>
     </ThemedView>

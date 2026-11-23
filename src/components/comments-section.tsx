@@ -107,7 +107,11 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
     listComments(visitId)
       .then((fetched) => {
         setComments(fetched);
-        return getAvatarViewUrls([...new Set(fetched.map((c) => c.userId))]);
+        // Avatars are extras: their failing used to put "Could not load
+        // comments." over comments that had loaded.
+        return getAvatarViewUrls([...new Set(fetched.map((c) => c.userId))]).catch(
+          () => ({}) as Record<string, string>,
+        );
       })
       .then(setAvatarUrls)
       .catch((err) => setError(userErrorMessage(err, 'Could not load comments.')))

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { BoardMapView } from '@/components/board-views/map-view';
@@ -13,7 +13,7 @@ import {
   type ReviewSortMode,
 } from '@/components/reviews-sort-control';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 import { Fold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -85,20 +85,10 @@ export function ReviewBrowser({
   // these is a panel of the sheet's unfold.
   const chips = (
     <Fold style={styles.controlsRow}>
+      {/* Typed and ringed in pen, as Search's filters and the feed's
+          switcher are, where these were pill chips. */}
       <View style={styles.modeRow}>
-        {modes.map((mode) => (
-          <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
-            <ThemedView
-              type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'}
-              style={styles.modeChip}>
-              <ThemedText
-                type="small"
-                themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
-                {mode.label}
-              </ThemedText>
-            </ThemedView>
-          </Pressable>
-        ))}
+        <CircledTabs items={modes} active={viewMode} onChange={setViewMode} />
       </View>
       {/* Not offered on the map, which has no order to sort into. */}
       {viewMode !== 'map' && <ReviewsSortControl active={sortMode} onChange={setSortMode} />}
@@ -189,23 +179,18 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  // The typed modes keep a line to themselves when the sort menu will not
+  // fit beside them, rather than squeezing until "Map" drops on its own.
   controlsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
     paddingBottom: Spacing.two,
   },
   modeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-    flexShrink: 1,
-  },
-  modeChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.four,
+    maxWidth: '100%',
   },
   scrollContent: {
     paddingTop: Spacing.one,

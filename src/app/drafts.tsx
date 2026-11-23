@@ -43,6 +43,9 @@ export default function DraftsScreen() {
   const scrollHandler = useHideOnScrollHandler();
   const [drafts, setDrafts] = useState<DraftListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The load itself failed, as opposed to an action on the list. The empty
+  // line is not shown then: it said there was nothing here, under the error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -51,9 +54,13 @@ export default function DraftsScreen() {
     useCallback(() => {
       if (!session) return;
       setError(null);
+      setLoadFailed(false);
       listMyDrafts(session.user.id)
         .then(setDrafts)
-        .catch((err) => setError(userErrorMessage(err, 'Could not load your drafts.')))
+        .catch((err) => {
+          setLoadFailed(true);
+          setError(userErrorMessage(err, 'Could not load your drafts.'));
+        })
         .finally(() => setHasLoadedOnce(true));
     }, [session])
   );
@@ -89,11 +96,13 @@ export default function DraftsScreen() {
           {error && <ErrorNotice message={error} />}
 
           {drafts.length === 0 ? (
-            <View style={styles.emptyState}>
-              <ThemedText type="caption">
-                No drafts yet.
-              </ThemedText>
-            </View>
+            loadFailed ? null : (
+              <View style={styles.emptyState}>
+                <ThemedText type="caption">
+                  No drafts yet.
+                </ThemedText>
+              </View>
+            )
           ) : (
             <View style={styles.list}>
               {drafts.map((draft) => (

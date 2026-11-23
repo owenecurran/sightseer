@@ -50,13 +50,15 @@ const noop = () => {};
 // from in-progress editor state instead of a saved attachment, and never
 // navigates on tap (onPress: noop / ReviewPromptCard's own `disabled`).
 export function AttachmentPreview({ label, data }: AttachmentPreviewProps) {
+  // A line of caption, as the app's other "nothing here yet" lines are. It
+  // was a dashed box: the one dashed outline left after the empty photo and
+  // sticker slots lost theirs (see EmptySlot), for reading as a drawing of
+  // an empty space rather than an empty space.
   if (data.kind === 'empty') {
     return (
-      <View style={styles.emptyBox}>
-        <ThemedText type="caption">
-          Preview will appear here once you finish this attachment.
-        </ThemedText>
-      </View>
+      <ThemedText type="caption">
+        Preview will appear here once you finish this attachment.
+      </ThemedText>
     );
   }
 
@@ -114,14 +116,6 @@ export function AttachmentPreview({ label, data }: AttachmentPreviewProps) {
 }
 
 const styles = StyleSheet.create({
-  emptyBox: {
-    borderWidth: 1,
-    borderColor: 'rgba(234,231,207,0.2)',
-    borderStyle: 'dashed',
-    borderRadius: CARD_RADIUS,
-    padding: Spacing.three,
-    alignItems: 'center',
-  },
   borderedBox: {
     borderWidth: 1,
     borderColor: 'rgba(234,231,207,0.35)',

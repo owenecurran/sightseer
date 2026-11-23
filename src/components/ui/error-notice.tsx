@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Spacing } from '@/constants/theme';
 import { reportError } from '@/lib/error-report';
+import { needsSettings, openAppSettings } from '@/lib/permissions';
 import { errorBehind } from '@/lib/user-error';
 
 type ErrorNoticeProps = {
@@ -39,6 +40,10 @@ export function ErrorNotice({ message, onRetry, style }: ErrorNoticeProps) {
     router.push({ pathname: '/report-bug', params: { from: pathname } });
   }
 
+  // A permission only Settings can give back: going there is the one thing
+  // that helps. Reloading would refuse again, and there is nothing to report.
+  if (needsSettings(message)) return <FormError message={message} style={style} />;
+
   return (
     <View style={[styles.notice, style]}>
       <ThemedText type="small" themeColor="danger">
@@ -51,10 +56,36 @@ export function ErrorNotice({ message, onRetry, style }: ErrorNoticeProps) {
           // again" would promise to repeat the save, which it does not.
           <Button label={onRetry ? 'Try again' : 'Reload page'} variant="secondary" onPress={retry} />
         )}
-        <ThemedText type="link" onPress={tellUs}>
+        {/* Typed, as the text action beside a button is everywhere else
+            (Cancel under Save, Close on a menu). */}
+        <ThemedText type="action" onPress={tellUs}>
           Tell us about it
         </ThemedText>
       </View>
+    </View>
+  );
+}
+
+type FormErrorProps = {
+  message: string;
+  style?: StyleProp<ViewStyle>;
+};
+
+// A form's own error line: the sentence in red, as every form has it. When
+// the sentence is about a permission the phone has refused (see
+// permissions.ts), it comes with the way to Settings, typed as the text
+// action beside a button is everywhere else.
+export function FormError({ message, style }: FormErrorProps) {
+  return (
+    <View style={[styles.notice, style]}>
+      <ThemedText type="small" themeColor="danger">
+        {message}
+      </ThemedText>
+      {needsSettings(message) && (
+        <ThemedText type="action" onPress={openAppSettings}>
+          Open settings
+        </ThemedText>
+      )}
     </View>
   );
 }

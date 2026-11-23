@@ -14,7 +14,7 @@ import { buildPlaceMapUrl } from '@/lib/place-map-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { StretchText } from '@/components/ui/stretch-text';
-import { TagSticker } from '@/components/ui/tag-sticker';
+import { TagStickerGraphic } from '@/components/ui/tag-sticker-graphic';
 import { FilterSortMenu, type MenuOption } from '@/components/ui/filter-sort-menu';
 import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -92,6 +92,10 @@ export default function PlaceDetailScreen() {
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [place, setPlace] = useState<PlaceRow | null>(null);
+  // Set once the rating and count have loaded. A failed load used to say
+  // "No reviews yet" (its starting value, not a fact) under "Place", with an
+  // Add your review button for a place that had not loaded.
+  const [isLoaded, setIsLoaded] = useState(false);
   const [ancestors, setAncestors] = useState<PlaceAncestor[]>([]);
   const [avgRating, setAvgRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
@@ -159,6 +163,7 @@ export default function PlaceDetailScreen() {
         setReviewCount(aggregate?.review_count ? Number(aggregate.review_count) : 0);
         setVisits(visitsData);
         setFollowedIds(new Set(followed));
+        setIsLoaded(true);
 
         const photoIds = visitsData.flatMap((v) => v.photoIds);
         if (photoIds.length > 0) {
@@ -328,21 +333,25 @@ export default function PlaceDetailScreen() {
                   WITHOUT a rating (avg_rating comes back null, review_count
                   does not) announced "No reviews yet" directly above the
                   list of them. */}
-              <View style={styles.aggregateRow}>
-                {avgRating !== null && (
-                  <RatingGlassBadgeGated rating={avgRating} size={HEADER_STAMP_SIZE} />
-                )}
-                <ThemedText type="default">
-                  {reviewCount === 0
-                    ? 'No reviews yet'
-                    : `${reviewCount} review${reviewCount === 1 ? '' : 's'}`}
-                </ThemedText>
-              </View>
+              {isLoaded && (
+                <View style={styles.aggregateRow}>
+                  {avgRating !== null && (
+                    <RatingGlassBadgeGated rating={avgRating} size={HEADER_STAMP_SIZE} />
+                  )}
+                  <ThemedText type="default">
+                    {reviewCount === 0
+                      ? 'No reviews yet'
+                      : `${reviewCount} review${reviewCount === 1 ? '' : 's'}`}
+                  </ThemedText>
+                </View>
+              )}
 
-              <Button
-                label="Add your review"
-                onPress={() => router.push({ pathname: '/review-form', params: { placeId: id } })}
-              />
+              {place && (
+                <Button
+                  label="Add your review"
+                  onPress={() => router.push({ pathname: '/review-form', params: { placeId: id } })}
+                />
+              )}
 
               {error && <ErrorNotice message={error} />}
 
@@ -407,16 +416,23 @@ export default function PlaceDetailScreen() {
                                 ),
                               // Tags keep their sticker in the sheet — they
                               // are the same objects that appear on reviews,
-                              // and the colour is how you recognise them.
-                              renderOption: (option: MenuOption) => (
-                                <TagSticker
-                                  slug={option.value}
-                                  label={
-                                    option.count != null
-                                      ? `${option.label} ${option.count}`
-                                      : option.label
-                                  }
-                                />
+                              // and the sticker is how you recognise them.
+                              // The one drawn on the backs of the cards now,
+                              // with its name beside it as the tag picker
+                              // shows it: this was the old coloured label,
+                              // which reviews no longer carry.
+                              renderOption: (option: MenuOption, isSelected: boolean) => (
+                                <View style={styles.tagOption}>
+                                  <TagStickerGraphic
+                                    slug={option.value}
+                                    label={option.label}
+                                    size={36}
+                                    interactive={false}
+                                  />
+                                  <ThemedText type="small" themeColor={isSelected ? 'text' : 'textSecondary'}>
+                                    {option.count != null ? `${option.label}  ${option.count}` : option.label}
+                                  </ThemedText>
+                                </View>
                               ),
                             },
                           ] as const)
@@ -434,11 +450,15 @@ export default function PlaceDetailScreen() {
             </View>
           }
           ListEmptyComponent={
-            <View style={styles.contentWrap}>
-              <ThemedText type="caption">
-                {visits.length === 0 ? 'No reviews yet.' : 'No reviews match these filters.'}
-              </ThemedText>
-            </View>
+            // Nothing after a failed load: "No reviews yet." is only true of
+            // a place whose reviews loaded and there are none.
+            isLoaded ? (
+              <View style={styles.contentWrap}>
+                <ThemedText type="caption">
+                  {visits.length === 0 ? 'No reviews yet.' : 'No reviews match these filters.'}
+                </ThemedText>
+              </View>
+            ) : null
           }
           renderItem={({ item }: { item: PlaceVisit }) => (
             // The same postcard the feed draws. What the hand-built row used
@@ -470,6 +490,11 @@ ${item.note ?? ''}`.trim());
 }
 
 const styles = StyleSheet.create({
+  tagOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
   container: {
     flex: 1,
   },

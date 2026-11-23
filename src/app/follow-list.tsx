@@ -98,9 +98,12 @@ export default function FollowListScreen() {
             </>
           }
           ListEmptyComponent={
-            <ThemedText type="caption">
-              {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
-            </ThemedText>
+            // Not under a failed load, which has nobody in it either.
+            error ? null : (
+              <ThemedText type="caption">
+                {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
+              </ThemedText>
+            )
           }
           renderItem={({ item }) => (
             <UserRow

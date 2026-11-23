@@ -29,16 +29,21 @@ export default function BlockedAccountsScreen() {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The load itself failed, as opposed to an action on the list. The empty
+  // line is not shown then: it said there was nothing here, under the error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       if (!session) return;
+      setLoadFailed(false);
       listBlockedUsers(session.user.id)
         .then(setBlockedUsers)
-        .catch((err) =>
-          setError(userErrorMessage(err, 'Could not load blocked accounts.'))
-        )
+        .catch((err) => {
+          setLoadFailed(true);
+          setError(userErrorMessage(err, 'Could not load blocked accounts.'));
+        })
         .finally(() => setHasLoadedOnce(true));
     }, [session])
   );
@@ -78,9 +83,11 @@ export default function BlockedAccountsScreen() {
           {error && <ErrorNotice message={error} />}
 
           {blockedUsers.length === 0 ? (
-            <ThemedText type="caption">
-              You have not blocked anyone.
-            </ThemedText>
+            loadFailed ? null : (
+              <ThemedText type="caption">
+                You have not blocked anyone.
+              </ThemedText>
+            )
           ) : (
             <View style={styles.list}>
               {blockedUsers.map((user) => (

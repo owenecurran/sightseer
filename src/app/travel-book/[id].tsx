@@ -63,7 +63,9 @@ import {
 import type { Database } from '@/lib/database.types';
 import type { TaggedVisit } from '@/lib/tagged-visits';
 import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
 import { ErrorNotice } from '@/components/ui/error-notice';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -98,7 +100,10 @@ const VIEW_MODES: { key: CollectionViewMode; label: string }[] = [
 ];
 
 export default function TravelBookDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `missing` is set by New travel book to how many collaborators could not
+  // be added when it was made.
+  const { id, missing } = useLocalSearchParams<{ id: string; missing?: string }>();
+  const collaboratorsMissing = Number(missing) || 0;
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [book, setBook] = useState<TravelBookRow | null>(null);
@@ -282,7 +287,7 @@ export default function TravelBookDetailScreen() {
     if (!book) return;
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -443,7 +448,16 @@ export default function TravelBookDetailScreen() {
             </Pressable>
           )}
 
-          {!isOwner && session && (
+          {collaboratorsMissing > 0 && isOwner && (
+            <ThemedText type="small" themeColor="danger">
+              {collaboratorsMissing === 1
+                ? 'The travel book was made, but one collaborator could not be added. Add them again in its settings.'
+                : `The travel book was made, but ${collaboratorsMissing} collaborators could not be added. Add them again in its settings.`}
+            </ThemedText>
+          )}
+
+          {/* Not for a book that failed to load: there is nothing to save. */}
+          {!isOwner && session && book && (
             <SaveCollectionButton
               isSaved={savedState != null}
               notifyOnNewItems={savedState?.notifyOnNewItems ?? false}
@@ -464,26 +478,15 @@ export default function TravelBookDetailScreen() {
 
           {error && <ErrorNotice message={error} />}
 
-          {items.length > 0 && (
-            <View style={styles.modeRow}>
-              {VIEW_MODES.map((mode) => (
-                <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
-                  <ThemedView
-                    type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'}
-                    style={styles.modeChip}>
-                    <ThemedText
-                      type="small"
-                      themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
-                      {mode.label}
-                    </ThemedText>
-                  </ThemedView>
-                </Pressable>
-              ))}
-            </View>
-          )}
+          {/* Typed and ringed in pen, as Search's filters and the feed's
+              switcher are, where these were pill chips. */}
+          {items.length > 0 && <CircledTabs items={VIEW_MODES} active={viewMode} onChange={setViewMode} />}
 
           <View style={styles.section}>
-            {items.length === 0 && (
+            {/* Only once the book has loaded: a failed load has no items
+                either, and said "No reviews in this trip yet." under the
+                error, as if the book were empty. */}
+            {book && items.length === 0 && (
               <ThemedText type="caption">
                 No reviews in this trip yet.
               </ThemedText>
@@ -700,9 +703,12 @@ ${item.note ?? ''}`.trim());
                 </ThemedText>
               </PaperPanel>
             ) : (
-              <ThemedText type="caption">
-                No recap written yet.
-              </ThemedText>
+              // Only of a book that loaded.
+              book && (
+                <ThemedText type="caption">
+                  No recap written yet.
+                </ThemedText>
+              )
             )}
             {session && book?.user_id === session.user.id && (
               <Button
@@ -778,15 +784,6 @@ const styles = StyleSheet.create({
   },
   // A postcard entry: no panel, just the card and whatever belongs to the
   // BOOK rather than to the review stacked under it.
-  modeRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  modeChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.four,
-  },
   itemStack: {
     gap: Spacing.two,
   },

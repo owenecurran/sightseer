@@ -26,6 +26,9 @@ export default function AdminArticlesScreen() {
   const scrollHandler = useHideOnScrollHandler();
   const [articles, setArticles] = useState<AdminArticleListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The load itself failed, as opposed to an action on the list. The empty
+  // line is not shown then: it said there was nothing here, under the error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -33,9 +36,13 @@ export default function AdminArticlesScreen() {
   useFocusEffect(
     useCallback(() => {
       setError(null);
+      setLoadFailed(false);
       listAllArticlesForAdmin()
         .then(setArticles)
-        .catch((err) => setError(userErrorMessage(err, 'Could not load articles.')))
+        .catch((err) => {
+          setLoadFailed(true);
+          setError(userErrorMessage(err, 'Could not load articles.'));
+        })
         .finally(() => setHasLoadedOnce(true));
     }, [])
   );
@@ -73,9 +80,11 @@ export default function AdminArticlesScreen() {
           {error && <ErrorNotice message={error} />}
 
           {articles.length === 0 ? (
-            <ThemedText type="caption">
-              No articles yet.
-            </ThemedText>
+            loadFailed ? null : (
+              <ThemedText type="caption">
+                No articles yet.
+              </ThemedText>
+            )
           ) : (
             <View style={styles.list}>
               {articles.map((article) => (

@@ -29,6 +29,7 @@ import { ensureInviteCode, inviteUrl } from "@/lib/invites";
 import { shareText } from "@/lib/share";
 import { SITE_ORIGIN } from "@/lib/site";
 import { userErrorMessage } from '@/lib/user-error';
+import { openAppSettings } from '@/lib/permissions';
 
 type MatchedRow = { contactName: string; user: MatchedUser };
 type UnmatchedRow = { contactName: string };
@@ -266,12 +267,18 @@ export function FindFriendsPanel({
 
         {showContacts && status === "loading" && <PageLoader />}
 
+        {/* With the way there: once refused, the phone does not ask again,
+            so Settings is the only place this can be turned back on. */}
         {showContacts && status === "denied" && (
-          <ThemedText type="caption">
-            Contacts permission was denied. You can allow it from your
-            device&apos;s system settings for Sightseer, then come back and try
-            again.
-          </ThemedText>
+          <View style={styles.section}>
+            <ThemedText type="caption">
+              Sightseer needs access to your contacts for this. Allow it in
+              Settings, then come back and try again.
+            </ThemedText>
+            <ThemedText type="action" onPress={openAppSettings}>
+              Open settings
+            </ThemedText>
+          </View>
         )}
 
         {error && (

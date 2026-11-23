@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
@@ -133,17 +133,17 @@ export default function BoardSettingsScreen() {
                 <>
                   <View style={styles.group}>
                     <ThemedText type="sectionLabel">Ranking</ThemedText>
+                    {/* Tick one, as Settings' distance units are: ringed
+                        boxes with the explanation under each, where these
+                        were two slabs with the chosen one shaded. */}
                     {LIST_STYLES.map((style) => (
-                      <Pressable key={style.key} onPress={() => handleSetListStyle(style.key)}>
-                        <ThemedView
-                          type={board?.list_style === style.key ? 'backgroundSelected' : 'backgroundElement'}
-                          style={styles.option}>
-                          <ThemedText type="headline">{style.label}</ThemedText>
-                          <ThemedText type="caption">
-                            {style.description}
-                          </ThemedText>
-                        </ThemedView>
-                      </Pressable>
+                      <CheckboxRow
+                        key={style.key}
+                        label={style.label}
+                        description={style.description}
+                        checked={board?.list_style === style.key}
+                        onPress={() => handleSetListStyle(style.key)}
+                      />
                     ))}
                   </View>
 
@@ -210,11 +210,5 @@ const styles = StyleSheet.create({
   },
   group: {
     gap: Spacing.two,
-  },
-  option: {
-    gap: Spacing.half,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
   },
 });

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { AppState, Linking, StyleSheet } from 'react-native';
+import { AppState, Linking, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Button } from '@/components/ui/button';
-import { Spacing } from '@/constants/theme';
+import { PaperNote } from '@/components/ui/journal';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { hasSupportEmail, SUPPORT_EMAIL } from '@/lib/legal';
 
@@ -23,6 +23,7 @@ export function AccountUnreachable() {
   const [isRetrying, setIsRetrying] = useState(false);
 
   async function retry() {
+    if (isRetrying) return;
     setIsRetrying(true);
     try {
       await refreshProfile();
@@ -43,22 +44,30 @@ export function AccountUnreachable() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="displaySerif">Could not reach Sightseer</ThemedText>
-        <ThemedText type="caption">
-          Your account is fine, it just could not load. Check your connection and try again.
-        </ThemedText>
-        <Button label="Try again" onPress={() => void retry()} loading={isRetrying} />
-        {hasSupportEmail && (
-          <ThemedText
-            type="link"
-            onPress={() =>
-              void Linking.openURL(
-                `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Sightseer will not load my account')}`,
-              ).catch(() => {})
-            }>
-            Still stuck? Email {SUPPORT_EMAIL}
-          </ThemedText>
-        )}
+        <View style={styles.content}>
+          {/* The note the app leaves for the person (see PaperNote), as on
+              the crash page, rather than a title over a paragraph and a
+              button. Its red-pen line says when it is already trying. */}
+          <PaperNote
+            seed="account-unreachable"
+            title="Could not reach Sightseer"
+            body="Your account is fine, it just could not load. Check that you are connected."
+            actionLabel={isRetrying ? 'trying' : 'try again'}
+            onPress={() => void retry()}
+          />
+          {hasSupportEmail && (
+            <ThemedText
+              type="action"
+              style={styles.after}
+              onPress={() =>
+                void Linking.openURL(
+                  `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Sightseer will not load my account')}`,
+                ).catch(() => {})
+              }>
+              Still stuck? Email us
+            </ThemedText>
+          )}
+        </View>
       </SafeAreaView>
     </ThemedView>
   );
@@ -71,7 +80,15 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     justifyContent: 'center',
+  },
+  content: {
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
     paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
+    gap: Spacing.five,
+  },
+  after: {
+    alignSelf: 'center',
   },
 });

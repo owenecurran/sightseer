@@ -53,9 +53,10 @@ export function HomeLocationPrompt({ suggestion, onResolved }: HomeLocationPromp
     try {
       await dismissHomeLocationPrompt(trip);
       onResolved();
-    } catch {
-      // Nothing actionable for the user here — the prompt simply stays and
-      // can be dismissed again next time.
+    } catch (err) {
+      // Said rather than swallowed: pressing it and seeing nothing happen
+      // read as a button that does not work.
+      setError(userErrorMessage(err, 'Could not dismiss this. Try again.'));
       setIsBusy(false);
     }
   }

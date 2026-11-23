@@ -401,8 +401,10 @@ export function DiscoverView({ ref }: { ref?: Ref<DiscoverViewHandle> }) {
     [viewerId],
   );
 
+  // Not after a failed load, which has nothing in it either.
   const isEmpty =
     !loading &&
+    !error &&
     places.length === 0 &&
     reviews.length === 0 &&
     articles.length === 0 &&
