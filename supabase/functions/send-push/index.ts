@@ -97,6 +97,17 @@ export default {
     }
     const notification = data as unknown as NotificationRow;
 
+    if (notification.type === "board_item_added" || notification.type === "travel_book_item_added") {
+      const { data: allowed, error: visibilityError } = await supabase.rpc(
+        "can_deliver_collection_notification", { p_notification_id: notification.id },
+      );
+      if (visibilityError) {
+        console.error("send-push: collection visibility check failed", visibilityError);
+        return Response.json({ error: "Could not check notification visibility" }, { status: 500 });
+      }
+      if (!allowed) return Response.json({ sent: 0, reason: "collection is no longer visible" });
+    }
+
     const { data: tokens } = await supabase
       .from("push_tokens")
       .select("token")

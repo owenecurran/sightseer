@@ -12,14 +12,17 @@ const USER_AGENT = "alien-app (contact: owenecurran@gmail.com)";
 
 export default {
   fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
-    const { placeId } = await req.json();
+    if (req.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
+
+    const body = await req.json().catch(() => null);
+    const placeId = body?.placeId;
     if (typeof placeId !== "string") {
       return Response.json({ error: "placeId is required" }, { status: 400 });
     }
 
     const { data: place, error } = await ctx.supabase
       .from("places")
-      .select("id, name, level, boundary_geometry, parent:places!parent_id(name)")
+      .select("name, level, boundary_geometry, parent_id")
       .eq("id", placeId)
       .single();
 
@@ -35,25 +38,39 @@ export default {
 
     // Include the parent (country) name for admin_area_1 disambiguation —
     // "Colorado" alone is ambiguous globally, "Colorado, United States" isn't.
-    const query = place.parent?.name ? `${place.name}, ${place.parent.name}` : place.name;
+    let query = place.name;
+    if (place.level === "admin_area_1" && place.parent_id) {
+      const { data: country, error: countryError } = await ctx.supabase
+        .from("places").select("name").eq("id", place.parent_id).single();
+      if (countryError || !country) return Response.json({ error: "Region's country not found" }, { status: 404 });
+      query = `${place.name}, ${country.name}`;
+    }
     const url = `${NOMINATIM_URL}?q=${encodeURIComponent(query)}&format=json&polygon_geojson=1&limit=1`;
 
-    const response = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-    if (!response.ok) {
-      return Response.json({ error: `Nominatim request failed (${response.status})` }, { status: 502 });
+    let geojson;
+    try {
+      const response = await fetch(url, {
+        headers: { "User-Agent": USER_AGENT },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!response.ok) throw new Error(`Nominatim returned ${response.status}`);
+      const results = await response.json();
+      geojson = results[0]?.geojson;
+    } catch (err) {
+      console.error("fetch-place-boundary: provider lookup", err);
+      return Response.json({ error: "Could not look up the boundary" }, { status: 502 });
     }
-    const results = await response.json();
-    const geojson = results[0]?.geojson;
-    if (!geojson) {
+    if (geojson?.type !== "Polygon" && geojson?.type !== "MultiPolygon") {
       return Response.json({ error: "No boundary found for that place" }, { status: 404 });
     }
 
-    const { error: storeError } = await ctx.supabase.rpc("store_place_boundary", {
+    const { error: storeError } = await ctx.supabaseAdmin.rpc("store_place_boundary", {
       place_id: placeId,
       geojson,
     });
     if (storeError) {
-      return Response.json({ error: storeError.message }, { status: 500 });
+      console.error("fetch-place-boundary: cache write", storeError);
+      return Response.json({ error: "Could not cache the boundary" }, { status: 500 });
     }
 
     return Response.json({ ok: true, cached: false });
