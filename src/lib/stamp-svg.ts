@@ -92,7 +92,10 @@ export type StampContext = {
   placeId?: string;
 };
 
-export function buildStampSvg(rating: number, size: number, context?: StampContext): string {
+// The stamp's layers, bottom to top, as SVG fragments in the stamp's own
+// viewBox. Joined whole by buildStampSvg; drawn apart by the two builders at
+// the end, for a stamp whose rating is being changed.
+function stampLayers(rating: number, size: number, context?: StampContext) {
   const scale = size / STAMP_VIEWBOX_WIDTH;
   const w = STAMP_WINDOW_RECT;
   // The native badge strokes in screen pixels on a canvas already scaled to
@@ -141,18 +144,29 @@ export function buildStampSvg(rating: number, size: number, context?: StampConte
 <g fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="${strokeWidth}" stroke-linejoin="round" stroke-linecap="round">${marks}</g>
 </g>`;
 
-  // Explicit width/height as well as the viewBox: an SVG loaded as an image
-  // source has no intrinsic size from a viewBox alone, and decoders then
-  // refuse to paint it — which is exactly how this first failed on web.
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${STAMP_VIEWBOX_WIDTH}" height="${STAMP_VIEWBOX_HEIGHT}" viewBox="0 0 ${STAMP_VIEWBOX_WIDTH} ${STAMP_VIEWBOX_HEIGHT}">
-<defs><linearGradient id="m" gradientUnits="userSpaceOnUse" x1="${w.x}" y1="${w.y}" x2="${w.x + w.width}" y2="${w.y + w.height}">
+  return {
+    defs: `<defs><linearGradient id="m" gradientUnits="userSpaceOnUse" x1="${w.x}" y1="${w.y}" x2="${w.x + w.width}" y2="${w.y + w.height}">
 <stop offset="0" stop-color="#e8eaec"/><stop offset="0.25" stop-color="#9aa0a6"/><stop offset="0.5" stop-color="#f2f3f4"/><stop offset="0.75" stop-color="#7d838a"/><stop offset="1" stop-color="#e8eaec"/>
-</linearGradient></defs>
-<path d="${STAMP_FRAME_OUTER_SVG}" fill="${stampPaperFor(wearSeed)}"/>
-<rect x="${w.x}" y="${w.y}" width="${w.width}" height="${w.height}" fill="${colorForRating(rating)}"/>
-${windowContent}
-${buildWearSvg(wearSeed)}
+</linearGradient></defs>`,
+    paper: `<path d="${STAMP_FRAME_OUTER_SVG}" fill="${stampPaperFor(wearSeed)}"/>`,
+    window: `<rect x="${w.x}" y="${w.y}" width="${w.width}" height="${w.height}" fill="${colorForRating(rating)}"/>`,
+    artwork: windowContent,
+    wear: buildWearSvg(wearSeed),
+  };
+}
+
+// Explicit width/height as well as the viewBox: an SVG loaded as an image
+// source has no intrinsic size from a viewBox alone, and decoders then refuse
+// to paint it — which is exactly how this first failed on web.
+function svgDocument(body: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${STAMP_VIEWBOX_WIDTH}" height="${STAMP_VIEWBOX_HEIGHT}" viewBox="0 0 ${STAMP_VIEWBOX_WIDTH} ${STAMP_VIEWBOX_HEIGHT}">
+${body}
 </svg>`;
+}
+
+export function buildStampSvg(rating: number, size: number, context?: StampContext): string {
+  const layers = stampLayers(rating, size, context);
+  return svgDocument([layers.defs, layers.paper, layers.window, layers.artwork, layers.wear].join('\n'));
 }
 
 // base64 specifically, not percent-encoding: Android's Glide only decodes
@@ -160,4 +174,19 @@ ${buildWearSvg(wearSeed)}
 // silently fail to load on native.
 export function buildStampDataUri(rating: number, size: number, context?: StampContext): string {
   return svgDataUri(buildStampSvg(rating, size, context));
+}
+
+// The stamp in two images, for drawing it in layers while its rating is being
+// changed (RatingStampSvg's `live`): the paper alone, which no rating
+// changes, and the artwork with the wear over it, which every rating does.
+// The window's colour goes between them as a plain view, so it follows the
+// slider at once while the artwork, the slow part to draw, catches up.
+// Together with that colour they are exactly what buildStampSvg draws.
+export function buildStampFrameDataUri(rating: number, size: number, context?: StampContext): string {
+  return svgDataUri(svgDocument(stampLayers(rating, size, context).paper));
+}
+
+export function buildStampArtworkDataUri(rating: number, size: number, context?: StampContext): string {
+  const layers = stampLayers(rating, size, context);
+  return svgDataUri(svgDocument([layers.defs, layers.artwork, layers.wear].join('\n')));
 }

@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { StyleSheet, View, type FlatList, type ScrollView } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { keyboardAwareScrollRenderer } from '@/components/keyboard-aware-scroll';
+import { JourneyLine } from '@/components/ui/journey-line';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
+import { ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
 import { Fold } from '@/components/ui/unfold';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { VisitCard } from '@/components/visit-card';
@@ -12,6 +14,7 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import type { BoardVisitItem } from '@/lib/boards';
 import { getVisitsByIds, likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
+import { stopOf } from '@/lib/journey';
 import { getPhotoThumbUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 
@@ -29,6 +32,11 @@ type FullReviewsViewProps = {
   // something the card already does.
   onSelectVisit?: (visitId: string) => void;
   selectedVisitId?: string | null;
+  // Draw the road from each card to the next, as the feed and Discover do:
+  // where from and to, how far, how many days. For a list in date order,
+  // where one card following another is a journey; in any other order the
+  // distance between neighbours means nothing.
+  journey?: boolean;
 };
 
 // The cards on this list carry a comment box on their back, and a FlatList
@@ -58,9 +66,14 @@ export function FullReviewsView({
   ownRatings,
   onSelectVisit,
   selectedVisitId,
+  journey = false,
 }: FullReviewsViewProps) {
   const bottomInset = useBottomTabInset();
-  const scrollHandler = useHideOnScrollHandler();
+  // The list's scroll stage, which the roads read to draw themselves out as
+  // they come up the screen (see JourneyLine).
+  const listRef = useRef<FlatList<BoardVisitItem>>(null);
+  const { stage, scrollProps } = useScrollStage(listRef as unknown as RefObject<ScrollView | null>);
+  const scrollHandler = useHideOnScrollHandler(stage.scrollY);
 
   // Keyed by visit id. Rows render as soon as their visit lands rather than
   // waiting for the whole board.
@@ -128,7 +141,10 @@ export function FullReviewsView({
   const visible = items.filter((item) => !deleted.has(item.visitId));
 
   return (
+    <ScrollStageProvider stage={stage}>
     <Animated.FlatList
+      ref={listRef}
+      {...scrollProps}
       renderScrollComponent={renderScroll}
       data={visible}
       keyExtractor={(item: BoardVisitItem) => item.id}
@@ -145,12 +161,23 @@ export function FullReviewsView({
       initialNumToRender={5}
       maxToRenderPerBatch={5}
       windowSize={5}
-      renderItem={({ item }: { item: BoardVisitItem }) => {
+      renderItem={({ item, index }: { item: BoardVisitItem; index: number }) => {
         const ownRating = ownRatings?.[item.placeId];
         const showOwnRating = ownRating != null && item.authorId !== viewerId;
         const visit = visits[item.visitId];
+        const previous = journey && index > 0 ? visits[visible[index - 1].visitId] : undefined;
 
         return (
+          <Fragment>
+          {/* The road in from the card above, once both have loaded. */}
+          {previous && visit && (
+            <JourneyLine
+              from={stopOf(previous)}
+              to={stopOf(visit)}
+              seed={`${previous.id}-${visit.id}`}
+              style={styles.journey}
+            />
+          )}
           <Fold style={styles.card}>
             {/* No author line of our own: the card draws its own byline,
                 avatar and all, and two of them read as a bug. */}
@@ -192,9 +219,11 @@ export function FullReviewsView({
               </View>
             )}
           </Fold>
+          </Fragment>
         );
       }}
     />
+    </ScrollStageProvider>
   );
 }
 
@@ -205,6 +234,12 @@ const styles = StyleSheet.create({
   list: {
     gap: Spacing.four,
     paddingTop: Spacing.three,
+  },
+  // Into the gap above it and up to the next card's byline, as in the feed,
+  // so the road runs from one card to the next with nothing between.
+  journey: {
+    marginTop: -Spacing.four,
+    marginHorizontal: Spacing.four,
   },
   card: {
     gap: Spacing.two,

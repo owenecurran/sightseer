@@ -4,7 +4,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { OutlinedText } from '@/components/ui/outlined-text';
 import { BrandColors } from '@/constants/theme';
-import { buildStampDataUri } from '@/lib/stamp-svg';
+import { colorForRating } from '@/lib/rating-gradient';
+import { buildStampArtworkDataUri, buildStampDataUri, buildStampFrameDataUri } from '@/lib/stamp-svg';
 import { STAMP_VIEWBOX_HEIGHT, STAMP_VIEWBOX_WIDTH, STAMP_WINDOW_RECT } from '@/lib/stamp-shape';
 
 type RatingStampSvgProps = {
@@ -25,9 +26,18 @@ type RatingStampSvgProps = {
   // random draw. See stamp-matching.ts.
   tags?: string[];
   placeId?: string;
+  // For a rating that is being changed as it shows (the rating slider). The
+  // number and the window's colour follow at once; the artwork in the
+  // window follows once the rating settles. See LiveRatingStamp.
+  live?: boolean;
 };
 
 const DEFAULT_SIZE = 52;
+
+// How long the rating has to stay put before the live stamp draws its
+// artwork for it. Long enough to sit out a drag, short enough to read as
+// arriving with the release.
+const ARTWORK_SETTLE_MS = 180;
 
 // How long the number will wait for its artwork before showing regardless.
 const ARTWORK_TIMEOUT_MS = 1000;
@@ -48,7 +58,11 @@ function clamp(n: number, min: number, max: number): number {
 // The number stays a real text node over the window, exactly as the Skia
 // version does it, so it keeps the app's font and its shrink-to-fit
 // behaviour rather than becoming part of the image.
-export function RatingStampSvg({ rating, size = DEFAULT_SIZE, seed, tags, placeId }: RatingStampSvgProps) {
+export function RatingStampSvg(props: RatingStampSvgProps) {
+  return props.live ? <LiveRatingStamp {...props} /> : <StillRatingStamp {...props} />;
+}
+
+function StillRatingStamp({ rating, size = DEFAULT_SIZE, seed, tags, placeId }: RatingStampSvgProps) {
   const scale = size / STAMP_VIEWBOX_WIDTH;
   const height = STAMP_VIEWBOX_HEIGHT * scale;
   const fontSize = clamp(size * 0.3, 11, 26);
@@ -140,7 +154,103 @@ export function RatingStampSvg({ rating, size = DEFAULT_SIZE, seed, tags, placeI
   );
 }
 
+// The stamp in layers, for a rating being changed as it shows.
+//
+// The still stamp is one image, rebuilt and decoded for every rating, and its
+// number waits for it. On the rating slider that is a new image every tenth
+// of a point, so the number and colour trailed the thumb, each step waiting
+// on a decode. Here the stamp comes apart: the paper is one image that never
+// changes, the window's colour is a plain view that changes at once, the
+// number is text that changes at once, and only the artwork (with the wear
+// over it), the slow part, waits for the rating to settle and then appears.
+//
+// The whole stamp still arrives together the first time: nothing shows until
+// the paper has decoded, the same rule the still stamp keeps.
+function LiveRatingStamp({ rating, size = DEFAULT_SIZE, seed, tags, placeId }: RatingStampSvgProps) {
+  const scale = size / STAMP_VIEWBOX_WIDTH;
+  const height = STAMP_VIEWBOX_HEIGHT * scale;
+  const fontSize = clamp(size * 0.3, 11, 26);
+  // One paper and one wear for the whole drag. Seeded from the rating, as
+  // the still stamp is when it has no seed, they changed with every step.
+  const stampSeed = seed ?? 'rating-preview';
+  const tagKey = tags?.join(',') ?? '';
+  const context = useMemo(
+    () => ({ seed: stampSeed, tags, placeId }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stampSeed, tagKey, placeId]
+  );
+
+  // The paper is decided by the seed alone, never the rating, so any rating
+  // draws the same one; 0 keeps it out of this memo's dependencies.
+  const frameUri = useMemo(() => buildStampFrameDataUri(0, size, context), [size, context]);
+  const [frameReady, setFrameReady] = useState(false);
+  useEffect(() => {
+    if (frameReady) return;
+    const timer = setTimeout(() => setFrameReady(true), ARTWORK_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [frameReady]);
+
+  // The rating the artwork is drawn for: the shown one, once it has held
+  // still for ARTWORK_SETTLE_MS.
+  const [settled, setSettled] = useState(rating);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(rating), ARTWORK_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [rating]);
+  const artworkUri = useMemo(() => buildStampArtworkDataUri(settled, size, context), [settled, size, context]);
+  const [loadedArtwork, setLoadedArtwork] = useState<string | null>(null);
+  // Only the artwork for the rating on show: an older one, in the older
+  // rating's colours, would clash with the window it sits in.
+  const showArtwork = settled === rating && loadedArtwork === artworkUri;
+
+  const windowBox = {
+    left: STAMP_WINDOW_RECT.x * scale,
+    top: STAMP_WINDOW_RECT.y * scale,
+    width: STAMP_WINDOW_RECT.width * scale,
+    height: STAMP_WINDOW_RECT.height * scale,
+  };
+
+  return (
+    <View style={{ width: size, height, opacity: frameReady ? 1 : 0 }}>
+      <Image
+        source={{ uri: frameUri }}
+        style={StyleSheet.absoluteFill}
+        contentFit="fill"
+        cachePolicy="memory"
+        transition={0}
+        onLoad={() => setFrameReady(true)}
+        onError={() => setFrameReady(true)}
+      />
+      <View style={[styles.window, windowBox, { backgroundColor: colorForRating(rating) }]} />
+      <Image
+        source={{ uri: artworkUri }}
+        style={[StyleSheet.absoluteFill, { opacity: showArtwork ? 1 : 0 }]}
+        contentFit="fill"
+        cachePolicy="memory"
+        transition={0}
+        onLoad={() => setLoadedArtwork(artworkUri)}
+        onError={() => setLoadedArtwork(artworkUri)}
+      />
+      <View style={[styles.valueWrap, windowBox]} pointerEvents="none">
+        <OutlinedText
+          type="statLine"
+          strokeColor={BrandColors.background}
+          strokeRadius={2}
+          style={[styles.value, { fontSize, width: '100%', textAlign: 'center' }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.5}>
+          {rating.toFixed(1)}
+        </OutlinedText>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  window: {
+    position: 'absolute',
+  },
   valueWrap: {
     position: 'absolute',
     alignItems: 'center',

@@ -124,6 +124,10 @@ const REVEAL_FADE_MS = 180;
 // anyway. Long enough that the animation's own completion callback is normally
 // what settles it, short enough to go unnoticed when it is not.
 const REVEAL_SETTLE_SLACK_MS = 400;
+// What the fade-in's cover is painted in when a screen says nothing else:
+// the screen's own background, the middle of its near-flat gradient
+// (#07120a to #031009), which nothing over it can be told from.
+const SCREEN_COVER = '#05110a';
 // How much of the name's band the region line is pulled back into, to sit
 // against the lettering rather than off it. See the call site.
 const REGION_TUCK_SHARE = 0.16;
@@ -227,6 +231,11 @@ type VisitCardProps = {
   // the lesson there, so it has to be a real one rather than a replica that
   // can drift.
   onFlipChange?: (isFlipped: boolean) => void;
+  // The colour of whatever the card sits on, for the cover it fades in
+  // from (see the reveal below). The screen's background when left out;
+  // null to have the card simply appear, for a background no flat colour
+  // can stand in for.
+  revealCover?: string | null;
 };
 
 // The feed's own visit card — a postcard with two sides.
@@ -256,6 +265,7 @@ export function VisitCard({
   maxStampRise,
   onPhotoLayout,
   initialCommentsOpen = false,
+  revealCover = SCREEN_COVER,
 }: VisitCardProps) {
   // The screen's own avatar when it fetched one, the card's when it did not.
   const authorAvatarUrl = useAvatarUrl(visit.user_id, avatarUrl);
@@ -443,62 +453,59 @@ export function VisitCard({
   // readiness retracted -- a recycled row, a refetch -- stays on the screen.
   // Of the two ways to be wrong, showing a card a moment early is the
   // recoverable one and quietly emptying the feed is not.
-  const revealProgress = useSharedValue(0);
+  //
+  // THE CARD ITSELF IS NEVER FADED. Its opacity is only ever 0 or 1, set by
+  // React, and the fade is a cover in the background's colour over it that
+  // fades out and is then removed.
+  //
+  // It was the other way round: the card's own opacity animated from 0 to 1
+  // by Reanimated, with a plain style swapped in once the fade was done.
+  // That kept leaving some postcards faint, typically after a few screens
+  // and back. Reanimated writes opacity straight to the native view, and a
+  // value it wrote can outlast the style swap: the card stays mounted (it
+  // cannot be remounted without reloading its photographs and its flip), so
+  // nothing ever clears it. Two fixes went after the order of those writes
+  // (see the backstop below, and git history) and it came back after both.
+  // A cover cannot fail that way: when the fade ends it is unmounted, and a
+  // view that is gone leaves nothing behind. It also ends the other cost of
+  // a group opacity over the card, the offscreen pass iOS makes for it (see
+  // the note further down).
+  //
+  // `shown` only ever goes from false to true, which keeps the old rule: a
+  // card that has been shown stays shown, whatever its readiness does later
+  // (a recycled row, a refetch).
+  const [shown, setShown] = useState(revealed);
+  if (revealed && !shown) setShown(true);
+  const coverOpacity = useSharedValue(1);
   const [fadeSettled, setFadeSettled] = useState(false);
 
   useEffect(() => {
-    if (!revealed) return;
-    revealProgress.value = withTiming(1, { duration: REVEAL_FADE_MS }, (finished) => {
+    if (!shown || revealCover == null) return;
+    coverOpacity.value = withTiming(0, { duration: REVEAL_FADE_MS }, (finished) => {
       if (finished) runOnJS(setFadeSettled)(true);
     });
-  }, [revealed, revealProgress]);
+  }, [shown, coverOpacity, revealCover]);
 
-  const revealStyle = useAnimatedStyle(() => ({ opacity: revealProgress.value }));
+  const coverStyle = useAnimatedStyle(() => ({ opacity: coverOpacity.value }));
 
-  // Once the fade has finished, STOP driving opacity from an animated style.
+  // Why the card is not faded by its own opacity, besides the above: an
+  // animating group opacity over PostcardFlip, whose faces carry
+  // perspective/rotateY and overlap as absolutely-positioned layers, makes
+  // Core Animation composite the whole group offscreen. That buffer is not
+  // guaranteed to be allocated at the screen's scale, and in a release build
+  // it came out at 1x, so a card's headline, shadow and photographs all went
+  // soft together while everything else stayed sharp.
   //
-  // An animated opacity sitting above PostcardFlip is not free: the faces
-  // below carry perspective/rotateY and overlap as absolutely-positioned
-  // layers, and an animating group opacity over a 3D-transformed subtree
-  // makes Core Animation composite the whole group offscreen. That buffer is
-  // not guaranteed to be allocated at the screen's scale, and in a release
-  // build it came out at 1x — which is why a card's headline, its shadow AND
-  // its photographs all went soft together while every other pixel on the
-  // screen stayed sharp. One layer, rendered once, at the wrong size.
-  //
-  // Swapping the STYLE rather than the component keeps PostcardFlip mounted:
-  // remounting it would reset which side is showing and start every image
-  // loading again, which is the thing this whole gate exists to avoid.
-  //
-  // Settling is driven by the animation's own completion callback above. The
-  // timer here is only a BACKSTOP behind it, and it is kept for what it
-  // cannot do: every path through it ends with the card fully visible, and
-  // none of them hides one. If the callback is never delivered -- the screen
-  // detached under us, the animation interrupted -- this still ends in a
-  // solid card rather than a hole in the feed. It is deliberately slower than
-  // the fade, so in the normal case the callback has already settled it and
-  // this fires into a no-op.
+  // The cover is removed by the fade's own completion callback. This timer
+  // is a BACKSTOP behind it, for a callback that never arrives (the screen
+  // detached under us, the animation interrupted): it removes the cover
+  // anyway, and a removed cover leaves the card as it is, fully shown. It is
+  // slower than the fade, so normally it fires into a no-op.
   useEffect(() => {
-    if (!revealed || fadeSettled) return;
-    const timer = setTimeout(() => {
-      // PIN THE SHARED VALUE, not just the flag.
-      //
-      // This is the ordering that can strand a card half-faded. Two layers
-      // write this view's opacity: React, via the style prop, and Reanimated,
-      // which writes straight to the native view and skips the shadow tree.
-      // Swapping the style to the static one stops React driving it, but a
-      // Reanimated write already in flight can still land AFTER that commit,
-      // and then the node detaches — leaving whatever mid-fade value it wrote
-      // sitting on the view with nothing left that would ever correct it. A
-      // card you can just about see, for good.
-      //
-      // Both layers now say the same thing, so it no longer matters which of
-      // them writes last.
-      revealProgress.value = 1;
-      setFadeSettled(true);
-    }, REVEAL_FADE_MS + REVEAL_SETTLE_SLACK_MS);
+    if (!shown || fadeSettled) return;
+    const timer = setTimeout(() => setFadeSettled(true), REVEAL_FADE_MS + REVEAL_SETTLE_SLACK_MS);
     return () => clearTimeout(timer);
-  }, [revealed, fadeSettled, revealProgress]);
+  }, [shown, fadeSettled]);
 
   // The author's choice wins; otherwise the photos decide, which is what
   // every review written before the choice existed still does.
@@ -1272,9 +1279,19 @@ export function VisitCard({
           load anything at all, and it has to occupy its height the whole time
           or the feed shoves itself around as each one arrives. */}
       <View>
-        <Animated.View style={fadeSettled ? styles.settled : revealStyle}>
+        {/* 0 or 1, by React alone: see the reveal above. */}
+        <View style={shown ? styles.shown : styles.hidden}>
           <PostcardFlip isFlipped={isFlipped} front={front} back={back} backAtLeastFront />
-        </Animated.View>
+        </View>
+
+        {/* The fade-in: the background's colour over the card, fading out,
+            then gone. */}
+        {shown && !fadeSettled && revealCover != null && (
+          <Animated.View
+            style={[StyleSheet.absoluteFill, { backgroundColor: revealCover }, coverStyle]}
+            pointerEvents="none"
+          />
+        )}
 
         {/* Something to look at while the card is still at opacity 0.
             Without it the byline sits above a tall blank gap, which reads as
@@ -1291,7 +1308,7 @@ export function VisitCard({
             be a postcard is a worse lie than an honest spinner — it promises
             a specific layout, and when the real card arrives with a
             different headline and stamp, everything it implied was wrong. */}
-        {!revealed && (
+        {!shown && (
           <View style={styles.loadingOverlay} pointerEvents="none">
             <ImageLoadingIcon />
           </View>
@@ -1311,10 +1328,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // A plain, non-animated opacity. Replaces revealStyle the moment the fade
-  // is over so no animated node is left driving this layer — see fadeSettled.
-  settled: {
+  // The card's only two opacities, set by React. See the reveal.
+  shown: {
     opacity: 1,
+  },
+  hidden: {
+    opacity: 0,
   },
   card: {
     gap: Spacing.two,

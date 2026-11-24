@@ -62,6 +62,10 @@ const PRINT_RATIO = 1.2;
 const STAMP_SIZE = 40;
 const INK = '#1c2218';
 const INK_SOFT = 'rgba(28, 34, 24, 0.55)';
+// Headroom above the place name, for the tops of tall letters (see the
+// name style). The tallest, an accented capital at 20pt, reaches about 10pt
+// above a 21pt line however iOS seats the baseline in it.
+const NAME_HEADROOM = 11;
 // A hung tag is never quite straight, and each hangs its own way.
 const MAX_TILT = 2.5;
 // How much longer than the shortest a tag's string may be, so the tags hang
@@ -523,6 +527,15 @@ const styles = StyleSheet.create({
     color: INK,
     fontSize: 20,
     lineHeight: 21,
+    // Room above the first line, taken back by the margin so nothing moves.
+    // The line height is kept tight so two-line names sit close, but this
+    // face's capitals reach 0.80 em above the baseline and accented ones up
+    // to 1.17 em, past a 21pt line. Android draws past the text box; iOS
+    // crops at it, so on iPhone the tops of the letters were cut off: a
+    // point or two on plain names, most of an accent like the Î in
+    // Île-de-France. The padding puts those tops back inside the box.
+    paddingTop: NAME_HEADROOM,
+    marginTop: -NAME_HEADROOM,
   },
   band: {
     paddingHorizontal: Spacing.two + 2,

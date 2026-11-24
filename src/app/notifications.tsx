@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { Fragment, useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +19,6 @@ import { getAvatarViewUrls } from '@/lib/avatar';
 import { getPhotoThumbUrls } from '@/lib/photo-view';
 import { followUser, listFollowing } from '@/lib/follows';
 import {
-  actorSummary,
   groupNotifications,
   listNotifications,
   type NotificationGroup,
@@ -56,30 +55,38 @@ function relativeTime(isoDate: string): string {
 // previous if/else version's `else` branch silently assumed "must be
 // travel_book_item_added", which would have quietly mis-rendered every one
 // of the 7 new types added in this batch had it been left as-is.
-function describe(notification: AppNotification, actors: { name: string }[]): string {
+// What a notification says, as the people it opens with and the words after
+// them. Split so the names can be pressed on their own (see ActorNames): a
+// name in the line goes to that person, the rest of the row to what the
+// notification is about. `lead` is who opens it: every actor (likes, which
+// group several people), the one actor, or nobody (the digests and nudge).
+type Description = { lead: 'actors' | 'actor' | null; rest: string };
+
+function describe(notification: AppNotification): Description {
+  const of = notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : '';
   // Likes are the one type that can carry several people — see
   // groupNotifications. Everything else names its single actor.
   if (notification.type === 'like') {
-    return `${actorSummary(actors)} liked your review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+    return { lead: 'actors', rest: ` liked your review${of}` };
   }
 
   switch (notification.type) {
     case 'board_item_added':
-      return `${notification.actorName} added something new to "${notification.boardName ?? 'a board'}"`;
+      return { lead: 'actor', rest: ` added something new to "${notification.boardName ?? 'a board'}"` };
     case 'travel_book_item_added':
-      return `${notification.actorName} added something new to "${notification.travelBookTitle ?? 'a travel book'}"`;
+      return { lead: 'actor', rest: ` added something new to "${notification.travelBookTitle ?? 'a travel book'}"` };
     case 'board_saved':
-      return `${notification.actorName} saved your board "${notification.boardName ?? 'a board'}"`;
+      return { lead: 'actor', rest: ` saved your board "${notification.boardName ?? 'a board'}"` };
     case 'travel_book_saved':
-      return `${notification.actorName} saved your travel book "${notification.travelBookTitle ?? 'a travel book'}"`;
+      return { lead: 'actor', rest: ` saved your travel book "${notification.travelBookTitle ?? 'a travel book'}"` };
     case 'comment':
-      return `${notification.actorName} commented on your review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+      return { lead: 'actor', rest: ` commented on your review${of}` };
     case 'friend_visit':
-      return `${notification.actorName} posted a new review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+      return { lead: 'actor', rest: ` posted a new review${of}` };
     case 'tagged':
-      return `${notification.actorName} tagged you in a review${notification.visitPlaceName ? ` of ${notification.visitPlaceName}` : ''}`;
+      return { lead: 'actor', rest: ` tagged you in a review${of}` };
     case 'follow':
-      return `${notification.actorName} started following you`;
+      return { lead: 'actor', rest: ' started following you' };
     // Named from their own profile, never from whatever you saved them as —
     // the server stores a peppered hash of the number and nothing else, so
     // your label for them never left your phone.
@@ -88,21 +95,56 @@ function describe(notification: AppNotification, actors: { name: string }[]): st
       // Names the most recent poster and counts the rest, rather than
       // listing every name — the point is that there is something worth
       // opening the feed for, not a manifest.
-      return missed <= 1
-        ? `${notification.actorName} posted something you have not seen`
-        : `${notification.actorName} and others posted ${missed} reviews you have not seen`;
+      return {
+        lead: 'actor',
+        rest: missed <= 1 ? ' posted something you have not seen' : ` and others posted ${missed} reviews you have not seen`,
+      };
     }
     case 'review_nudge':
-      return 'Been anywhere lately? Write it down before you forget it';
+      return { lead: null, rest: 'Been anywhere lately? Write it down before you forget it' };
     case 'contact_joined':
-      return `${notification.actorName}, from your contacts, is on Sightseer`;
+      return { lead: 'actor', rest: ', from your contacts, is on Sightseer' };
     case 'friend_review_digest': {
       const missed = notification.digestReviewCount ?? 0;
-      return `You missed ${missed} review${missed === 1 ? '' : 's'} from people you follow`;
+      return { lead: null, rest: `You missed ${missed} review${missed === 1 ? '' : 's'} from people you follow` };
     }
     case 'nearby_review_digest':
-      return `${notification.digestReviewCount ?? 0} new review${notification.digestReviewCount === 1 ? '' : 's'} at ${notification.digestPlaceCount ?? 0} place${notification.digestPlaceCount === 1 ? '' : 's'} you've been`;
+      return {
+        lead: null,
+        rest: `${notification.digestReviewCount ?? 0} new review${notification.digestReviewCount === 1 ? '' : 's'} at ${notification.digestPlaceCount ?? 0} place${notification.digestPlaceCount === 1 ? '' : 's'} you've been`,
+      };
   }
+}
+
+function openProfile(userId: string) {
+  router.push({ pathname: '/user/[id]', params: { id: userId } });
+}
+
+// The people a notification opens with, each name pressable on its own:
+// "Alice", "Alice and Bob", "Alice, Bob and 3 others", as actorSummary words
+// it. Pressing a name went to the review the notification was about, the
+// same as pressing anywhere else in the row.
+function ActorNames({ people }: { people: { id: string | null; name: string }[] }) {
+  if (people.length === 0) return <>Someone</>;
+  const named = people.slice(0, people.length > 2 ? 2 : people.length);
+  const others = people.length - named.length;
+  return (
+    <>
+      {named.map((person, index) => (
+        <Fragment key={person.id ?? index}>
+          {index > 0 && (index === named.length - 1 && others === 0 ? ' and ' : ', ')}
+          <ThemedText
+            type="default"
+            style={styles.actorName}
+            onPress={person.id ? () => openProfile(person.id as string) : undefined}
+            suppressHighlighting>
+            {person.name}
+          </ThemedText>
+        </Fragment>
+      ))}
+      {others > 0 && ` and ${others} other${others === 1 ? '' : 's'}`}
+    </>
+  );
 }
 
 export default function NotificationsScreen() {
@@ -271,6 +313,7 @@ export default function NotificationsScreen() {
           renderItem={({ item }: { item: NotificationGroup }) => {
             const actorId = item.latest.actorUserId;
             const state = actorId ? followBack[actorId] : undefined;
+            const description = describe(item.latest);
             return (
               // An address-book row, as Search's results are: a hairline
               // under each, with what is new marked by a dot of ink. These
@@ -285,18 +328,30 @@ export default function NotificationsScreen() {
                 {/* Up to three faces, overlapped. Beyond three the names in
                     the line already say how many there were, and a fourth
                     circle only makes the row taller. */}
+                {/* Each face goes to that person's profile, as their name
+                    in the line does. Both went to the review. */}
                 <View style={styles.avatars}>
                   {item.actors.slice(0, MAX_FACES).map((actor, index) => (
-                    <View
+                    <Pressable
                       key={actor.id}
+                      onPress={() => openProfile(actor.id)}
+                      hitSlop={4}
+                      accessibilityRole="link"
+                      accessibilityLabel={`${actor.name}'s profile`}
                       style={index === 0 ? undefined : styles.stackedAvatar}>
                       <Avatar uri={avatarUrls[actor.id]} name={actor.name} size={AVATAR_SIZE} />
-                    </View>
+                    </Pressable>
                   ))}
                 </View>
 
                 <View style={styles.rowText}>
-                  <ThemedText type="default">{describe(item.latest, item.actors)}</ThemedText>
+                  <ThemedText type="default">
+                    {description.lead === 'actors' && <ActorNames people={item.actors} />}
+                    {description.lead === 'actor' && (
+                      <ActorNames people={[{ id: item.latest.actorUserId, name: item.latest.actorName }]} />
+                    )}
+                    {description.rest}
+                  </ThemedText>
                   <ThemedText type="meta">
                     {relativeTime(item.latest.createdAt)}
                   </ThemedText>
@@ -390,6 +445,11 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     gap: Spacing.half,
+  },
+  // A little heavier than the words round it, which is how a name in a
+  // sentence reads as something to press.
+  actorName: {
+    fontWeight: '700',
   },
   avatars: {
     flexDirection: 'row',

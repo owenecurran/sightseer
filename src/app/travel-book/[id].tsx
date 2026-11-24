@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View, type ScrollView } from 'react-native';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -24,6 +24,9 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { StretchText } from '@/components/ui/stretch-text';
+import { JourneyLine } from '@/components/ui/journey-line';
+import { ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
+import { stopOf } from '@/lib/journey';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { MaxContentWidth, ScrollScreenEdges, Spacing, StickerAccents, TopTabInset } from '@/constants/theme';
 import { hashSeed } from '@/lib/seeded-random';
@@ -153,7 +156,11 @@ export default function TravelBookDetailScreen() {
   const [ownRatings, setOwnRatings] = useState<Record<string, number>>({});
 
   const theme = useTheme();
-  const scrollHandler = useHideOnScrollHandler();
+  // The page's scroll stage, which the roads between postcards read to draw
+  // themselves out as they come up the screen (see JourneyLine).
+  const scrollRef = useRef<ScrollView>(null);
+  const { stage, scrollProps } = useScrollStage(scrollRef);
+  const scrollHandler = useHideOnScrollHandler(stage.scrollY);
 
   const isParticipant = Boolean(
     session && (book?.user_id === session.user.id || collaborators.some((c) => c.userId === session.user.id))
@@ -387,7 +394,10 @@ export default function TravelBookDetailScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
+        <ScrollStageProvider stage={stage}>
         <KeyboardAwareScroll
+          ref={scrollRef}
+          {...scrollProps}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -491,7 +501,24 @@ export default function TravelBookDetailScreen() {
                 No reviews in this trip yet.
               </ThemedText>
             )}
-            {items.map((item) => {
+            {items.map((item, index) => {
+              // The road in from the review above, as in the feed: where
+              // from and to, how far, how many days apart. Between two
+              // reviews only; a bare place has no date to measure from.
+              const previous = index > 0 ? items[index - 1] : null;
+              const road =
+                viewMode !== 'list' && item.kind === 'visit' && previous?.kind === 'visit' ? (
+                  <JourneyLine
+                    key={`road-${item.itemId}`}
+                    from={stopOf(previous)}
+                    to={stopOf(item)}
+                    seed={`${previous.itemId}-${item.itemId}`}
+                    style={styles.journey}
+                    // Clear of the entry's date row as well as the byline
+                    // under it: 36 for the row, 4 between, 40 for the byline.
+                    clearBelow={80}
+                  />
+                ) : null;
               const isChecked = checkedItemIds.has(item.itemId);
               const ownRating = ownRatings[item.placeId];
               const showOwnRating = ownRating != null && !(item.kind === 'visit' && item.user_id === session?.user.id);
@@ -561,7 +588,8 @@ export default function TravelBookDetailScreen() {
                 );
               }
 
-              return (
+              return [
+              road,
               <Pressable
                 key={item.itemId}
                 // A review is the card itself now, and the card's surface is
@@ -656,8 +684,8 @@ ${item.note ?? ''}`.trim());
                     </Pressable>
                   )}
                 </ItemSurface>
-              </Pressable>
-              );
+              </Pressable>,
+              ];
             })}
           </View>
 
@@ -719,6 +747,7 @@ ${item.note ?? ''}`.trim());
             )}
           </View>
         </KeyboardAwareScroll>
+        </ScrollStageProvider>
       </SafeAreaView>
 
       <ConfirmDeleteModal
@@ -781,6 +810,11 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Spacing.two,
+  },
+  // Into the list's gaps either side, so the road runs from one postcard to
+  // the next with nothing between.
+  journey: {
+    marginVertical: -Spacing.two,
   },
   // A postcard entry: no panel, just the card and whatever belongs to the
   // BOOK rather than to the review stacked under it.

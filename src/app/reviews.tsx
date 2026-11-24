@@ -106,6 +106,9 @@ export default function AllReviewsScreen() {
               onRemove={handleRemove}
               removeMessage="Delete this review? This can't be undone."
               contentPaddingBottom={bottomInset}
+              // Someone's reviews in date order are where they have been,
+              // one after another: the road between them is the point.
+              journey
             />
           )}
         </View>

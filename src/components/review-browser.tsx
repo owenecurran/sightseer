@@ -44,6 +44,9 @@ type ReviewBrowserProps = {
   onSelectVisit?: (visitId: string) => void;
   selectedVisitId?: string | null;
   contentPaddingBottom?: number;
+  // The road between postcards, as in the feed (see FullReviewsView). Drawn
+  // only while the order is by date, where it is someone's journey.
+  journey?: boolean;
 };
 
 // One way of looking at a set of reviews, wherever they came from.
@@ -66,6 +69,7 @@ export function ReviewBrowser({
   onSelectVisit,
   selectedVisitId,
   contentPaddingBottom = 0,
+  journey = false,
 }: ReviewBrowserProps) {
   const picking = onSelectVisit != null;
   const modes = picking ? PICKER_MODES : VIEW_MODES;
@@ -118,6 +122,7 @@ export function ReviewBrowser({
           viewerId={viewerId}
           onSelectVisit={onSelectVisit}
           selectedVisitId={selectedVisitId}
+          journey={journey && (sortMode === 'recent' || sortMode === 'oldest')}
         />
       </View>
     );

@@ -39,7 +39,7 @@ import { TagStickerGraphic } from '@/components/ui/tag-sticker-graphic';
 import { VisitCard, type VisitCardVisit } from '@/components/visit-card';
 import { TagPickerModal } from '@/components/tag-picker-modal';
 import { FormError } from '@/components/ui/error-notice';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { Colors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTheme } from '@/hooks/use-theme';
@@ -1136,6 +1136,9 @@ export default function ReviewFormScreen() {
                     only preview that can stay accurate is the component
                     itself. */}
                 <VisitCard
+                  // On the journal page's paper, not the screen: its fade-in
+                  // cover and byline backing take that colour.
+                  revealCover={Colors.backgroundElement}
                   visit={previewVisit}
                   photoUrls={previewPhotoUrls}
                   avatarUrl={undefined}

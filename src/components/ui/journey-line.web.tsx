@@ -17,6 +17,9 @@ const ROUTE_INSET = 6;
 // and so covers its end. The road goes in under the card rather than
 // stopping short of it in mid-air.
 const ROUTE_REACH = 64;
+// See journey-line.tsx: the band below the frame the road is left out of,
+// where the next post's byline sits.
+const BYLINE_CLEARANCE = 40;
 const INK = 'rgba(234, 231, 207, 0.85)';
 
 type JourneyLineProps = {
@@ -24,13 +27,14 @@ type JourneyLineProps = {
   to: JourneyStop | null;
   seed: string;
   style?: StyleProp<ViewStyle>;
+  clearBelow?: number;
 };
 
 // The web's route between two postcards: the same road as the app draws
 // (see journey-line.tsx), already drawn rather than drawing itself out. Skia
 // on the web has to download its engine before it can draw anything, which
 // is no way to put a line between two posts.
-export function JourneyLine({ from, to, seed, style }: JourneyLineProps) {
+export function JourneyLine({ from, to, seed, style, clearBelow = BYLINE_CLEARANCE }: JourneyLineProps) {
   const leg = useMemo(() => legBetween(from, to), [from, to]);
   const [width, setWidth] = useState(0);
   const drawing = useMemo(() => {
@@ -38,14 +42,21 @@ export function JourneyLine({ from, to, seed, style }: JourneyLineProps) {
     const route = journeyRoute(seed, width, ROUTE_HEIGHT + ROUTE_REACH - ROUTE_INSET);
     const points = route.points.map((point) => `${point.x.toFixed(1)},${(point.y + ROUTE_INSET).toFixed(1)}`);
     const [startX, startY] = points[0].split(',');
+    const total = ROUTE_HEIGHT + ROUTE_REACH;
+    const resume = Math.min(total, ROUTE_HEIGHT + clearBelow);
+    // The road passes under the next post's byline, as on the phone: left
+    // out of the band where it sits.
     const svg =
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${ROUTE_HEIGHT + ROUTE_REACH}" viewBox="0 0 ${width} ${ROUTE_HEIGHT + ROUTE_REACH}">` +
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${total}" viewBox="0 0 ${width} ${total}">` +
+      `<defs><clipPath id="road"><rect x="0" y="0" width="${width}" height="${ROUTE_HEIGHT}"/>` +
+      (resume < total ? `<rect x="0" y="${resume}" width="${width}" height="${total - resume}"/>` : '') +
+      `</clipPath></defs><g clip-path="url(#road)">` +
       `<polyline points="${points.join(' ')}" fill="none" stroke="${INK}" stroke-width="3" ` +
       `stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10 8"/>` +
       `<circle cx="${startX}" cy="${startY}" r="4.5" fill="none" stroke="${INK}" stroke-width="2"/>` +
-      `</svg>`;
+      `</g></svg>`;
     return { uri: svgDataUri(svg), side: route.side };
-  }, [seed, width]);
+  }, [seed, width, clearBelow]);
 
   if (!leg) return <FeedDivider />;
   return (

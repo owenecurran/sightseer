@@ -1,4 +1,4 @@
-import { Canvas, Circle, DashPathEffect, Path, Skia } from '@shopify/react-native-skia';
+import { Canvas, Circle, DashPathEffect, Group, Path, Skia } from '@shopify/react-native-skia';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
@@ -29,6 +29,11 @@ export const ROUTE_INSET = 6;
 // and so covers its end. The road goes in under the card rather than
 // stopping short of it in mid-air.
 const ROUTE_REACH = 64;
+// How far below its frame the road is left undrawn by default: the next
+// post's byline (avatar and two lines, 40 points), which the road passes
+// under rather than through. A screen with more above the next postcard
+// (a travel book's date row) passes a larger clearBelow.
+export const BYLINE_CLEARANCE = 40;
 // The route draws itself while its top travels from here (a share of the
 // screen's height down from the top, at the tab bar)...
 const DRAW_FROM = 0.95;
@@ -55,6 +60,8 @@ type JourneyLineProps = {
   // For the caller to pull it flush against the posts either side, past
   // the list's own gaps.
   style?: StyleProp<ViewStyle>;
+  // How far below its frame to leave the road out (see BYLINE_CLEARANCE).
+  clearBelow?: number;
 };
 
 // What goes between two postcards in a feed: a road drawn by hand from the
@@ -73,7 +80,7 @@ type JourneyLineProps = {
 // With nothing to say (neither place has coordinates, neither post a date),
 // it is the plain tear line instead. Placed by the list's scroll stage (see
 // scroll-stage); outside a list that has one, it is simply drawn.
-export function JourneyLine({ from, to, seed, style }: JourneyLineProps) {
+export function JourneyLine({ from, to, seed, style, clearBelow = BYLINE_CLEARANCE }: JourneyLineProps) {
   const leg = useMemo(() => legBetween(from, to), [from, to]);
   const [width, setWidth] = useState(0);
   if (!leg) return <FeedDivider />;
@@ -81,12 +88,12 @@ export function JourneyLine({ from, to, seed, style }: JourneyLineProps) {
     <View
       style={[styles.frame, style]}
       onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))}>
-      {width > 0 && <Route leg={leg} width={width} seed={seed} />}
+      {width > 0 && <Route leg={leg} width={width} seed={seed} clearBelow={clearBelow} />}
     </View>
   );
 }
 
-function Route({ leg, width, seed }: { leg: JourneyLeg; width: number; seed: string }) {
+function Route({ leg, width, seed, clearBelow }: { leg: JourneyLeg; width: number; seed: string; clearBelow: number }) {
   const reduceMotion = useReducedMotion();
   const { height: screenHeight } = useWindowDimensions();
   const { stage, ref, onLayout, contentY } = useStagedFrame();
@@ -104,6 +111,19 @@ function Route({ leg, width, seed }: { leg: JourneyLeg; width: number; seed: str
   }, [seed, width]);
   const { points, lengths, length, side } = route;
   const start = points[0];
+
+  // Everywhere but the band where the next post's byline sits. The road
+  // passes under the name the way it passes under the card, rather than
+  // through it. Clipped rather than cut so the drawing-out and its pen stay
+  // measured along one road; the pen just goes out of sight in the band.
+  const clip = useMemo(() => {
+    const total = ROUTE_HEIGHT + ROUTE_REACH;
+    const resume = Math.min(total, ROUTE_HEIGHT + clearBelow);
+    const path = Skia.Path.Make();
+    path.addRect(Skia.XYWHRect(0, 0, width, ROUTE_HEIGHT));
+    if (resume < total) path.addRect(Skia.XYWHRect(0, resume, width, total - resume));
+    return path;
+  }, [width, clearBelow]);
 
   // Where its top is on screen, or null until that is known.
   const top = useDerivedValue(() => {
@@ -160,6 +180,7 @@ function Route({ leg, width, seed }: { leg: JourneyLeg; width: number; seed: str
     <View ref={ref} collapsable={false} style={StyleSheet.absoluteFill} pointerEvents="none" onLayout={onLayout}>
       {isNear && (
         <Canvas style={{ width, height: ROUTE_HEIGHT + ROUTE_REACH }}>
+          <Group clip={clip}>
           <Path
             path={route.path}
             style="stroke"
@@ -174,6 +195,7 @@ function Route({ leg, width, seed }: { leg: JourneyLeg; width: number; seed: str
           {/* Where it set out from, under the post above. */}
           <Circle cx={start.x} cy={start.y} r={4.5} style="stroke" strokeWidth={2} color={INK} />
           <Circle cx={penX} cy={penY} r={5} color={PEN} opacity={penOpacity} />
+          </Group>
         </Canvas>
       )}
       <Animated.View style={[styles.label, labelSide, labelStyle]}>
