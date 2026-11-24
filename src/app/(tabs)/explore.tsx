@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { LocationSearchModal } from '@/components/location-search-modal';
+import { MapSearch } from '@/components/map-search';
 import { ThemedText } from '@/components/themed-text';
 import { PaperPanel } from '@/components/ui/paper-panel';
 import { ThemedView } from '@/components/themed-view';
@@ -355,7 +355,7 @@ export default function SearchScreen() {
               <PaperPanel seed="explore-map" accentIndex={3} style={styles.locationsCard}>
                 <ThemedText type="headlineWrapped">Search the map</ThemedText>
                 <ThemedText type="caption">
-                  Browse reviewed places, or search for one to view its page.
+                  Reviewed places near you, by rating, popularity and tags.
                 </ThemedText>
               </PaperPanel>
             </Pressable>
@@ -363,7 +363,9 @@ export default function SearchScreen() {
         </Animated.ScrollView>
       </SafeAreaView>
 
-      <LocationSearchModal mode="browse" visible={isPickerOpen} onCancel={() => setIsPickerOpen(false)} />
+      {session && (
+        <MapSearch visible={isPickerOpen} onClose={() => setIsPickerOpen(false)} viewerId={session.user.id} />
+      )}
     </ThemedView>
   );
 }
