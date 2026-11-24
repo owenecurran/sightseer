@@ -20,6 +20,10 @@ type PostcardFlipProps = {
   // Reserved before either face has measured, so a feed of these does not
   // collapse to nothing on first paint and then shove itself apart.
   estimatedHeight?: number;
+  // Hold the back to at least the front's height, so turning the card over
+  // keeps the card's shape. The back has to stretch to fill it: its root
+  // takes flexGrow, and so on down to whatever should take up the slack.
+  backAtLeastFront?: boolean;
 };
 
 const DURATION_MS = 460;
@@ -215,12 +219,25 @@ export function useFlipGesture(
 // duration, so the card changes size as part of the same motion instead of
 // resizing afterwards.
 //
+// backAtLeastFront is the other half of that. It does not hold the
+// container at the taller face. It makes the back face itself at least the
+// front's height, stretched rather than padded, so the extra is the back's
+// own bare card, not a gap under it. A postcard is the same size on both
+// sides; the feed's cards use it, and the room it leaves is where the tag
+// stickers go.
+//
 // The halves are swapped at the midpoint rather than relying on
 // backfaceVisibility alone: support for it is uneven across Android versions,
 // and a face that stays visible through the back half of the turn shows up
 // as a mirrored ghost. Gating each face's opacity on which side is facing the
 // viewer is the same effect with no platform question.
-export function PostcardFlip({ isFlipped, front, back, estimatedHeight = 260 }: PostcardFlipProps) {
+export function PostcardFlip({
+  isFlipped,
+  front,
+  back,
+  estimatedHeight = 260,
+  backAtLeastFront = false,
+}: PostcardFlipProps) {
   const [frontHeight, setFrontHeight] = useState(0);
   const [backHeight, setBackHeight] = useState(0);
 
@@ -235,11 +252,11 @@ export function PostcardFlip({ isFlipped, front, back, estimatedHeight = 260 }: 
   const width = useSharedValue(0);
 
   const height = useSharedValue(estimatedHeight);
-  // Whether a real measurement has ever landed. The first one has to be a
-  // snap: animating from the placeholder estimate to the true height would
-  // give every card in the feed a visible settle on mount, which is not a
-  // flip and should not look like one.
-  const hasMeasured = useRef(false);
+  // Which side the height was last set for, so a change of side can be told
+  // apart from a side changing size. Null until the first measurement, which
+  // has to be a snap too: animating from the placeholder estimate would give
+  // every card in the feed a visible settle on mount.
+  const sizedFor = useRef<boolean | null>(null);
 
   useEffect(() => {
     progress.value = withTiming(isFlipped ? 1 : 0, {
@@ -253,8 +270,13 @@ export function PostcardFlip({ isFlipped, front, back, estimatedHeight = 260 }: 
   useEffect(() => {
     const measured = isFlipped ? backHeight : frontHeight;
     if (!measured) return;
-    if (!hasMeasured.current) {
-      hasMeasured.current = true;
+    // Only a turn animates the height. Any other change (a face settling
+    // after its first layout, a picture arriving) is applied at once:
+    // animated, it slid every card below for half a second, which in a feed
+    // being scrolled read as the screen jumping about.
+    const isTurn = sizedFor.current != null && sizedFor.current !== isFlipped;
+    sizedFor.current = isFlipped;
+    if (!isTurn) {
       height.value = measured;
       return;
     }
@@ -328,9 +350,13 @@ export function PostcardFlip({ isFlipped, front, back, estimatedHeight = 260 }: 
   const backFace = (
     <Animated.View
       key="back"
-      style={[styles.face, backStyle]}
+      // The front's height does not depend on the back's, so feeding it in
+      // here cannot loop.
+      style={[styles.face, backStyle, backAtLeastFront && { minHeight: frontHeight }]}
       onLayout={(e) => setBackHeight(e.nativeEvent.layout.height)}>
-      <View pointerEvents={isFlipped ? 'auto' : 'none'}>{back}</View>
+      <View pointerEvents={isFlipped ? 'auto' : 'none'} style={styles.faceFill}>
+        {back}
+      </View>
     </Animated.View>
   );
 
@@ -374,5 +400,9 @@ const styles = StyleSheet.create({
     // Deliberately no overflow:'hidden'. The rating stamp leans off this
     // card's corner by design, and clipping here would cut it off — the
     // same trap PaperPanel had to be restructured around.
+  },
+  // Carries a face's minHeight down to the face's own root.
+  faceFill: {
+    flexGrow: 1,
   },
 });

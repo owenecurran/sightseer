@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -27,6 +27,9 @@ import {
   upsertRecapDraft,
   type TravelBookRecapRow,
 } from '@/lib/travel-book-recaps';
+import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function TravelBookRecapScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -62,7 +65,7 @@ export default function TravelBookRecapScreen() {
             }
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this recap.');
+          setError(userErrorMessage(err, 'Could not load this recap.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -84,7 +87,7 @@ export default function TravelBookRecapScreen() {
       });
       setRecap(saved);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save this recap.');
+      setError(userErrorMessage(err, 'Could not save this recap.'));
     } finally {
       setIsSaving(false);
     }
@@ -102,7 +105,7 @@ export default function TravelBookRecapScreen() {
       }
       setRecap({ ...recap, is_published: !recap.is_published });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update publish status.');
+      setError(userErrorMessage(err, 'Could not update publish status.'));
     } finally {
       setIsSaving(false);
     }
@@ -111,7 +114,7 @@ export default function TravelBookRecapScreen() {
   async function handlePickCover() {
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required to set a cover photo.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (result) setCropSource(result.uri);
@@ -128,7 +131,7 @@ export default function TravelBookRecapScreen() {
       await uploadRecapCover({ recapId: recap.id, uri: cropped.uri, mimeType: 'image/jpeg' });
       setCoverUrl(cropped.uri);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that photo.');
+      setError(userErrorMessage(err, 'Could not upload that photo.'));
     } finally {
       setIsUploadingCover(false);
     }
@@ -139,7 +142,7 @@ export default function TravelBookRecapScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -147,8 +150,8 @@ export default function TravelBookRecapScreen() {
           <BackLink seed="recap" />
 
           <ThemedText type="displaySerif">Trip recap</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            A write-up about the whole trip — separate from the individual place reviews inside it. Publishing
+          <ThemedText type="caption">
+            A write-up about the whole trip, separate from the individual place reviews inside it. Publishing
             it puts it on your feed.
           </ThemedText>
 
@@ -164,11 +167,7 @@ export default function TravelBookRecapScreen() {
           <TextField placeholder="How was the trip?" value={body} onChangeText={setBody} multiline />
           <RatingSliderWithPreview value={rating} onChange={setRating} />
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           <Button label="Save draft" onPress={handleSaveDraft} loading={isSaving} disabled={!title.trim()} />
           {recap && (
@@ -179,7 +178,7 @@ export default function TravelBookRecapScreen() {
               loading={isSaving}
             />
           )}
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
 
         <PhotoCropModal visible={cropSource != null} uri={cropSource} onCancel={() => setCropSource(null)} onConfirm={handleCropConfirm} />
       </SafeAreaView>

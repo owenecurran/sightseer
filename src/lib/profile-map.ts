@@ -146,3 +146,105 @@ export async function getVisitedRegions(userId: string): Promise<VisitedRegion[]
       rings: parseMultiPolygonRings(r.boundary_geojson as string),
     }));
 }
+
+export type VisitedCity = {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+};
+
+export type VisitedHierarchy = {
+  cities: VisitedCity[];
+  countries: number;
+  states: number;
+};
+
+type PlaceNode = {
+  id: string;
+  name: string;
+  level: string;
+  lat: number | null;
+  lng: number | null;
+  parent_id: string | null;
+};
+
+const PLACE_NODE_COLUMNS = 'id, name, level, lat, lng, parent_id';
+
+// The cities, states and countries someone's reviews are in, for the profile
+// map's Cities layer and its caption.
+//
+// A review is of one place, and places are a chain (a spot, in its city, in
+// its state, in its country: see places-cache.ts), so each reviewed place is
+// walked up to find what it is in. Done here rather than in a database
+// function so it needs nothing deployed: two or three small reads, over a
+// person's own reviews. The states and countries counted are the same set
+// get_visited_regions outlines, found the same way.
+export async function getVisitedHierarchy(userId: string): Promise<VisitedHierarchy> {
+  const { data, error } = await supabase
+    .from('visits')
+    .select(`places!place_id(${PLACE_NODE_COLUMNS})`)
+    .eq('user_id', userId);
+  if (error) throw error;
+
+  const known = new Map<string, PlaceNode>();
+  const reviewed: PlaceNode[] = [];
+  for (const row of data as unknown as { places: PlaceNode | null }[]) {
+    const place = row.places;
+    if (!place || known.has(place.id)) continue;
+    known.set(place.id, place);
+    reviewed.push(place);
+  }
+
+  // Up the chain until every reviewed place's line is known. Four steps at
+  // most: a trail or spot, its city, its state, its country.
+  let missing = [...new Set(reviewed.map((p) => p.parent_id).filter((id): id is string => id != null && !known.has(id)))];
+  for (let step = 0; step < 4 && missing.length > 0; step++) {
+    const { data: parents, error: parentError } = await supabase
+      .from('places')
+      .select(PLACE_NODE_COLUMNS)
+      .in('id', missing);
+    if (parentError) throw parentError;
+    for (const parent of parents as PlaceNode[]) known.set(parent.id, parent);
+    missing = [
+      ...new Set(
+        (parents as PlaceNode[]).map((p) => p.parent_id).filter((id): id is string => id != null && !known.has(id)),
+      ),
+    ];
+  }
+
+  const countries = new Set<string>();
+  const states = new Set<string>();
+  const cities = new Map<string, { city: PlaceNode; lats: number[]; lngs: number[] }>();
+  for (const place of reviewed) {
+    let node: PlaceNode | undefined = place;
+    let city: PlaceNode | undefined;
+    for (let step = 0; node && step < 6; step++) {
+      if (node.level === 'locality' && !city) city = node;
+      if (node.level === 'admin_area_1') states.add(node.id);
+      if (node.level === 'country') countries.add(node.id);
+      node = node.parent_id ? known.get(node.parent_id) : undefined;
+    }
+    if (!city) continue;
+    const entry = cities.get(city.id) ?? { city, lats: [], lngs: [] };
+    if (place.lat != null && place.lng != null) {
+      entry.lats.push(place.lat);
+      entry.lngs.push(place.lng);
+    }
+    cities.set(city.id, entry);
+  }
+
+  const average = (values: number[]) => values.reduce((sum, v) => sum + v, 0) / values.length;
+  return {
+    countries: countries.size,
+    states: states.size,
+    cities: [...cities.values()].flatMap(({ city, lats, lngs }) => {
+      // The city's own point where it has one. A city filled in from a
+      // review's address often has none, and then the middle of the places
+      // reviewed in it stands in for it.
+      if (city.lat != null && city.lng != null) return [{ id: city.id, name: city.name, lat: city.lat, lng: city.lng }];
+      if (lats.length === 0) return [];
+      return [{ id: city.id, name: city.name, lat: average(lats), lng: average(lngs) }];
+    }),
+  };
+}

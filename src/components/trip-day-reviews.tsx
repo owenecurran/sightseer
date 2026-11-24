@@ -30,6 +30,7 @@ type TripDayReviewsProps = {
   tripKey: string;
   photoUrls: Record<string, string>;
   photoThumbUrls?: Record<string, string>;
+  preferPhotoThumbnails?: boolean;
   avatarUrls: Record<string, string>;
   viewerId?: string;
   copiedVisitId: string | null;
@@ -138,6 +139,7 @@ export function TripDayReviews({
   tripKey,
   photoUrls,
   photoThumbUrls,
+  preferPhotoThumbnails,
   avatarUrls,
   viewerId,
   copiedVisitId,
@@ -193,6 +195,9 @@ export function TripDayReviews({
   // whichever size that card will actually render, each URL at most once.
   const warmed = useRef<Set<string>>(new Set());
   useEffect(() => {
+    // The feed mounts trip cards in batches. Their preview-sized tiles
+    // already start loading at mount, so skip a second download on startup.
+    if (preferPhotoThumbnails) return;
     const urls: string[] = [];
     for (let offset = 0; offset <= PREFETCH_AHEAD; offset++) {
       const visit = day.visits[activeIndex + offset];
@@ -208,7 +213,7 @@ export function TripDayReviews({
       }
     }
     if (urls.length > 0) Image.prefetch(urls);
-  }, [activeIndex, day, photoUrls, photoThumbUrls]);
+  }, [activeIndex, day, photoUrls, photoThumbUrls, preferPhotoThumbnails]);
 
   function handlePhotoLayout(offsetY: number, height: number) {
     if (height <= 0) return;
@@ -277,6 +282,7 @@ export function TripDayReviews({
               visit={activeVisit}
               photoUrls={photoUrls}
               photoThumbUrls={photoThumbUrls}
+              preferPhotoThumbnails={preferPhotoThumbnails}
               avatarUrl={avatarUrls[activeVisit.user_id]}
               isOwner={viewerId === activeVisit.user_id}
               isCopied={copiedVisitId === activeVisit.id}
@@ -291,7 +297,7 @@ export function TripDayReviews({
               onPress={() => onRemoveFromTrip(activeVisit.id)}
               hitSlop={8}
               style={styles.removeButton}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Not part of this trip
               </ThemedText>
             </Pressable>

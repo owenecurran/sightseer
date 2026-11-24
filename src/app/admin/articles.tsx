@@ -15,6 +15,8 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { deleteArticle, listAllArticlesForAdmin, type AdminArticleListItem } from '@/lib/articles';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Admin-only in effect (RLS blocks a non-admin from ever seeing draft rows,
 // and the only entry point is the admin-gated link on profile.tsx) — same
@@ -24,6 +26,9 @@ export default function AdminArticlesScreen() {
   const scrollHandler = useHideOnScrollHandler();
   const [articles, setArticles] = useState<AdminArticleListItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // The load itself failed, as opposed to an action on the list. The empty
+  // line is not shown then: it said there was nothing here, under the error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -31,9 +36,13 @@ export default function AdminArticlesScreen() {
   useFocusEffect(
     useCallback(() => {
       setError(null);
+      setLoadFailed(false);
       listAllArticlesForAdmin()
         .then(setArticles)
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load articles.'))
+        .catch((err) => {
+          setLoadFailed(true);
+          setError(userErrorMessage(err, 'Could not load articles.'));
+        })
         .finally(() => setHasLoadedOnce(true));
     }, [])
   );
@@ -46,7 +55,7 @@ export default function AdminArticlesScreen() {
       setArticles((prev) => prev.filter((a) => a.id !== pendingDeleteId));
       setPendingDeleteId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete that article.');
+      setError(userErrorMessage(err, 'Could not delete that article.'));
     } finally {
       setIsDeleting(false);
     }
@@ -68,16 +77,14 @@ export default function AdminArticlesScreen() {
 
           <Button label="New article" onPress={() => router.push('/admin/articles/new')} />
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {articles.length === 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              No articles yet.
-            </ThemedText>
+            loadFailed ? null : (
+              <ThemedText type="caption">
+                No articles yet.
+              </ThemedText>
+            )
           ) : (
             <View style={styles.list}>
               {articles.map((article) => (
@@ -92,12 +99,12 @@ export default function AdminArticlesScreen() {
                     )}
                     <View style={styles.rowLeading}>
                       <ThemedText type="headlineWrapped">{article.title}</ThemedText>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {article.published ? 'Published' : 'Draft'}
                       </ThemedText>
                     </View>
                     <Pressable onPress={() => setPendingDeleteId(article.id)} hitSlop={8}>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="action">
                         Delete
                       </ThemedText>
                     </Pressable>

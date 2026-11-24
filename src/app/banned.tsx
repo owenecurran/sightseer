@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Linking, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,7 +9,8 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { MIN_AGE_YEARS, UNDERAGE_REASON } from '@/lib/bans';
 import { hasSupportEmail, SUPPORT_EMAIL } from '@/lib/legal';
-import { supabase } from '@/lib/supabase';
+import { signOutWithPushCleanup } from '@/lib/push';
+import { userErrorMessage } from '@/lib/user-error';
 
 // The terminal screen for a banned account. Reached only through the guard
 // in _layout.tsx, which routes here instead of anywhere else the moment
@@ -19,8 +21,23 @@ import { supabase } from '@/lib/supabase';
 // ends up in support. Telling them what happened and how to contest it is
 // both kinder and cheaper.
 export default function BannedScreen() {
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const isUnderage = profile?.ban_reason === UNDERAGE_REASON;
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
+
+  async function handleSignOut() {
+    if (!session) return;
+    setIsSigningOut(true);
+    setSignOutError(null);
+    try {
+      await signOutWithPushCleanup(session.user.id);
+    } catch (err) {
+      setSignOutError(userErrorMessage(err, 'Could not sign out. Try again.'));
+    } finally {
+      setIsSigningOut(false);
+    }
+  }
 
   return (
     <ThemedView type="screen" style={styles.container}>
@@ -29,7 +46,7 @@ export default function BannedScreen() {
           {isUnderage ? 'Not old enough yet' : 'Account suspended'}
         </ThemedText>
 
-        <ThemedText type="default" themeColor="textSecondary" style={styles.centered}>
+        <ThemedText type="lead" style={styles.centered}>
           {isUnderage
             ? `Sightseer is for people aged ${MIN_AGE_YEARS} and over. This account has been closed to posting.`
             : 'This account has been suspended for breaking the terms of use.'}
@@ -40,7 +57,7 @@ export default function BannedScreen() {
             Renders nothing until SUPPORT_EMAIL is real — the same treatment
             the Settings links get. */}
         {hasSupportEmail && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+          <ThemedText type="caption" style={styles.centered}>
             {isUnderage
               ? 'If you entered your date of birth incorrectly, get in touch and we can put it right.'
               : 'If you think this was a mistake, get in touch.'}
@@ -55,7 +72,8 @@ export default function BannedScreen() {
           />
         )}
 
-        <Button label="Sign out" onPress={() => supabase.auth.signOut()} />
+        <Button label="Sign out" onPress={handleSignOut} loading={isSigningOut} />
+        {signOutError && <ThemedText type="small" themeColor="danger">{signOutError}</ThemedText>}
       </SafeAreaView>
     </ThemedView>
   );

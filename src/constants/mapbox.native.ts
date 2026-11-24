@@ -17,6 +17,6 @@ export const MAPBOX_STYLE_URL = Mapbox.StyleURL.Dark;
 // before any MapView mounts, without needing a separate app-startup call.
 const accessToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
 if (!accessToken) {
-  console.warn('Missing EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN — Mapbox tiles will not load.');
+  console.warn('Missing EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN. Mapbox tiles will not load.');
 }
 Mapbox.setAccessToken(accessToken ?? null);

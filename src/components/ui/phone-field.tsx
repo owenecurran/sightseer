@@ -154,13 +154,13 @@ export function PhoneField({ onChange, autoFocus }: PhoneFieldProps) {
                   <ThemedText type="default" style={styles.countryName}>
                     {c.name}
                   </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="meta">
                     +{c.dial}
                   </ThemedText>
                 </Pressable>
               ))}
               {results.length === 0 && (
-                <ThemedText type="small" themeColor="textSecondary" style={styles.noResults}>
+                <ThemedText type="caption" style={styles.noResults}>
                   No country matches that.
                 </ThemedText>
               )}

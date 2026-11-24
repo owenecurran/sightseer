@@ -5,6 +5,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { declineTripPrompt, promoteToTrip, type TripSuggestion } from '@/lib/trips';
+import { userErrorMessage } from '@/lib/user-error';
 
 type TripSuggestionPromptProps = {
   userId: string;
@@ -33,7 +34,7 @@ export function TripSuggestionPrompt({ userId, suggestion, onResolved }: TripSug
       else await declineTripPrompt(userId, suggestion.date);
       onResolved(promoted);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that.');
+      setError(userErrorMessage(err, 'Could not save that.'));
       setIsBusy(false);
     }
   }
@@ -41,13 +42,13 @@ export function TripSuggestionPrompt({ userId, suggestion, onResolved }: TripSug
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="sectionLabel">Making a trip of it?</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="caption">
         You've posted {suggestion.visitCount} reviews around {suggestion.areaName}. Group them as a
-        trip and they'll show together — and you can turn them into a travel book later.
+        trip and they'll show together, and you can turn them into a travel book later.
       </ThemedText>
 
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -59,7 +60,7 @@ export function TripSuggestionPrompt({ userId, suggestion, onResolved }: TripSug
           </ThemedText>
         </Pressable>
         <Pressable onPress={() => answer(false)} disabled={isBusy} hitSlop={8}>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="action">
             Not a trip
           </ThemedText>
         </Pressable>

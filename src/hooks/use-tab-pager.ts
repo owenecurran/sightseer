@@ -23,6 +23,17 @@ type TabPagerContextValue = {
   // actually change pages.
   setActiveIndexInternal: (index: number) => void;
   setActivePage: (index: number) => void;
+  // A tap on the tab the user is ALREADY on, which is a different request
+  // from switching to it: go back to the top and fetch again. Raised by
+  // FloatingNavBar rather than worked out here, because the nav bar is the
+  // only place that already knows what "already on it" means on both
+  // platforms -- the pager's active index natively, the pathname on web,
+  // where there is no pager and activeIndex never moves.
+  signalRetap: (index: number) => void;
+  // Bumped on every re-tap. The nonce is what makes a second tap on the
+  // same tab a second event rather than a no-op, since the index alone
+  // would not have changed.
+  retap: { index: number; nonce: number };
 };
 
 const TabPagerContext = createContext<TabPagerContextValue | null>(null);
@@ -150,4 +161,28 @@ export function useTabFocusEffect(pageIndex: number, effect: () => void | (() =>
     // eslint-disable-next-line react-hooks/rules-of-hooks
     usePagerFocusEffect(pageIndex, effect);
   }
+}
+
+// Runs `callback` when the user taps the tab they are already looking at.
+//
+// Separate from usePagerFocusEffect, which fires when a screen BECOMES
+// visible. This one fires when it is already visible and the user asks for
+// it again, which is the only way to tell "take me there" from "take me
+// back to the top and get me the new things".
+export function useTabRetapEffect(pageIndex: number, callback: () => void) {
+  const { retap } = useTabPager();
+  // The nonce this screen has already acted on. Keeping it here rather than
+  // holding the callback in a ref is what lets `callback` stay an honest
+  // dependency: it is re-created every render, so without this guard the
+  // effect would re-fire on every render and refresh the tab continuously.
+  //
+  // It starts at 0, which is also the nonce before any tap has happened, so
+  // the first run after mount matches and correctly does nothing.
+  const handledNonce = useRef(0);
+
+  useEffect(() => {
+    if (retap.index !== pageIndex || retap.nonce === handledNonce.current) return;
+    handledNonce.current = retap.nonce;
+    callback();
+  }, [retap, pageIndex, callback]);
 }

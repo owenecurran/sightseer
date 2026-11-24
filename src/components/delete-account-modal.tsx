@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
-import { deleteAccount } from '@/lib/delete-account';
+import { Turnstile, isTurnstileConfigured } from '@/components/auth/turnstile';
+import { accountHasPassword, deleteAccount } from '@/lib/delete-account';
+import { userErrorMessage } from '@/lib/user-error';
 
 type DeleteAccountModalProps = {
   visible: boolean;
@@ -25,12 +27,47 @@ type DeleteAccountModalProps = {
 export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: DeleteAccountModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [typed, setTyped] = useState('');
+  const [password, setPassword] = useState('');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  // Bumped to make Turnstile mint a fresh token. A token is single-use, so
+  // after a rejected attempt the next one has to start over or it fails the
+  // security check rather than the password.
+  const [captchaNonce, setCaptchaNonce] = useState(0);
+  // null while unknown. Nothing is gated on it until it resolves, which is
+  // why the confirm button waits for it rather than defaulting either way:
+  // defaulting to false would let an account with a password through without
+  // one, and defaulting to true would demand a password from accounts that
+  // have none.
+  const [hasPassword, setHasPassword] = useState<boolean | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Asked once the sheet is actually open. An account that only ever signed
+  // in with Google or Apple has no password to confirm — see
+  // accountHasPassword.
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    accountHasPassword()
+      .then((result) => {
+        if (!cancelled) setHasPassword(result);
+      })
+      .catch(() => {
+        // Unknown means ASK. The server decides whether a password is
+        // actually required, so the worst this causes is a field that
+        // turns out not to have been needed.
+        if (!cancelled) setHasPassword(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
 
   function reset() {
     setStep(1);
     setTyped('');
+    setPassword('');
+    setCaptchaToken(null);
     setError(null);
   }
 
@@ -43,29 +80,45 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
     setIsDeleting(true);
     setError(null);
     try {
-      await deleteAccount();
+      await deleteAccount({ password, captchaToken });
       reset();
       onDeleted();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete your account.');
+      setError(userErrorMessage(err, 'Could not delete your account.'));
+      // The token just spent is dead whether or not it was the problem.
+      setCaptchaToken(null);
+      setCaptchaNonce((n) => n + 1);
       setIsDeleting(false);
     }
   }
 
+  const needsCaptcha = isTurnstileConfigured && hasPassword === true;
   const canConfirm =
-    handle != null && typed.trim().toLowerCase() === handle.trim().toLowerCase() && !isDeleting;
+    handle != null &&
+    typed.trim().toLowerCase() === handle.trim().toLowerCase() &&
+    hasPassword !== null &&
+    (hasPassword === false || password.length > 0) &&
+    (!needsCaptcha || captchaToken != null) &&
+    !isDeleting;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleCancel}>
       <View style={styles.overlay}>
-        <ThemedView type="backgroundElement" style={styles.sheet}>
-          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Unfold paper="backgroundElement" style={styles.sheet}>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled">
             {step === 1 ? (
               <>
-                <ThemedText type="displaySerif">Delete your account?</ThemedText>
-                <ThemedText type="body" themeColor="textSecondary">
-                  This permanently removes your account and everything in it:
-                </ThemedText>
+                <Fold>
+                  <ThemedText type="displaySerif">Delete your account?</ThemedText>
+                </Fold>
+                <Fold>
+                  <ThemedText type="caption">
+                    This permanently removes your account and everything in it:
+                  </ThemedText>
+                </Fold>
                 {/* Named specifically rather than as "your data", because the
                     surprising losses are the ones involving other people. */}
                 <View style={styles.list}>
@@ -75,54 +128,108 @@ export function DeleteAccountModal({ visible, handle, onCancel, onDeleted }: Del
                     'Comments you left on other people’s reviews',
                     'Your follows, likes and tags',
                   ].map((line) => (
-                    <ThemedText key={line} type="small" themeColor="textSecondary">
-                      • {line}
-                    </ThemedText>
+                    <Fold key={line}>
+                      <ThemedText type="caption">
+                        • {line}
+                      </ThemedText>
+                    </Fold>
                   ))}
                 </View>
-                <ThemedText type="small" themeColor="textSecondary">
-                  This cannot be undone, and there is no grace period to change your mind.
-                </ThemedText>
-                <Button label="Continue" onPress={() => setStep(2)} />
-                <Pressable onPress={handleCancel} hitSlop={8} style={styles.cancel}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Keep my account
+                <Fold>
+                  <ThemedText type="caption">
+                    This cannot be undone, and there is no grace period to change your mind.
                   </ThemedText>
-                </Pressable>
+                </Fold>
+                <Fold>
+                  <Button label="Continue" onPress={() => setStep(2)} />
+                </Fold>
+                <Fold>
+                  <Pressable onPress={handleCancel} hitSlop={8} style={styles.cancel}>
+                    <ThemedText type="action">
+                      Keep my account
+                    </ThemedText>
+                  </Pressable>
+                </Fold>
               </>
             ) : (
               <>
-                <ThemedText type="displaySerif">Are you sure?</ThemedText>
-                <ThemedText type="body" themeColor="textSecondary">
-                  Type your handle{' '}
-                  <ThemedText type="body">{handle ?? ''}</ThemedText> below to confirm.
-                </ThemedText>
-                <TextField
-                  placeholder="Your handle"
-                  value={typed}
-                  onChangeText={setTyped}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {error && (
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {error}
+                <Fold>
+                  <ThemedText type="displaySerif">Are you sure?</ThemedText>
+                </Fold>
+                <Fold>
+                  <ThemedText type="caption">
+                    Type your handle{' '}
+                    <ThemedText type="identifier">{handle ?? ''}</ThemedText> below to confirm.
                   </ThemedText>
+                </Fold>
+                <Fold>
+                  <TextField
+                    placeholder="Your handle"
+                    value={typed}
+                    onChangeText={setTyped}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </Fold>
+
+                {/* The handle proves they read the screen. The password
+                    proves it is them — a session on an unlocked phone is
+                    whoever is holding it. Verified server-side; this field
+                    only collects it. */}
+                {hasPassword === true && (
+                  <>
+                    <Fold>
+                      <ThemedText type="caption">
+                        Then enter your password.
+                      </ThemedText>
+                    </Fold>
+                    <Fold>
+                      <TextField
+                        placeholder="Your password"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        textContentType="password"
+                      />
+                    </Fold>
+                    {isTurnstileConfigured && (
+                      <Fold>
+                        <Turnstile
+                          onToken={setCaptchaToken}
+                          action="signin"
+                          resetSignal={captchaNonce}
+                        />
+                      </Fold>
+                    )}
+                  </>
                 )}
-                <Button
-                  label={isDeleting ? 'Deleting…' : 'Delete my account forever'}
-                  onPress={handleConfirm}
-                  disabled={!canConfirm}
-                />
-                <Pressable onPress={handleCancel} hitSlop={8} disabled={isDeleting} style={styles.cancel}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    Keep my account
-                  </ThemedText>
-                </Pressable>
+                {error && (
+                  <Fold>
+                    <ThemedText type="small" themeColor="danger">
+                      {error}
+                    </ThemedText>
+                  </Fold>
+                )}
+                <Fold>
+                  <Button
+                    label={isDeleting ? 'Deleting…' : 'Delete my account forever'}
+                    onPress={handleConfirm}
+                    disabled={!canConfirm}
+                  />
+                </Fold>
+                <Fold>
+                  <Pressable onPress={handleCancel} hitSlop={8} disabled={isDeleting} style={styles.cancel}>
+                    <ThemedText type="action">
+                      Keep my account
+                    </ThemedText>
+                  </Pressable>
+                </Fold>
               </>
             )}
           </ScrollView>
-        </ThemedView>
+        </Unfold>
       </View>
     </Modal>
   );
@@ -136,11 +243,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.four,
   },
+  // A percentage cap works here because the overlay this sits in has a
+  // definite height to take it of; the scroll view inside shrinks to it.
   sheet: {
     width: '100%',
     maxWidth: 400,
     maxHeight: '80%',
-    borderRadius: Spacing.four,
   },
   content: {
     padding: Spacing.four,

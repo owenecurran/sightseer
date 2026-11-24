@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileMap } from '@/components/profile-map';
@@ -9,13 +9,14 @@ import { ProfilePromptsSection } from '@/components/profile-prompts-section';
 import { UserCollectionsSection } from '@/components/user-collections-section';
 import { ThemedText } from '@/components/themed-text';
 import { PaperPanel } from '@/components/ui/paper-panel';
+import { PaperNote } from '@/components/ui/journal';
 import { ThemedView } from '@/components/themed-view';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TeaserCard } from '@/components/ui/teaser-card';
 import { VisitCard } from '@/components/visit-card';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTabFocusEffect } from '@/hooks/use-tab-pager';
@@ -37,6 +38,9 @@ import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/prof
 import { getTaggedInShowcase, type TaggedVisit } from '@/lib/tagged-visits';
 import { getVisitsByIds, likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
 import { shareText } from '@/lib/share';
+import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function ProfileScreen() {
   const { session, profile, refreshProfile } = useAuth();
@@ -119,7 +123,7 @@ export default function ProfileScreen() {
         setAvatarUrl(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load your profile.');
+      setError(userErrorMessage(err, 'Could not load your profile.'));
     }
   }, [session, profile?.avatar_r2_key]);
 
@@ -143,7 +147,7 @@ export default function ProfileScreen() {
       await acceptFollowRequest(followerId, session.user.id);
       setRequests((prev) => prev.filter((r) => r.follower_id !== followerId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not accept that request.');
+      setError(userErrorMessage(err, 'Could not accept that request.'));
     }
   }
 
@@ -154,7 +158,7 @@ export default function ProfileScreen() {
       await rejectFollowRequest(followerId, session.user.id);
       setRequests((prev) => prev.filter((r) => r.follower_id !== followerId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reject that request.');
+      setError(userErrorMessage(err, 'Could not reject that request.'));
     }
   }
 
@@ -163,7 +167,7 @@ export default function ProfileScreen() {
     setError(null);
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required to set a profile picture.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -173,7 +177,7 @@ export default function ProfileScreen() {
       await uploadAvatar({ userId: session.user.id, uri: result.uri, mimeType: result.mimeType });
       await refreshProfile();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that photo.');
+      setError(userErrorMessage(err, 'Could not upload that photo.'));
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -236,7 +240,11 @@ ${latestCard.note ?? ''}`.trim());
       <TeaserCard
         key="tagged_in"
         label="Tagged in"
-        title={latestTagged?.placeName ?? 'Not tagged in anything yet'}
+        // Two words, not "Not tagged in anything yet": the title is the
+        // stretched headline, which cuts anything past 24 characters, and that
+        // came out as "NOT TAGGED IN ANYTH..." under a label already saying
+        // what it was about.
+        title={latestTagged?.placeName ?? 'Nothing yet'}
         thumbnailUrl={teaserPhotoUrls[latestTagged?.photoIds?.[0] ?? '']}
         onPress={() => router.push('/tagged-in')}
       />
@@ -252,16 +260,18 @@ ${latestCard.note ?? ''}`.trim());
             defaultCamera={parseDefaultCamera(profile)}
             isOwnProfile
             onCameraLocked={refreshProfile}
+            onLayersSaved={refreshProfile}
           />
         </PaperPanel>
       ) : null,
   };
   const sectionOrder = parseSectionOrder(profile?.profile_section_order);
+  const needsSetup = totalVisits > 0 && !profile?.avatar_r2_key && !profile?.bio;
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset + Spacing.four }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -277,7 +287,7 @@ ${latestCard.note ?? ''}`.trim());
 
               <View style={styles.headerInfo}>
                 <ThemedText type="displaySerif">{profile?.name ?? profile?.handle ?? 'Profile'}</ThemedText>
-                {profile?.handle && <ThemedText type="displaySerif" style={styles.handleText}>@{profile.handle}</ThemedText>}
+                {profile?.handle && <ThemedText type="default" themeColor="textMeta" style={styles.handleText}>@{profile.handle}</ThemedText>}
                 <ThemedText type="roundedStat" themeColor="sage">
                   {totalVisits} sight{totalVisits === 1 ? '' : 's'} seen
                 </ThemedText>
@@ -295,11 +305,16 @@ ${latestCard.note ?? ''}`.trim());
 
             {profile?.bio && <ThemedText type="default">{profile.bio}</ThemedText>}
 
-            <Pressable onPress={() => router.push('/edit-profile')}>
-              <ThemedText type="small" themeColor="sage">
-                Edit profile
-              </ThemedText>
-            </Pressable>
+            {/* Not while the setup panel below is showing: its button goes
+                to the same screen, and two ways to do one thing, one line
+                apart, read as two different things. */}
+            {!needsSetup && (
+              <Pressable onPress={() => router.push('/edit-profile')} hitSlop={8} style={styles.editLink}>
+                <ThemedText type="action" themeColor="sage">
+                  Edit profile
+                </ThemedText>
+              </Pressable>
+            )}
 
             {/* Shown once they have posted something and not before.
 
@@ -313,28 +328,25 @@ ${latestCard.note ?? ''}`.trim());
                 this started: a prompt on the post-save panel arrives while
                 they are still finishing one job and reads as the app asking
                 for another. This one is waiting for them when they get back,
-                next to the thing it is talking about, pointing at the same
-                Edit profile link directly above it.
+                next to the thing it is talking about, and stands in for the
+                Edit profile link while it is up.
 
                 No flag and nothing to dismiss: the condition IS the
                 completion. Add an avatar or a bio and it goes, because the
                 thing it was asking for has happened. */}
-            {totalVisits > 0 && !profile?.avatar_r2_key && !profile?.bio && (
-              <PaperPanel seed="profile-setup" accentIndex={1} style={styles.setupPrompt}>
-                <ThemedText type="sectionLabel">Make it yours</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  Add a photo and a line about yourself so people who find your reviews know
-                  whose they are.
-                </ThemedText>
-                <Button
-                  label="Set up my profile"
-                  variant="secondary"
-                  onPress={() => router.push('/edit-profile')}
-                />
-              </PaperPanel>
+            {needsSetup && (
+              <PaperNote
+                seed="profile-setup"
+                title="Make it yours"
+                body="Add a photo and a line about yourself, so people who find your reviews know whose they are."
+                actionLabel="set up my profile"
+                onPress={() => router.push('/edit-profile')}
+              />
             )}
 
-            {error && <ThemedText type="small">{error}</ThemedText>}
+            {/* Retries this tab alone: the notice's default reloads the
+                whole screen, which inside the tab pager is every tab. */}
+            {error && <ErrorNotice message={error} onRetry={() => void loadProfile()} />}
 
             {sectionOrder.map((key) => sectionMap[key])}
 
@@ -345,13 +357,13 @@ ${latestCard.note ?? ''}`.trim());
                   <PaperPanel key={request.follower_id} seed={`request-${request.follower_id}`} style={styles.requestRow}>
                     <ThemedText type="default">{request.users?.name ?? request.users?.handle ?? 'Someone'}</ThemedText>
                     <View style={styles.requestActions}>
-                      <Pressable onPress={() => handleAccept(request.follower_id)}>
-                        <ThemedText type="smallBold" themeColor="sage">
+                      <Pressable onPress={() => handleAccept(request.follower_id)} hitSlop={8}>
+                        <ThemedText type="action" themeColor="sage">
                           Accept
                         </ThemedText>
                       </Pressable>
-                      <Pressable onPress={() => handleReject(request.follower_id)}>
-                        <ThemedText type="small">Reject</ThemedText>
+                      <Pressable onPress={() => handleReject(request.follower_id)} hitSlop={8}>
+                        <ThemedText type="action">Reject</ThemedText>
                       </Pressable>
                     </View>
                   </PaperPanel>
@@ -377,16 +389,13 @@ ${latestCard.note ?? ''}`.trim());
               <Button label="Settings" variant="secondary" onPress={() => router.push('/settings')} />
             </View>
           </View>
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  setupPrompt: {
-    gap: Spacing.two,
-  },
   container: {
     flex: 1,
   },
@@ -417,6 +426,11 @@ const styles = StyleSheet.create({
   handleText: {
     fontSize: 16,
     lineHeight: 20,
+  },
+  // A Pressable in a column stretches to the full width, which made the
+  // whole row under the bio a tap target for a two-word link.
+  editLink: {
+    alignSelf: 'flex-start',
   },
   statsRow: {
     flexDirection: 'row',

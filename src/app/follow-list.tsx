@@ -15,6 +15,8 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { listFollowers, listFollowing, removeFollower, type FollowListEntry } from '@/lib/follows';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function FollowListScreen() {
   const { type, userId, name } = useLocalSearchParams<{
@@ -42,7 +44,7 @@ export default function FollowListScreen() {
       await removeFollower(session.user.id, followerId);
       setEntries((prev) => prev.filter((e) => e.id !== followerId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that follower.');
+      setError(userErrorMessage(err, 'Could not remove that follower.'));
     } finally {
       setRemovingId(null);
     }
@@ -62,7 +64,7 @@ export default function FollowListScreen() {
             setAvatarUrls(await getAvatarViewUrls(ids));
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this list.');
+          setError(userErrorMessage(err, 'Could not load this list.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -92,17 +94,16 @@ export default function FollowListScreen() {
             <>
               <BackLink seed="follow-list" />
               <ThemedText type="displaySerif">{title}</ThemedText>
-              {error && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  {error}
-                </ThemedText>
-              )}
+              {error && <ErrorNotice message={error} />}
             </>
           }
           ListEmptyComponent={
-            <ThemedText type="small" themeColor="textSecondary">
-              {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
-            </ThemedText>
+            // Not under a failed load, which has nobody in it either.
+            error ? null : (
+              <ThemedText type="caption">
+                {type === 'followers' ? 'No followers yet.' : 'Not following anyone yet.'}
+              </ThemedText>
+            )
           }
           renderItem={({ item }) => (
             <UserRow
@@ -113,7 +114,7 @@ export default function FollowListScreen() {
               trailing={
                 isOwnFollowersList ? (
                   <Pressable onPress={() => handleRemove(item.id)} disabled={removingId === item.id} hitSlop={8}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       Remove
                     </ThemedText>
                   </Pressable>

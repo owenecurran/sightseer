@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
 import { BoardMapView } from '@/components/board-views/map-view';
@@ -13,7 +13,8 @@ import {
   type ReviewSortMode,
 } from '@/components/reviews-sort-control';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { CircledTabs } from '@/components/ui/circled-tabs';
+import { Fold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import type { BoardVisitItem } from '@/lib/boards';
@@ -43,6 +44,9 @@ type ReviewBrowserProps = {
   onSelectVisit?: (visitId: string) => void;
   selectedVisitId?: string | null;
   contentPaddingBottom?: number;
+  // The road between postcards, as in the feed (see FullReviewsView). Drawn
+  // only while the order is by date, where it is someone's journey.
+  journey?: boolean;
 };
 
 // One way of looking at a set of reviews, wherever they came from.
@@ -65,6 +69,7 @@ export function ReviewBrowser({
   onSelectVisit,
   selectedVisitId,
   contentPaddingBottom = 0,
+  journey = false,
 }: ReviewBrowserProps) {
   const picking = onSelectVisit != null;
   const modes = picking ? PICKER_MODES : VIEW_MODES;
@@ -80,35 +85,27 @@ export function ReviewBrowser({
   // the pins would just rebuild the markers for nothing.
   const ordered = useMemo(() => sortReviewItems(items, sortMode), [items, sortMode]);
 
+  // Fold is a plain View on the reviews screen. In the review picker each of
+  // these is a panel of the sheet's unfold.
   const chips = (
-    <View style={styles.controlsRow}>
+    <Fold style={styles.controlsRow}>
+      {/* Typed and ringed in pen, as Search's filters and the feed's
+          switcher are, where these were pill chips. */}
       <View style={styles.modeRow}>
-        {modes.map((mode) => (
-          <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
-            <ThemedView
-              type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'}
-              style={styles.modeChip}>
-              <ThemedText
-                type="small"
-                themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
-                {mode.label}
-              </ThemedText>
-            </ThemedView>
-          </Pressable>
-        ))}
+        <CircledTabs items={modes} active={viewMode} onChange={setViewMode} />
       </View>
       {/* Not offered on the map, which has no order to sort into. */}
       {viewMode !== 'map' && <ReviewsSortControl active={sortMode} onChange={setSortMode} />}
-    </View>
+    </Fold>
   );
 
   if (items.length === 0) {
     return (
-      <View style={styles.empty}>
-        <ThemedText type="small" themeColor="textSecondary">
+      <Fold style={styles.empty}>
+        <ThemedText type="caption">
           No reviews yet.
         </ThemedText>
-      </View>
+      </Fold>
     );
   }
 
@@ -125,6 +122,7 @@ export function ReviewBrowser({
           viewerId={viewerId}
           onSelectVisit={onSelectVisit}
           selectedVisitId={selectedVisitId}
+          journey={journey && (sortMode === 'recent' || sortMode === 'oldest')}
         />
       </View>
     );
@@ -186,23 +184,18 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  // The typed modes keep a line to themselves when the sort menu will not
+  // fit beside them, rather than squeezing until "Map" drops on its own.
   controlsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.two,
     paddingBottom: Spacing.two,
   },
   modeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-    flexShrink: 1,
-  },
-  modeChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.four,
+    maxWidth: '100%',
   },
   scrollContent: {
     paddingTop: Spacing.one,

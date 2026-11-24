@@ -8,7 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
 import { VisitCard } from '@/components/visit-card';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
@@ -18,6 +18,8 @@ import { getPhotoViewUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 import { goBack } from '@/lib/navigation';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function VisitDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -48,7 +50,7 @@ export default function VisitDetailScreen() {
         setPhotoUrls(photos);
         setAvatarUrl(avatars[result.user_id] ?? null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load that review.'));
+      .catch((err) => setError(userErrorMessage(err, 'Could not load that review.')));
   }, [id, session]);
 
   async function handleToggleLike() {
@@ -66,7 +68,7 @@ export default function VisitDetailScreen() {
           : prev
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that like.');
+      setError(userErrorMessage(err, 'Could not update that like.'));
     }
   }
 
@@ -82,7 +84,7 @@ export default function VisitDetailScreen() {
       return;
     }
     if (result === 'error') {
-      setError('Could not copy that visit — please try again.');
+      setError('Could not copy that visit. Please try again.');
       return;
     }
     if (result === 'copied') {
@@ -91,11 +93,14 @@ export default function VisitDetailScreen() {
     }
   }
 
-  if (visit === undefined) return <PageLoader />;
+  // A failed load leaves the review undefined, the same as one still on
+  // its way, so the error has to be checked too. Without it the loader
+  // stayed up for good and the notice below never showed.
+  if (visit === undefined && !error) return <PageLoader />;
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         {/* KeyboardAwareScroll, not Animated.ScrollView: this screen opens
             with its comments already expanded, so the composer is the point
             of it — and with a plain scroll view the keyboard covered the
@@ -107,14 +112,10 @@ export default function VisitDetailScreen() {
           scrollEventThrottle={16}>
         <BackLink seed="[id]" />
 
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-        )}
+        {error && <ErrorNotice message={error} />}
 
         {visit === null && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             This review isn’t available.
           </ThemedText>
         )}

@@ -28,6 +28,7 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { colorForRating } from '@/lib/rating-gradient';
+import { userErrorMessage } from '@/lib/user-error';
 
 // The full reasoning behind a harmony score, on its own screen rather than
 // expanded inline under the meter: the list can run long, every row links
@@ -86,7 +87,7 @@ export default function HarmonyScreen() {
           setPhotoUrls(photos);
           setAvatarUrls(avatars);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not work that out.');
+          setError(userErrorMessage(err, 'Could not work that out.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -167,9 +168,9 @@ export default function HarmonyScreen() {
               </ThemedText>
               <View style={styles.scoreText}>
                 <ThemedText type="smallBold">{harmonyLabel(score)}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   {isThin
-                    ? `Not much to go on yet — you and ${userName} need more overlap before this means much.`
+                    ? `Not much to go on yet. You and ${userName} need more overlap before this means much.`
                     : `Worked out from ${reasons.length} thing${reasons.length === 1 ? '' : 's'} you have in common.`}
                 </ThemedText>
               </View>
@@ -180,7 +181,7 @@ export default function HarmonyScreen() {
           </PaperPanel>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
@@ -188,8 +189,8 @@ export default function HarmonyScreen() {
           {places.length > 0 && (
             <View style={styles.section}>
               <ThemedText type="sectionLabel">Places you both rated</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                The strongest signal — the same spot, judged by both of you.
+              <ThemedText type="caption">
+                The strongest signal: the same spot, judged by both of you.
               </ThemedText>
               {places.map(renderRow)}
             </View>
@@ -198,7 +199,7 @@ export default function HarmonyScreen() {
           {areas.length > 0 && (
             <View style={styles.section}>
               <ThemedText type="sectionLabel">Places you both travelled to</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 Compared on how each of you rated everything you did there.
               </ThemedText>
               {areas.map(renderRow)}
@@ -206,7 +207,7 @@ export default function HarmonyScreen() {
           )}
 
           {reasons.length === 0 && !error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Nothing in common to point at yet. Once you have both been somewhere, this fills in.
             </ThemedText>
           )}

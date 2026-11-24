@@ -9,6 +9,7 @@ import { PROFILE_PROMPTS } from '@/constants/profile-prompts';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { deletePrompt, type ProfilePrompt } from '@/lib/profile-prompts';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PromptCardProps = {
   existing: ProfilePrompt | undefined;
@@ -34,18 +35,18 @@ export function PromptCard({ existing, onChanged, onDragStart }: PromptCardProps
       await deletePrompt(existing.id);
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that prompt.');
+      setError(userErrorMessage(err, 'Could not remove that prompt.'));
     }
   }
 
   if (existing) {
     return (
       <ThemedView type="backgroundElement" style={styles.card}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="caption">
           {PROFILE_PROMPTS.find((p) => p.slug === existing.promptSlug)?.label ?? existing.promptSlug}
         </ThemedText>
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
@@ -54,7 +55,7 @@ export function PromptCard({ existing, onChanged, onDragStart }: PromptCardProps
             <ThemedText type="small">Edit</ThemedText>
           </Pressable>
           <Pressable onPress={handleRemovePrompt}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="action">
               Remove
             </ThemedText>
           </Pressable>
@@ -71,7 +72,7 @@ export function PromptCard({ existing, onChanged, onDragStart }: PromptCardProps
   return (
     <Pressable onPress={() => router.push('/prompt-editor')}>
       <ThemedView type="backgroundElement" style={styles.card}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="action">
           + Add a prompt
         </ThemedText>
       </ThemedView>

@@ -1,127 +1,112 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { createClient } from "@supabase/supabase-js";
-import { S3Client, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { cleanupAccountMedia } from "../_shared/account-media-cleanup.ts";
 
-const BUCKET = Deno.env.get("R2_BUCKET_NAME")!;
-// S3 DeleteObjects caps at 1000 keys per call.
-const DELETE_BATCH_SIZE = 1000;
+declare const EdgeRuntime: { waitUntil(task: Promise<unknown>): void };
 
-const s3 = new S3Client({
-  region: "auto",
-  endpoint: `https://${Deno.env.get("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: Deno.env.get("R2_ACCESS_KEY_ID")!,
-    secretAccessKey: Deno.env.get("R2_SECRET_ACCESS_KEY")!,
-  },
-});
-
-// Deleting an auth user is an admin operation, so it needs the service role.
-// The CALLER is still authenticated as themselves (withSupabase below) — this
-// client only ever acts on the id in that verified token, never on one the
-// request supplies.
-const admin = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-);
-
-// Every stored object belonging to this user, gathered BEFORE anything is
-// deleted — once the rows cascade away the keys are unrecoverable and the
-// files are orphaned in R2 forever.
+// Anything that escapes comes back as a readable message.
 //
-// Enumerated per table rather than swept by prefix because keys are
-// namespaced by entity (visits/<visit_id>/…, drafts/<draft_id>/…), not by
-// user, so there is no prefix that means "this person's files".
-async function collectR2Keys(userId: string): Promise<string[]> {
-  const keys: (string | null)[] = [];
-
-  const { data: user } = await admin
-    .from("users")
-    .select("avatar_r2_key")
-    .eq("id", userId)
-    .single();
-  keys.push(user?.avatar_r2_key ?? null);
-
-  // Photos hang off visits AND draft_visits — the same table serves both, so
-  // one pass over each ownership path covers published and unpublished alike.
-  const { data: visitPhotos } = await admin
-    .from("photos")
-    .select("r2_key, thumb_r2_key, visits!inner(user_id)")
-    .eq("visits.user_id", userId);
-  for (const p of visitPhotos ?? []) keys.push(p.r2_key, p.thumb_r2_key);
-
-  const { data: draftPhotos } = await admin
-    .from("photos")
-    .select("r2_key, thumb_r2_key, draft_visits!inner(user_id)")
-    .eq("draft_visits.user_id", userId);
-  for (const p of draftPhotos ?? []) keys.push(p.r2_key, p.thumb_r2_key);
-
-  const { data: boards } = await admin
-    .from("boards")
-    .select("cover_photo_r2_key, cover_r2_key")
-    .eq("user_id", userId);
-  for (const b of boards ?? []) keys.push(b.cover_photo_r2_key, b.cover_r2_key);
-
-  const { data: books } = await admin
-    .from("travel_books")
-    .select("cover_photo_r2_key, cover_r2_key")
-    .eq("user_id", userId);
-  for (const b of books ?? []) keys.push(b.cover_photo_r2_key, b.cover_r2_key);
-
-  const { data: recaps } = await admin
-    .from("travel_book_recaps")
-    .select("cover_r2_key")
-    .eq("author_id", userId);
-  for (const r of recaps ?? []) keys.push(r.cover_r2_key);
-
-  const { data: attachments } = await admin
-    .from("profile_prompt_attachments")
-    .select("photo_r2_key, profile_prompts!inner(user_id)")
-    .eq("profile_prompts.user_id", userId);
-  for (const a of attachments ?? []) keys.push(a.photo_r2_key);
-
-  // Articles deliberately excluded: author_id is now SET NULL, so the
-  // article outlives the account and keeps its cover image.
-  return [...new Set(keys.filter((k): k is string => typeof k === "string" && k.length > 0))];
+// This matters more than it looks. An uncaught throw is a bare platform 500
+// with no body, and functions-js turns a body-less non-2xx into the same
+// "Edge Function returned a non-2xx status code" that sent this
+// investigation round in circles. Whatever fails next should be able to say
+// so. The message is the caller's own failure, on their own account, so
+// there is nothing here to leak to anybody else.
+function handlerError(err: unknown) {
+  console.error("delete-account: unhandled", err);
+  const message = err instanceof Error ? err.message : String(err);
+  return Response.json({ error: `Could not delete the account: ${message}` }, { status: 500 });
 }
 
 export default {
-  fetch: withSupabase({ auth: "user" }, async (_req, ctx) => {
-    // The id comes from the verified token, never from the request body —
-    // otherwise this would delete any account by id.
-    const userId = ctx.userClaims.id;
+  fetch: withSupabase({ auth: "user" }, async (req, ctx) => {
+    if (req.method !== "POST") return new Response(null, { status: 405, headers: { Allow: "POST" } });
 
-    const keys = await collectR2Keys(userId);
+    try {
+      // The id comes from the verified token, never from the request body —
+      // otherwise this would delete any account by id.
+      const userId = ctx.userClaims?.id;
+      if (!userId) return Response.json({ error: "Sign in to continue." }, { status: 401 });
+      const admin = ctx.supabaseAdmin;
 
-    const failed: string[] = [];
-    for (let i = 0; i < keys.length; i += DELETE_BATCH_SIZE) {
-      const batch = keys.slice(i, i + DELETE_BATCH_SIZE);
-      try {
-        const result = await s3.send(
-          new DeleteObjectsCommand({
-            Bucket: BUCKET,
-            Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
-          })
-        );
-        for (const e of result.Errors ?? []) if (e.Key) failed.push(e.Key);
-      } catch {
-        failed.push(...batch);
+      // ------------------------------------------------------------------
+      // Prove it is still them
+      // ------------------------------------------------------------------
+      //
+      // A live session is not enough for something with no undo. The session
+      // on an unlocked phone is whoever is holding it, and typing a handle
+      // off the screen above proves only that they can read. The password is
+      // the part a bystander does not have.
+      //
+      // Enforced HERE rather than in the modal, because a check the client
+      // performs is a check the client can skip.
+      const body = await req.json().catch(() => ({}));
+      const password = typeof body?.password === "string" ? body.password : "";
+      const captchaToken =
+        typeof body?.captchaToken === "string" && body.captchaToken ? body.captchaToken : undefined;
+
+      const { data: authUser, error: lookupError } = await admin.auth.admin.getUserById(userId);
+      if (lookupError || !authUser?.user) {
+        return Response.json({ error: "Could not confirm your account." }, { status: 500 });
       }
-    }
 
-    // Deleting the auth user cascades through public.users and everything
-    // referencing it. Done last: if it ran first, the rows naming the R2
-    // keys would already be gone.
-    //
-    // Storage failures deliberately do NOT block this. Someone who asked to
-    // be deleted should not stay on file because a bucket call timed out —
-    // the orphaned keys are returned so they can be swept, which is the
-    // recoverable direction.
-    const { error } = await admin.auth.admin.deleteUser(userId);
-    if (error) {
-      return Response.json({ error: error.message }, { status: 500 });
-    }
+      // An account created with Google or Apple and never given a password has
+      // no 'email' identity and so has nothing to confirm. Requiring one would
+      // make deletion impossible for those accounts, which is worse than the
+      // weaker check — they still had to get past the handle step, and they
+      // hold a live OAuth-backed session.
+      const hasPassword = (authUser.user.identities ?? []).some(
+        (identity) => identity.provider === "email"
+      );
 
-    return Response.json({ deleted: true, objectsDeleted: keys.length - failed.length, failed });
+      if (hasPassword) {
+        if (!password) {
+          return Response.json({ error: "Enter your password to confirm." }, { status: 400 });
+        }
+        if (!authUser.user.email) {
+          return Response.json({ error: "Could not confirm your account." }, { status: 500 });
+        }
+        // There is no admin API for "verify this password" that skips issuing
+        // a grant, so this goes through a real sign-in server-side — the same
+        // approach, and the same captcha forwarding, as resolve-username-signin.
+        // The session it hands back is discarded; the account is about to stop
+        // existing anyway.
+        const anon = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_ANON_KEY")!
+        );
+        const { data: signIn, error: signInError } = await anon.auth.signInWithPassword({
+          email: authUser.user.email,
+          password,
+          options: captchaToken ? { captchaToken } : undefined,
+        });
+        if (signInError || !signIn.session) {
+          // Distinguished from a wrong password on purpose: a captcha failure
+          // is not something the user can fix by retyping, and reporting it as
+          // "wrong password" sends them round the same loop forever.
+          const isCaptcha = /captcha/i.test(signInError?.message ?? "");
+          return Response.json(
+            { error: isCaptcha ? "Security check failed. Try again." : "That password is not right." },
+            { status: 401 }
+          );
+        }
+      }
+
+      // The auth cascade queues the account's media in the same transaction.
+      const { error } = await admin.auth.admin.deleteUser(userId);
+      if (error) {
+        console.error("delete-account: deleteUser failed", error);
+        return Response.json({ error: `Could not delete the account: ${error.message}` }, { status: 500 });
+      }
+
+      EdgeRuntime.waitUntil(cleanupAccountMedia(admin, userId).catch((err) => {
+        console.error("delete-account: media cleanup failed", err);
+      }));
+
+      return Response.json({ deleted: true });
+    } catch (err) {
+      return handlerError(err);
+    }
   }),
 };

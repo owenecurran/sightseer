@@ -76,7 +76,7 @@ export function InviteMobileLanding({ code, device, inviter = null }: InviteMobi
           {inviterName ? `${inviterName} invited you.` : 'You have been invited.'}
         </ThemedText>
 
-        <ThemedText type="body" themeColor="textSecondary" style={styles.centered}>
+        <ThemedText type="lead" style={styles.centered}>
           Sightseer is a place to record where you have been, rate it, and share that with people
           you choose.
         </ThemedText>
@@ -91,17 +91,18 @@ export function InviteMobileLanding({ code, device, inviter = null }: InviteMobi
 
         {target.kind === 'testflight' && (
           <View style={styles.block}>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+            <ThemedText type="caption" style={styles.centered}>
               Sightseer is in open beta on TestFlight while the App Store listing is in review.
             </ThemedText>
             {target.url && (
               <Button label="Get the beta on TestFlight" onPress={() => Linking.openURL(target.url!)} />
             )}
             {target.code && (
-              <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+              <ThemedText type="caption" style={styles.centered}>
                 {target.url
-                  ? `If that does not open, install TestFlight and redeem ${target.code}.`
-                  : `Install TestFlight from the App Store, then redeem ${target.code}.`}
+                  ? 'If that does not open, install TestFlight and redeem '
+                  : 'Install TestFlight from the App Store, then redeem '}
+                <ThemedText type="identifier">{target.code}</ThemedText>.
               </ThemedText>
             )}
           </View>
@@ -112,7 +113,7 @@ export function InviteMobileLanding({ code, device, inviter = null }: InviteMobi
             the whole app here, and someone who was sent a link deserves to
             know that rather than wonder where the download went. */}
         {target.kind === 'none' && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+          <ThemedText type="caption" style={styles.centered}>
             {device === 'android'
               ? 'The Android app is on its way. Everything works in your browser meanwhile.'
               : 'The mobile app is on its way. Everything works in your browser meanwhile.'}
@@ -132,7 +133,7 @@ export function InviteMobileLanding({ code, device, inviter = null }: InviteMobi
             noise on the one screen that should have none. */}
         {target.kind !== 'none' && (
           <PaperPanel seed={`invite:${code}`} style={styles.codePanel}>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+            <ThemedText type="meta" style={styles.centered}>
               Your invite code
             </ThemedText>
             <Pressable onPress={handleCopy} hitSlop={8}>
@@ -140,7 +141,7 @@ export function InviteMobileLanding({ code, device, inviter = null }: InviteMobi
                 {code}
               </ThemedText>
             </Pressable>
-            <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+            <ThemedText type="caption" style={styles.centered}>
               {copied
                 ? 'Copied.'
                 : `Enter this when you sign up so ${inviterName ?? 'whoever invited you'} gets credit.`}

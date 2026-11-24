@@ -67,7 +67,7 @@ export default function ReportBugScreen() {
           {sent ? (
             <PaperPanel seed="report-bug-sent" accentIndex={1} style={styles.panel}>
               <ThemedText type="sectionLabel">Thank you</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 That has been sent along with your app version, so it can be matched to the build
                 you are on.
               </ThemedText>
@@ -78,9 +78,9 @@ export default function ReportBugScreen() {
             </PaperPanel>
           ) : (
             <PaperPanel seed="report-bug" accentIndex={1} style={styles.panel}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 What went wrong? Anything you can say about what you were doing when it happened
-                helps — even roughly.
+                helps, even roughly.
               </ThemedText>
               <TextField
                 placeholder="What happened?"
@@ -91,7 +91,7 @@ export default function ReportBugScreen() {
                 style={styles.field}
               />
               {error && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="small" themeColor="danger">
                   {error}
                 </ThemedText>
               )}
@@ -101,7 +101,7 @@ export default function ReportBugScreen() {
                 loading={isSending}
                 disabled={message.trim().length === 0}
               />
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 Your app version and device are included automatically. Nothing else from the app is
                 attached.
               </ThemedText>

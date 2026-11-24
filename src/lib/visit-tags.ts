@@ -1,3 +1,4 @@
+import { getVisitsByIds, type FeedVisit } from '@/lib/feed';
 import { supabase } from '@/lib/supabase';
 
 // Keep in sync with the enforce_visit_tag_limit trigger, which is the real
@@ -46,24 +47,11 @@ export function listTags(): Promise<Tag[]> {
   return vocabularyPromise;
 }
 
-// Replaces a review's tags wholesale. Delete-then-insert rather than working
-// out a diff: there are at most three, so the diff would be more code than
-// it saves, and this also converges if a previous save half-failed.
+// Replace the review's tag set in one transaction.
 export async function setVisitTags(visitId: string, slugs: string[]): Promise<void> {
   const capped = [...new Set(slugs)].slice(0, MAX_VISIT_TAGS);
-
-  const { error: deleteError } = await supabase
-    .from('visit_tags')
-    .delete()
-    .eq('visit_id', visitId);
-  if (deleteError) throw deleteError;
-
-  if (capped.length === 0) return;
-
-  const { error: insertError } = await supabase
-    .from('visit_tags')
-    .insert(capped.map((slug) => ({ visit_id: visitId, tag_slug: slug })));
-  if (insertError) throw insertError;
+  const { error } = await supabase.rpc('set_visit_tags', { p_visit_id: visitId, p_tag_slugs: capped });
+  if (error) throw error;
 }
 
 // Which tags are in use on the reviews at or under a place, with how many
@@ -81,4 +69,24 @@ export function countTagsForVisits(
     }
   }
   return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+// How many reviews of a tag to show on its page.
+const TAG_PAGE_LIMIT = 30;
+
+// The reviews carrying one tag, newest first, of those the viewer is allowed
+// to see (visit_tags is read through the same visibility rule as visits),
+// with the tag's own label for the page's title.
+export async function getVisitsWithTag(
+  slug: string,
+  viewerId: string,
+): Promise<{ label: string | null; visits: FeedVisit[] }> {
+  const [tagRows, tag] = await Promise.all([
+    supabase.from('visit_tags').select('visit_id').eq('tag_slug', slug).limit(200),
+    supabase.from('tags').select('label').eq('slug', slug).maybeSingle(),
+  ]);
+  if (tagRows.error) throw tagRows.error;
+  const ids = [...new Set((tagRows.data ?? []).map((row) => row.visit_id))];
+  const visits = await getVisitsByIds(ids, viewerId);
+  return { label: tag.data?.label ?? null, visits: visits.slice(0, TAG_PAGE_LIMIT) };
 }

@@ -130,6 +130,10 @@ cp .env.example .env.local
 
 ### Database
 
+Set `GOOGLE_PLACES_API_KEY` as a Supabase Edge Function secret with access to
+Places API (New). The `cache-google-place` function uses it to verify new
+catalog entries. Keep the mobile and web autocomplete keys in `.env.local`.
+
 ```bash
 npx supabase link --project-ref <your-project-ref>
 npx supabase db push          # apply migrations

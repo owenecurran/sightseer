@@ -21,7 +21,7 @@ export function UserRow({ name, handle, avatarUrl, onPress, trailing }: UserRowP
       <View style={styles.info}>
         <ThemedText type="default">{name ?? handle ?? 'Someone'}</ThemedText>
         {handle && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="textMeta">
             @{handle}
           </ThemedText>
         )}

@@ -1,5 +1,6 @@
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import type { ScrollViewProps } from 'react-native';
+import type { Ref } from 'react';
+import type { ScrollView, ScrollViewProps } from 'react-native';
 
 // Native-only (no web build for react-native-keyboard-controller — kept out
 // of any route/layout file per this session's established pager-view
@@ -22,6 +23,41 @@ import type { ScrollViewProps } from 'react-native';
 // implementations, not something reverting has been re-tested to confirm
 // yet. If interactive swipe-to-dismiss is wanted again, it needs a mechanism
 // this library actually supports, not raw ScrollViewProps passthrough.
-export function KeyboardAwareScroll(props: ScrollViewProps) {
-  return <KeyboardAwareScrollView bottomOffset={24} {...props} />;
+// bottomOffset is how much room is kept clear BELOW the focused field. The
+// default of 24 clears the field itself and nothing else, which is right for
+// a long form where the next field is the next thing wanted. It is wrong for
+// a short form whose submit button sits directly under its only input — 24
+// leaves the button under the keyboard on a short screen, so the thing you
+// are meant to press next is the one thing hidden. Those screens pass their
+// own, measured to include the button.
+export type KeyboardAwareScrollProps = ScrollViewProps & {
+  bottomOffset?: number;
+  // Forwarded so callers can drive the list imperatively — scrolling home
+  // when the tab is tapped again, for one. React 19 passes ref as an
+  // ordinary prop, so there is no forwardRef wrapper to add.
+  ref?: Ref<ScrollView>;
+};
+
+export function KeyboardAwareScroll({ bottomOffset = 24, ref, ...props }: KeyboardAwareScrollProps) {
+  // Cast because the library's handle is a ScrollView PLUS its own
+  // assureFocusedInputVisible, and TS will not accept a Ref to the narrower
+  // type where a Ref to the wider one is expected. Every method a caller can
+  // reach through ScrollView is genuinely there.
+  return <KeyboardAwareScrollView ref={ref as never} bottomOffset={bottomOffset} {...props} />;
+}
+
+// The same thing for a FlatList, which builds its scroll view itself: pass
+// the result as `renderScrollComponent`. Made once at module scope by the
+// caller, not per render.
+//
+// VirtualizedList clones whatever this returns with a ref of its own, and
+// KeyboardAwareScrollView hands that ref the real ScrollView (it is what its
+// useImperativeHandle returns), so the list's scrollToOffset and the like
+// keep working, as does a Reanimated onScroll on the list -- Reanimated
+// attaches that through the list's getScrollableNode(), which goes through
+// the same ref.
+export function keyboardAwareScrollRenderer(bottomOffset = 24) {
+  return function renderScroll(props: ScrollViewProps) {
+    return <KeyboardAwareScrollView bottomOffset={bottomOffset} {...props} />;
+  };
 }

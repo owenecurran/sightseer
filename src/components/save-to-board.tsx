@@ -5,6 +5,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ActionSticker } from '@/components/ui/action-sticker';
 import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
 import { Spacing } from '@/constants/theme';
@@ -25,6 +26,7 @@ import {
   removeVisitFromTravelBookByVisit,
   type TravelBookListItem,
 } from '@/lib/travel-books';
+import { userErrorMessage } from '@/lib/user-error';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
@@ -72,7 +74,7 @@ export function SaveToBoard({
           setSavedTravelBookIds(await getTravelBookIdsContainingVisit(myTravelBooks.map((b) => b.id), visitId));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load your boards.');
+        setError(userErrorMessage(err, 'Could not load your boards.'));
       } finally {
         setIsLoading(false);
       }
@@ -95,7 +97,7 @@ export function SaveToBoard({
         setSavedBoardIds((prev) => new Set(prev).add(boardId));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that board.');
+      setError(userErrorMessage(err, 'Could not update that board.'));
     }
   }
 
@@ -116,7 +118,7 @@ export function SaveToBoard({
         setSavedTravelBookIds((prev) => new Set(prev).add(bookId));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that travel book.');
+      setError(userErrorMessage(err, 'Could not update that travel book.'));
     }
   }
 
@@ -131,7 +133,7 @@ export function SaveToBoard({
       setSavedBoardIds((prev) => new Set(prev).add(board.id));
       setNewBoardName('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create that board.');
+      setError(userErrorMessage(err, 'Could not create that board.'));
     } finally {
       setIsLoading(false);
     }
@@ -148,38 +150,44 @@ export function SaveToBoard({
 
       <Modal visible={isOpen} transparent animationType="fade" onRequestClose={() => setIsOpen(false)}>
         <View style={styles.overlay}>
-          <ThemedView type="background" style={styles.sheet}>
-            <View style={styles.header}>
-              <ThemedText type="headline">Add to</ThemedText>
+          <Unfold style={styles.sheet}>
+            <Fold style={styles.header}>
+              <ThemedText type="displaySerif">Add to</ThemedText>
               <Pressable onPress={() => setIsOpen(false)} hitSlop={8}>
                 <Ionicons name="close" size={22} color={theme.textSecondary} />
               </Pressable>
-            </View>
+            </Fold>
 
             {error && (
-              <ThemedText type="small" themeColor="textSecondary">
-                {error}
-              </ThemedText>
+              <Fold>
+                <ThemedText type="small" themeColor="danger">
+                  {error}
+                </ThemedText>
+              </Fold>
             )}
 
             <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Boards</ThemedText>
+                <Fold>
+                  <ThemedText type="meta">Boards</ThemedText>
+                </Fold>
                 {boards.map((board) => {
                   const isSaved = savedBoardIds.has(board.id);
                   return (
-                    <Pressable key={board.id} onPress={() => handleToggleBoard(board.id)}>
-                      <ThemedView type="backgroundSelected" style={styles.row}>
-                        <ThemedText type="default">{board.name}</ThemedText>
-                        <ThemedText type="small" themeColor={isSaved ? 'text' : 'textSecondary'}>
-                          {isSaved ? 'Saved ✓' : 'Save'}
-                        </ThemedText>
-                      </ThemedView>
-                    </Pressable>
+                    <Fold key={board.id}>
+                      <Pressable onPress={() => handleToggleBoard(board.id)}>
+                        <ThemedView type="backgroundSelected" style={styles.row}>
+                          <ThemedText type="small">{board.name}</ThemedText>
+                          <ThemedText type="action" themeColor={isSaved ? 'text' : 'textSecondary'}>
+                            {isSaved ? 'Saved ✓' : 'Save'}
+                          </ThemedText>
+                        </ThemedView>
+                      </Pressable>
+                    </Fold>
                   );
                 })}
 
-                <View style={styles.newBoardRow}>
+                <Fold style={styles.newBoardRow}>
                   <TextField
                     placeholder="New board name"
                     value={newBoardName}
@@ -187,36 +195,46 @@ export function SaveToBoard({
                     style={styles.newBoardInput}
                   />
                   <Button label="Create" onPress={handleCreateAndSave} disabled={!newBoardName.trim()} />
-                </View>
+                </Fold>
               </View>
 
               {isOwnerOrTagged && (
                 <View style={styles.section}>
-                  <ThemedText type="sectionLabel">Travel books</ThemedText>
+                  <Fold>
+                    <ThemedText type="meta">Travel books</ThemedText>
+                  </Fold>
                   {travelBooks.length === 0 && (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      You don't have any travel books yet.
-                    </ThemedText>
+                    <Fold>
+                      <ThemedText type="caption">
+                        You don't have any travel books yet.
+                      </ThemedText>
+                    </Fold>
                   )}
                   {travelBooks.map((book) => {
                     const isSaved = savedTravelBookIds.has(book.id);
                     return (
-                      <Pressable key={book.id} onPress={() => handleToggleTravelBook(book.id)}>
-                        <ThemedView type="backgroundSelected" style={styles.row}>
-                          <ThemedText type="default">{book.title}</ThemedText>
-                          <ThemedText type="small" themeColor={isSaved ? 'text' : 'textSecondary'}>
-                            {isSaved ? 'Added ✓' : 'Add'}
-                          </ThemedText>
-                        </ThemedView>
-                      </Pressable>
+                      <Fold key={book.id}>
+                        <Pressable onPress={() => handleToggleTravelBook(book.id)}>
+                          <ThemedView type="backgroundSelected" style={styles.row}>
+                            <ThemedText type="small">{book.title}</ThemedText>
+                            <ThemedText type="action" themeColor={isSaved ? 'text' : 'textSecondary'}>
+                              {isSaved ? 'Added ✓' : 'Add'}
+                            </ThemedText>
+                          </ThemedView>
+                        </Pressable>
+                      </Fold>
                     );
                   })}
                 </View>
               )}
 
-              {isLoading && <ThemedText type="small">Loading…</ThemedText>}
+              {isLoading && (
+                <Fold>
+                  <ThemedText type="small">Loading…</ThemedText>
+                </Fold>
+              )}
             </ScrollView>
-          </ThemedView>
+          </Unfold>
         </View>
       </Modal>
     </>
@@ -237,12 +255,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.four,
   },
+  // A percentage cap works here because the overlay this sits in has a
+  // definite height to take it of; the scroll view inside shrinks to it.
   sheet: {
     width: '100%',
     maxWidth: 400,
     maxHeight: '80%',
     padding: Spacing.four,
-    borderRadius: Spacing.three,
     gap: Spacing.three,
   },
   header: {

@@ -21,6 +21,8 @@ import { getBoardThumbnailUrls, getTravelBookThumbnailUrls } from '@/lib/collect
 import type { Database } from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 import { listMyTravelBooks, listUserTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
@@ -101,7 +103,7 @@ export default function UserCollectionsScreen() {
             );
           }
         })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load these collections.'))
+        .catch((err) => setError(userErrorMessage(err, 'Could not load these collections.')))
         .finally(() => {
           setIsLoading(false);
           setHasLoadedOnce(true);
@@ -121,11 +123,7 @@ export default function UserCollectionsScreen() {
             {isSelf ? 'Your collections' : userName ? `${userName}’s collections` : 'Collections'}
           </ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
         </View>
 
         <CollectionsList
@@ -152,6 +150,7 @@ export default function UserCollectionsScreen() {
           trips={trips}
           tripAverageRatings={tripAverageRatings}
           isLoading={isLoading}
+          loadFailed={error != null}
           emptyBoardsMessage={isSelf ? 'No boards yet.' : 'No boards to show.'}
           emptyTravelBooksMessage={isSelf ? 'No travel books yet.' : 'No travel books to show.'}
         />

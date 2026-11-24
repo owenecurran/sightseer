@@ -150,6 +150,15 @@ function fillScaleY(scaleX: number, maxScaleY?: number): number {
 const WRAP_LINE_HEIGHT_RATIO = 1.25;
 const OUTLINE_STROKE_RADIUS = 2;
 const WEB_WIDTH_SAFETY_MARGIN = 2;
+// The same backstop on native, where it turned out to be needed too. Android
+// shapes the enlarged (supersampled) copy a fraction of a point wider than the
+// measured width times the supersample, and a single-line TextView that is
+// even half a point short does not clip: it ellipsizes, which swaps the last
+// two letters for "…". The Tagged in card's "Nothing yet" rendered as
+// "NOTHING YE…" this way. The margin covers the shortfall, and "clip" on the
+// visible copy means any that remains loses a sliver of ink instead of
+// letters.
+const NATIVE_WIDTH_SAFETY_RATIO = 0.08;
 
 // Trailing whitespace is trimmed before the ellipsis so a cut landing on a
 // space does not render as "Seattle Public …".
@@ -249,6 +258,25 @@ export function StretchText({
   // being positioned — the measuring copy is untouched and still reports the
   // natural size, which is what the scales above are derived from.
   const drawnContentWidth = contentWidth * supersample;
+  // The spare width on the end of the visible copy's box (see the safety
+  // constants). Left-aligned text keeps it all past its last letter, where
+  // it is empty. Centred or right-aligned text would shift right by half or
+  // all of it, so the transform below moves it back by exactly that much,
+  // at the scale it is drawn at, and the ink lands where it did before.
+  const widthSafety =
+    Platform.OS === "web"
+      ? WEB_WIDTH_SAFETY_MARGIN * supersample
+      : drawnContentWidth * NATIVE_WIDTH_SAFETY_RATIO;
+  const alignShare =
+    Platform.OS === "web"
+      ? 0
+      : resolvedTextStyle?.textAlign === "center"
+        ? 0.5
+        : resolvedTextStyle?.textAlign === "right"
+          ? 1
+          : 0;
+  const alignCorrection =
+    withinRange && contentWidth > 0 ? -widthSafety * alignShare * drawScaleX : 0;
   const drawnContentHeight = contentHeight * supersample;
   // Everything in the caller's style that is an absolute length has to come
   // up with the font size, or it stops being proportional to the letters and
@@ -537,9 +565,7 @@ export function StretchText({
                   // survive the transform (see the constant); left at its flat
                   // value it would be divided by the supersample along with
                   // everything else and stop covering what it is there for.
-                  (Platform.OS === "web"
-                    ? WEB_WIDTH_SAFETY_MARGIN * supersample
-                    : 0),
+                  widthSafety,
               }
             : null,
 
@@ -555,8 +581,9 @@ export function StretchText({
           {
             transform:
               outline || (fill && !fillHeight)
-                ? [{ scaleX: drawScaleX }, { scaleY: drawScaleY }]
+                ? [{ translateX: alignCorrection }, { scaleX: drawScaleX }, { scaleY: drawScaleY }]
                 : [
+                    { translateX: alignCorrection },
                     { translateY: centeredGrowthTranslateY },
                     { scaleX: drawScaleX },
                     { scaleY: drawScaleY },
@@ -581,6 +608,7 @@ export function StretchText({
           <ThemedText
             {...rest}
             numberOfLines={withinRange ? 1 : undefined}
+            ellipsizeMode={withinRange ? "clip" : undefined}
             style={visibleStyle}
           >
             {children}

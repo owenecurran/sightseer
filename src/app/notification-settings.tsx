@@ -142,7 +142,7 @@ export default function NotificationSettingsScreen() {
           {NOTIFICATION_GROUPS.map((group, groupIndex) => (
             <PaperPanel key={group.title} seed={`notif-${group.title}`} accentIndex={groupIndex}>
               <ThemedText type="sectionLabel">{group.title}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 {group.caption}
               </ThemedText>
               <View style={styles.options}>

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 type Choice = 'public' | 'private';
 
@@ -46,7 +47,7 @@ export default function PrivacyChoiceScreen() {
     setIsSubmitting(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save that. Try again.'));
       return;
     }
     await refreshProfile();
@@ -59,8 +60,8 @@ export default function PrivacyChoiceScreen() {
         <ThemedText type="displaySerif" style={styles.title}>
           Choose your privacy
         </ThemedText>
-        <ThemedText type="default" style={styles.title} themeColor="textSecondary">
-          This app has real location data on it — where you’ve been, and when. You can change this
+        <ThemedText type="lead" style={styles.title}>
+          This app has real location data on it: where you’ve been, and when. You can change this
           later in Settings.
         </ThemedText>
 
@@ -80,7 +81,7 @@ export default function PrivacyChoiceScreen() {
         </View>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}

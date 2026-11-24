@@ -13,6 +13,7 @@ import { Image } from 'expo-image';
 
 import { ForgotPasswordForm, SignInForm, SignUpForm } from '@/components/auth/auth-forms';
 import { BackLink } from '@/components/ui/back-link';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,10 @@ import { WelcomeRoad } from '@/components/welcome-road';
 import { BrandColors, Colors, MaxContentWidth, Spacing } from '@/constants/theme';
 import { buildLogoDataUri, LOGO_ASPECT } from '@/lib/brand-logo';
 import { getLandingImageUrls } from '@/lib/landing-images';
+
+// The height the Back link takes at the top of the open panel: its sticker
+// arrow, and a little air under it.
+const BACK_LINK_ROOM = 44;
 
 // How far the hero slides down when the panel opens, as a fraction of the
 // screen. Enough to clear the panel and read as the page making room, short
@@ -196,7 +201,7 @@ export default function WelcomeScreen() {
           <ThemedText type="displaySerif" style={styles.centred}>
             Sightseer
           </ThemedText>
-          <ThemedText type="default" themeColor="textSecondary" style={styles.centred}>
+          <ThemedText type="lead" style={styles.centred}>
             A journal of everywhere you have been.
           </ThemedText>
 
@@ -253,12 +258,25 @@ export default function WelcomeScreen() {
                       centred in the available height. The link swaps the
                       form in place rather than navigating, since the whole
                       point here is that it is one screen. */}
-                  <View style={[styles.authPage, { height: expandedStageHeight }]}>
+                  {/* Scrolls, centred only while it fits, as AuthScreen
+                      does and for the same reason. This was a fixed-height
+                      column centred in a stage that hides its overflow, so
+                      a form taller than the screen (sign-up, with its
+                      social buttons and security check, on most phones)
+                      was cut at both ends, and the top end is the
+                      wordmark. */}
+                  <KeyboardAwareScroll
+                    style={{ height: expandedStageHeight }}
+                    contentContainerStyle={styles.authPage}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled">
                     {/* The wordmark, tinted cream rather than shipped in
                         its source colour — see brand-logo.ts. */}
                     <Image source={{ uri: logoUri }} style={styles.logo} contentFit="contain" />
 
-                    <ThemedText type="title" style={styles.centred}>
+                    {/* The serif, to match sign-in and sign-up -- see
+                        auth-screen.tsx. */}
+                    <ThemedText type="displaySerif" style={styles.centred}>
                       {step === 'signin'
                         ? 'Welcome back'
                         : step === 'forgot'
@@ -288,7 +306,7 @@ export default function WelcomeScreen() {
                             : 'Don’t have an account? Sign up'}
                       </ThemedText>
                     </Pressable>
-                  </View>
+                  </KeyboardAwareScroll>
                 </Animated.View>
               </Animated.View>
             </Animated.View>
@@ -369,8 +387,13 @@ const styles = StyleSheet.create({
   // Matches (auth)/sign-up.tsx's own safeArea block, so the expanded panel
   // and the standalone screen are the same layout.
   authPage: {
+    flexGrow: 1,
     justifyContent: 'center',
     gap: Spacing.five,
+    // Clear of the Back link, which is pinned over the top of this page;
+    // once the page scrolls, the wordmark starts right under it.
+    paddingTop: BACK_LINK_ROOM,
+    paddingBottom: Spacing.two,
   },
   // Sits above the title, inside the same centred column, so it moves with
   // the rest of the page rather than being pinned to the panel.

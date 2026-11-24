@@ -1,5 +1,5 @@
-import { Camera, FillLayer, LineLayer, MapView, PointAnnotation, ShapeSource } from '@rnmapbox/maps';
-import type { FeatureCollection, Polygon } from 'geojson';
+import { Camera, CircleLayer, FillLayer, LineLayer, MapView, PointAnnotation, ShapeSource } from '@rnmapbox/maps';
+import type { FeatureCollection, Point, Polygon } from 'geojson';
 import { useEffect, useId, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -9,6 +9,8 @@ import { StickerArrow } from '@/components/ui/sticker-arrow';
 import { MAPBOX_STYLE_URL } from '@/constants/mapbox.native';
 import { BrandColors, Spacing } from '@/constants/theme';
 import {
+  CITY_COLOR,
+  CITY_RING,
   COUNTRY_FILL,
   COUNTRY_FILL_OPACITY,
   COUNTRY_LINE,
@@ -17,8 +19,16 @@ import {
   STATE_FILL,
   STATE_FILL_OPACITY,
   STATE_LINE,
+  visitedSummary,
 } from '@/lib/map-layers';
-import { getVisitedPlacesWithCategory, getVisitedRegions, type VisitedRegion } from '@/lib/profile-map';
+import {
+  getVisitedHierarchy,
+  getVisitedPlacesWithCategory,
+  getVisitedRegions,
+  type VisitedCity,
+  type VisitedHierarchy,
+  type VisitedRegion,
+} from '@/lib/profile-map';
 
 type ProfileMapProps = {
   userId: string;
@@ -26,6 +36,9 @@ type ProfileMapProps = {
   defaultCamera?: { lat: number; lng: number; zoom: number } | null;
   isOwnProfile?: boolean;
   onCameraLocked?: () => void;
+  // After the owner saves which layers it shows, so this preview, read from
+  // the same profile row, shows them too.
+  onLayersSaved?: () => void;
 };
 
 const MAP_HEIGHT = 220;
@@ -51,11 +64,30 @@ function regionsToFeatureCollection(regions: VisitedRegion[]): FeatureCollection
   };
 }
 
+function citiesToFeatureCollection(cities: VisitedCity[]): FeatureCollection<Point> {
+  return {
+    type: 'FeatureCollection',
+    features: cities.map((city) => ({
+      type: 'Feature' as const,
+      id: city.id,
+      properties: { name: city.name },
+      geometry: { type: 'Point' as const, coordinates: [city.lng, city.lat] },
+    })),
+  };
+}
+
 // Small embedded preview — renders whichever layers `defaultLayers` (from
 // `users.map_default_layers`, set via ProfileMapModal's "Set as default")
 // says to show, same layer set/rendering as the full-screen modal, just at
 // preview size. Tap still expands into `ProfileMapModal` for ad hoc toggling.
-export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile, onCameraLocked }: ProfileMapProps) {
+export function ProfileMap({
+  userId,
+  defaultLayers,
+  defaultCamera,
+  isOwnProfile,
+  onCameraLocked,
+  onLayersSaved,
+}: ProfileMapProps) {
   // Unique per mounted component, which the layer ids below need to be.
   //
   // Mapbox keeps ONE layer registry per style and these ids are added to it.
@@ -73,6 +105,9 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
   const layerId = useId();
   const [places, setPlaces] = useState<Awaited<ReturnType<typeof getVisitedPlacesWithCategory>> | null>(null);
   const [regions, setRegions] = useState<VisitedRegion[]>([]);
+  // The cities, and how many countries and states, for the Cities layer and
+  // the caption. 'failed' leaves the caption on the count of places.
+  const [hierarchy, setHierarchy] = useState<VisitedHierarchy | 'failed' | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const layers = parseDefaultLayers(defaultLayers);
 
@@ -80,6 +115,9 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
     getVisitedPlacesWithCategory(userId)
       .then(setPlaces)
       .catch(() => setPlaces([]));
+    getVisitedHierarchy(userId)
+      .then(setHierarchy)
+      .catch(() => setHierarchy('failed'));
   }, [userId]);
 
   useEffect(() => {
@@ -93,7 +131,23 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, defaultLayers]);
 
-  if (!places || places.length === 0) return null;
+  // Both, so the caption does not change under the reader once the counts
+  // arrive.
+  if (!places || places.length === 0 || hierarchy == null) return null;
+
+  const summary =
+    hierarchy === 'failed'
+      ? `${places.length} place${places.length === 1 ? '' : 's'}`
+      : visitedSummary(
+          {
+            countries: hierarchy.countries,
+            states: hierarchy.states,
+            cities: hierarchy.cities.length,
+            places: places.length,
+          },
+          layers,
+        );
+  const cityFeatures = citiesToFeatureCollection(hierarchy === 'failed' ? [] : hierarchy.cities);
 
   const nationalParks = places.filter((p) => p.category === 'national_park');
   const countryFeatures = regionsToFeatureCollection(regions.filter((r) => r.level === 'country'));
@@ -109,17 +163,22 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
           one sentence joined by a dash or a middot, which read as a caption
           rather than as a section — and with the arrow there, "tap to
           explore" was saying in words what the sticker already says. */}
-      <View style={styles.captionRow}>
+      {/* Opens the map too, as the arrow on it says it does. Only the map
+          below took the tap, so the arrow, the one part that looks like a
+          button, did nothing. */}
+      <Pressable
+        onPress={() => setIsExpanded(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Open the map of places I've been"
+        style={({ pressed }) => [styles.captionRow, pressed && styles.captionPressed]}>
         <View style={styles.captionText}>
           <ThemedText type="sectionLabel">Places I&apos;ve been</ThemedText>
-          <ThemedText type="default">
-            {places.length} place{places.length === 1 ? '' : 's'}
-          </ThemedText>
+          <ThemedText type="default">{summary}</ThemedText>
         </View>
         <View style={styles.stickerHang}>
           <StickerArrow direction="right" seed="profile-map" />
         </View>
-      </View>
+      </Pressable>
       <Pressable onPress={() => setIsExpanded(true)}>
         {/* Keyed on whether a locked camera is resolved yet — Camera's
             defaultSettings only ever applies once per mount, so if this
@@ -151,6 +210,14 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
               <LineLayer id={`${layerId}-states-line`} style={{ lineColor: STATE_LINE, lineWidth: 2 }} />
             </ShapeSource>
           )}
+          {layers.has('cities') && (
+            <ShapeSource id={`${layerId}-cities-source`} shape={cityFeatures}>
+              <CircleLayer
+                id={`${layerId}-cities-dot`}
+                style={{ circleRadius: 5, circleColor: CITY_COLOR, circleStrokeColor: CITY_RING, circleStrokeWidth: 2 }}
+              />
+            </ShapeSource>
+          )}
           {layers.has('pins') &&
             places.map((p) => (
               <PointAnnotation key={p.id} id={p.id} coordinate={[p.lng, p.lat]}>
@@ -173,6 +240,7 @@ export function ProfileMap({ userId, defaultLayers, defaultCamera, isOwnProfile,
         defaultCamera={defaultCamera}
         isOwnProfile={isOwnProfile}
         onCameraLocked={onCameraLocked}
+        onLayersSaved={onLayersSaved}
       />
     </View>
   );
@@ -192,6 +260,9 @@ const styles = StyleSheet.create({
   },
   // Pulled past the panel's own edge so it reads as stuck on rather than
   // tucked in — the same trick TeaserCard uses for its arrow.
+  captionPressed: {
+    opacity: 0.6,
+  },
   stickerHang: {
     alignSelf: 'center',
     marginRight: -Spacing.two,

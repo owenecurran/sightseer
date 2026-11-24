@@ -33,7 +33,9 @@ export function RatingSliderWithPreview({ value, onChange, previewSize = 64 }: R
     <View style={styles.wrap}>
       {value != null ? (
         <View style={styles.preview}>
-          <RatingGlassBadgeGated rating={value} size={previewSize} />
+          {/* Live: the number and colour follow the thumb at once, and the
+              artwork in the window catches up once it settles. */}
+          <RatingGlassBadgeGated rating={value} size={previewSize} live />
         </View>
       ) : (
         <ThemedText type="headline" style={styles.placeholder}>

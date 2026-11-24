@@ -1,48 +1,54 @@
 import { getCachedUrls } from '@/lib/media-url-cache';
 import { supabase } from '@/lib/supabase';
 
-// Batched, not one call per photo: a feed screen may show many photos at
-// once, and each resolution is a real network round trip + S3 signing op.
-// Cached across calls (see media-url-cache) — repeat visits to the same
-// photo within the cache window skip the round trip entirely.
-export async function getPhotoViewUrls(photoIds: string[]): Promise<Record<string, string>> {
-  if (photoIds.length === 0) return {};
+const THUMB_PREFIX = 'thumb:';
+const SIGNING_BATCH_SIZE = 100;
 
-  return getCachedUrls(photoIds, async (missingIds) => {
-    const { data, error } = await supabase.functions.invoke('get-photo-urls', {
-      body: { photoIds: missingIds },
-    });
-    if (error) throw error;
+type SignedPhoto = { photoId: string; url: string; thumbUrl: string | null };
 
-    const { urls } = data as { urls: { photoId: string; url: string }[] };
-    return Object.fromEntries(urls.map((u) => [u.photoId, u.url]));
-  });
-}
+export async function getPhotoUrls(photoIds: string[]) {
+  const ids = [...new Set(photoIds)];
+  if (ids.length === 0) return { photos: {}, thumbs: {} };
 
-// Grid-sized copies of the same photos.
-//
-// Cached under a prefixed key so a thumb and its full image never collide in
-// the shared URL cache. Falls back to the full URL for anything uploaded
-// before thumbnails existed (thumb_r2_key null), so callers can use this
-// unconditionally without checking.
-export async function getPhotoThumbUrls(photoIds: string[]): Promise<Record<string, string>> {
-  if (photoIds.length === 0) return {};
-
-  const cached = await getCachedUrls(
-    photoIds.map((id) => `thumb:${id}`),
-    async (missingKeys) => {
-      const ids = missingKeys.map((key) => key.slice('thumb:'.length));
+  const batches: Promise<Record<string, string>>[] = [];
+  for (let index = 0; index < ids.length; index += SIGNING_BATCH_SIZE) {
+    const cacheKeys = ids.slice(index, index + SIGNING_BATCH_SIZE)
+      .flatMap((id) => [id, `${THUMB_PREFIX}${id}`]);
+    batches.push(getCachedUrls('photo', cacheKeys, async (missingKeys) => {
+      const missingIds = [...new Set(missingKeys.map((key) => key.startsWith(THUMB_PREFIX)
+        ? key.slice(THUMB_PREFIX.length)
+        : key))];
       const { data, error } = await supabase.functions.invoke('get-photo-urls', {
-        body: { photoIds: ids },
+        body: { photoIds: missingIds },
       });
       if (error) throw error;
+      return Object.fromEntries((data as { urls: SignedPhoto[] }).urls.flatMap(({ photoId, url, thumbUrl }) => [
+        [photoId, url],
+        [`${THUMB_PREFIX}${photoId}`, thumbUrl ?? url],
+      ]));
+    }));
+  }
 
-      const { urls } = data as { urls: { photoId: string; url: string; thumbUrl: string | null }[] };
-      return Object.fromEntries(urls.map((u) => [`thumb:${u.photoId}`, u.thumbUrl ?? u.url]));
-    }
-  );
+  const results = await Promise.allSettled(batches);
+  const successful = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+  if (successful.length === 0 && results[0].status === 'rejected') throw results[0].reason;
+  const cached: Record<string, string> = Object.assign({}, ...successful);
 
-  return Object.fromEntries(
-    Object.entries(cached).map(([key, url]) => [key.slice('thumb:'.length), url])
-  );
+  const photos: Record<string, string> = {};
+  const thumbs: Record<string, string> = {};
+  for (const id of ids) {
+    if (cached[id]) photos[id] = cached[id];
+    const thumb = cached[`${THUMB_PREFIX}${id}`];
+    if (thumb) thumbs[id] = thumb;
+  }
+  return { photos, thumbs };
+}
+
+export async function getPhotoViewUrls(photoIds: string[]): Promise<Record<string, string>> {
+  return (await getPhotoUrls(photoIds)).photos;
+}
+
+// Older photos fall back to the original when they have no derivative.
+export async function getPhotoThumbUrls(photoIds: string[]): Promise<Record<string, string>> {
+  return (await getPhotoUrls(photoIds)).thumbs;
 }

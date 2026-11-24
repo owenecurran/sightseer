@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context';
 import { ensureInviteCode, inviteUrl } from '@/lib/invites';
 import { shareText } from '@/lib/share';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 // The last gate before the app.
 //
@@ -60,11 +61,11 @@ export default function InviteGateScreen() {
 
     if (result === 'cancelled') return;
     if (result === 'unsupported') {
-      setError('Sharing is not supported in this browser — copy the link above instead.');
+      setError('Sharing is not supported in this browser. Copy the link above instead.');
       return;
     }
     if (result === 'error') {
-      setError('Could not copy the invite — please copy the link above and send it to a friend.');
+      setError('Could not copy the invite. Please copy the link above and send it to a friend.');
       return;
     }
 
@@ -77,7 +78,7 @@ export default function InviteGateScreen() {
     setIsSubmitting(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save that. Try again.'));
       return;
     }
 
@@ -91,7 +92,7 @@ export default function InviteGateScreen() {
         <ThemedText type="displaySerif" style={styles.centered}>
           Invite a friend
         </ThemedText>
-        <ThemedText type="default" style={styles.centered} themeColor="textSecondary">
+        <ThemedText type="lead" style={styles.centered}>
           Sightseer grows by people bringing people. Share your link with someone before
           continuing.
         </ThemedText>
@@ -100,7 +101,7 @@ export default function InviteGateScreen() {
             for, and a share sheet that swallows it whole gives no way to
             check what actually went out. */}
         <PaperPanel seed="invite-link" accentIndex={0} style={styles.linkPanel}>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="meta">
             Your invite link
           </ThemedText>
           <ThemedText type="body" selectable>
@@ -109,7 +110,7 @@ export default function InviteGateScreen() {
         </PaperPanel>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.centered}>
+          <ThemedText type="small" themeColor="danger" style={styles.centered}>
             {error}
           </ThemedText>
         )}

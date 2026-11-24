@@ -8,12 +8,14 @@ import { ReviewBrowser } from '@/components/review-browser';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useAuth } from '@/lib/auth-context';
 import { getMyVisitItems, type BoardVisitItem } from '@/lib/boards';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // `userId` optional (not a required route param the way collections/[userId]
 // needs one) — plain `/reviews` from profile.tsx's own "Latest reviews"
@@ -57,7 +59,7 @@ export default function AllReviewsScreen() {
             setPhotoUrls(await getPhotoViewUrls(photoIds));
           }
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load these reviews.');
+          setError(userErrorMessage(err, 'Could not load these reviews.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -69,7 +71,7 @@ export default function AllReviewsScreen() {
     setError(null);
     const { error: deleteError } = await supabase.from('visits').delete().eq('id', visitId);
     if (deleteError) {
-      setError(deleteError.message);
+      setError(userErrorMessage(deleteError, 'Could not remove that review.'));
       return;
     }
     setItems((prev) => prev.filter((item) => item.id !== visitId));
@@ -79,7 +81,7 @@ export default function AllReviewsScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <View style={styles.header}>
           <BackLink seed="reviews" />
 
@@ -87,24 +89,28 @@ export default function AllReviewsScreen() {
             {isSelf ? 'Your reviews' : targetUserName ? `${targetUserName}'s reviews` : 'Reviews'}
           </ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
         </View>
 
         <View style={styles.browser}>
-          <ReviewBrowser
-            items={items}
-            photoUrls={photoUrls}
-            viewerId={session?.user.id}
-            isOwner={isSelf}
-            onRemove={handleRemove}
-            removeMessage="Delete this review? This can't be undone."
-            contentPaddingBottom={bottomInset}
-          />
+          {/* Not when the load failed and there is nothing to show: the
+              browser's own "No reviews yet." read as an empty account under
+              the error. A failed delete leaves the list, so it still shows. */}
+          {(items.length > 0 || !error) && (
+            <ReviewBrowser
+              items={items}
+              photoUrls={photoUrls}
+              viewerId={session?.user.id}
+              isOwner={isSelf}
+              onRemove={handleRemove}
+              removeMessage="Delete this review? This can't be undone."
+              contentPaddingBottom={bottomInset}
+              // Someone's reviews in date order are where they have been,
+              // one after another: the road between them is the point.
+              journey
+            />
+          )}
         </View>
       </SafeAreaView>
     </ThemedView>

@@ -19,6 +19,8 @@ type PostcardMapProps = {
   // photoless card passes the postcard frame's own ratio instead, so the
   // map fills the frame rather than sitting in it.
   ratio?: number;
+  // False under lettering -- see UNLABELLED_STYLE in place-map-image.
+  labels?: boolean;
 };
 
 const BLOCK_RATIO = 4 / 3;
@@ -40,6 +42,7 @@ export function PostcardMap({
   level,
   size,
   ratio = BLOCK_RATIO,
+  labels = true,
 }: PostcardMapProps) {
   // The URL depends on the rendered width, which is only known after layout
   // for the block form — the column it sits in is a fraction of a card
@@ -50,7 +53,7 @@ export function PostcardMap({
   const boxWidth = isThumb ? THUMB_SIZE : width;
   const boxHeight = isThumb ? THUMB_SIZE : width / ratio;
   const url =
-    boxWidth > 0 ? buildPlaceMapUrl({ lat, lng, level, width: boxWidth, height: boxHeight }) : null;
+    boxWidth > 0 ? buildPlaceMapUrl({ lat, lng, level, width: boxWidth, height: boxHeight, labels }) : null;
 
   return (
     <View

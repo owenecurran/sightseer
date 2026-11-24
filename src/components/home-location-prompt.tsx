@@ -7,6 +7,7 @@ import { Spacing } from '@/constants/theme';
 import { addHomeLocation } from '@/lib/home-locations';
 import { dismissHomeLocationPrompt, type HomeLocationSuggestion } from '@/lib/trips';
 import type { Database } from '@/lib/database.types';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -41,7 +42,7 @@ export function HomeLocationPrompt({ suggestion, onResolved }: HomeLocationPromp
       } as PlaceRow);
       onResolved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that home location.');
+      setError(userErrorMessage(err, 'Could not add that home location.'));
       setIsBusy(false);
     }
   }
@@ -52,9 +53,10 @@ export function HomeLocationPrompt({ suggestion, onResolved }: HomeLocationPromp
     try {
       await dismissHomeLocationPrompt(trip);
       onResolved();
-    } catch {
-      // Nothing actionable for the user here — the prompt simply stays and
-      // can be dismissed again next time.
+    } catch (err) {
+      // Said rather than swallowed: pressing it and seeing nothing happen
+      // read as a button that does not work.
+      setError(userErrorMessage(err, 'Could not dismiss this. Try again.'));
       setIsBusy(false);
     }
   }
@@ -62,13 +64,13 @@ export function HomeLocationPrompt({ suggestion, onResolved }: HomeLocationPromp
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="sectionLabel">Still in {trip.areaName}?</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="caption">
         You've been posting from {trip.areaName} for {dayCount} days. Add it as a home location and
         reviews there will stop being grouped as a trip.
       </ThemedText>
 
       {error && (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="small" themeColor="danger">
           {error}
         </ThemedText>
       )}
@@ -80,7 +82,7 @@ export function HomeLocationPrompt({ suggestion, onResolved }: HomeLocationPromp
           </ThemedText>
         </Pressable>
         <Pressable onPress={handleDismiss} disabled={isBusy} hitSlop={8}>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="action">
             Not home
           </ThemedText>
         </Pressable>

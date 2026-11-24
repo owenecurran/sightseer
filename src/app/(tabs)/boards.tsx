@@ -20,6 +20,8 @@ import { getVisitsByIds } from '@/lib/feed';
 import { getBoardThumbnailUrls, getTravelBookThumbnailUrls } from '@/lib/collection-thumbnails';
 import type { Database } from '@/lib/database.types';
 import { listMyTravelBooks, type TravelBookListItem } from '@/lib/travel-books';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
@@ -42,65 +44,63 @@ export default function BoardsScreen() {
   // Both datasets load together regardless of which mode is active, so
   // switching between Boards and Travel Books is instant with no reload —
   // the whole point of merging these into one tabbed screen.
-  useTabFocusEffect(
-    3,
-    useCallback(() => {
-      if (!session) return;
-      setIsLoading(true);
-      setError(null);
-      Promise.all([
-        listMyBoards(session.user.id).then(async (myBoards) => {
-          setBoards(myBoards);
-          setBoardThumbnailUrls(await getBoardThumbnailUrls(myBoards));
-          return myBoards;
-        }),
-        listMyTravelBooks(session.user.id).then(async (myBooks) => {
-          setTravelBooks(myBooks);
-          setTravelBookThumbnailUrls(await getTravelBookThumbnailUrls(myBooks));
-          return myBooks;
-        }),
-        // Independent of the two above, so it belongs in the same batch
-        // rather than waiting for collection stats it never uses.
-        getTripsForUsers([session.user.id]),
-      ])
-        .then(async ([myBoards, myBooks, detected]) => {
-          const stats = await getCollectionStats(
-            myBoards.map((b) => b.id),
-            myBooks.map((b) => b.id)
-          );
-          setBoardStats(stats.boards);
-          setTravelBookStats(stats.travelBooks);
+  const loadCollections = useCallback(() => {
+    if (!session) return;
+    setIsLoading(true);
+    setError(null);
+    Promise.all([
+      listMyBoards(session.user.id).then(async (myBoards) => {
+        setBoards(myBoards);
+        setBoardThumbnailUrls(await getBoardThumbnailUrls(myBoards));
+        return myBoards;
+      }),
+      listMyTravelBooks(session.user.id).then(async (myBooks) => {
+        setTravelBooks(myBooks);
+        setTravelBookThumbnailUrls(await getTravelBookThumbnailUrls(myBooks));
+        return myBooks;
+      }),
+      // Independent of the two above, so it belongs in the same batch
+      // rather than waiting for collection stats it never uses.
+      getTripsForUsers([session.user.id]),
+    ])
+      .then(async ([myBoards, myBooks, detected]) => {
+        const stats = await getCollectionStats(
+          myBoards.map((b) => b.id),
+          myBooks.map((b) => b.id)
+        );
+        setBoardStats(stats.boards);
+        setTravelBookStats(stats.travelBooks);
 
-          // Each row's thumbnail ring needs the trip's average score, and
-          // the RPC returns only visit ids — so the reviews themselves are
-          // still a follow-up fetch.
-          setTrips(detected);
-          const allVisitIds = [...new Set(detected.flatMap((t) => t.visitIds))];
-          if (allVisitIds.length > 0) {
-            const visits = await getVisitsByIds(allVisitIds, session.user.id);
-            const ratingById = new Map(visits.map((v) => [v.id, v.rating]));
-            setTripAverageRatings(
-              Object.fromEntries(
-                detected.map((trip) => {
-                  const rated = trip.visitIds
-                    .map((id) => ratingById.get(id))
-                    .filter((r): r is number => r != null);
-                  return [
-                    trip.key,
-                    rated.length > 0 ? rated.reduce((sum, r) => sum + r, 0) / rated.length : null,
-                  ];
-                })
-              )
-            );
-          }
-        })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your collections.'))
-        .finally(() => {
-          setIsLoading(false);
-          setHasLoadedOnce(true);
-        });
-    }, [session])
-  );
+        // Each row's thumbnail ring needs the trip's average score, and
+        // the RPC returns only visit ids — so the reviews themselves are
+        // still a follow-up fetch.
+        setTrips(detected);
+        const allVisitIds = [...new Set(detected.flatMap((t) => t.visitIds))];
+        if (allVisitIds.length > 0) {
+          const visits = await getVisitsByIds(allVisitIds, session.user.id);
+          const ratingById = new Map(visits.map((v) => [v.id, v.rating]));
+          setTripAverageRatings(
+            Object.fromEntries(
+              detected.map((trip) => {
+                const rated = trip.visitIds
+                  .map((id) => ratingById.get(id))
+                  .filter((r): r is number => r != null);
+                return [
+                  trip.key,
+                  rated.length > 0 ? rated.reduce((sum, r) => sum + r, 0) / rated.length : null,
+                ];
+              })
+            )
+          );
+        }
+      })
+      .catch((err) => setError(userErrorMessage(err, 'Could not load your collections.')))
+      .finally(() => {
+        setIsLoading(false);
+        setHasLoadedOnce(true);
+      });
+  }, [session]);
+  useTabFocusEffect(3, loadCollections);
 
   if (!hasLoadedOnce) return <PageLoader />;
 
@@ -114,11 +114,9 @@ export default function BoardsScreen() {
         <View style={styles.gutter}>
           <ThemedText type="displaySerif">Your collections</ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {/* Retries this tab alone: the notice's default reloads the
+              whole screen, which inside the tab pager is every tab. */}
+          {error && <ErrorNotice message={error} onRetry={loadCollections} />}
         </View>
 
         <CollectionsList
@@ -146,7 +144,8 @@ export default function BoardsScreen() {
           trips={trips}
           tripAverageRatings={tripAverageRatings}
           isLoading={isLoading}
-          emptyBoardsMessage="No boards yet. Create one above, or save a visit to a board from the Search tab."
+          loadFailed={error != null}
+          emptyBoardsMessage="No boards yet. Create one above, or tap the bookmark on any postcard to save it to a board."
           emptyTravelBooksMessage="No travel books yet. Start one to keep a chronological log of a trip."
         />
       </SafeAreaView>

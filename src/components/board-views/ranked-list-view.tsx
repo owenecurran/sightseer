@@ -106,7 +106,7 @@ export function RankedListView({
                 <StretchText type="headline" fill>
                   {item.placeName}
                 </StretchText>
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                <ThemedText type="meta" numberOfLines={1}>
                   {isVisit
                     ? [item.stateCountry, item.rating == null ? 'Visited' : null].filter(Boolean).join(' · ')
                     : (item.stateCountry ?? 'No review yet')}
@@ -117,7 +117,7 @@ export function RankedListView({
               </View>
               {isOwner && (
                 <Pressable onPress={() => setConfirmingItemId(item.id)} hitSlop={8}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="action">
                     Remove
                   </ThemedText>
                 </Pressable>
@@ -133,7 +133,7 @@ export function RankedListView({
   return (
     <View style={styles.list}>
       {isOwner && (
-        <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
+        <ThemedText type="caption" style={styles.hint}>
           Press and hold a row to drag it into a new rank.
         </ThemedText>
       )}

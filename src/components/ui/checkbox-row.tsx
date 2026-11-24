@@ -51,16 +51,16 @@ export function CheckboxRow({
         {checked && <InkBlot size={13} seed={`checkbox:${label}`} color={accent} />}
       </View>
       {/* Takes the slack so a long label wraps under itself rather than
-          pushing the box off the row. */}
-      <ThemedText type="small" style={styles.label}>
-        {label}
-        {description ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            {'\n'}
-            {description}
-          </ThemedText>
-        ) : null}
-      </ThemedText>
+          pushing the box off the row.
+
+          Two texts stacked, not one with the description nested inside
+          after a '\n'. The description is the serif caption now, and a
+          nested span cannot carry its own line height on Android -- the
+          paragraph keeps the label's, which is too tight for the serif. */}
+      <View style={styles.label}>
+        <ThemedText type="small">{label}</ThemedText>
+        {description ? <ThemedText type="caption">{description}</ThemedText> : null}
+      </View>
     </Pressable>
   );
 }
@@ -91,5 +91,6 @@ const styles = StyleSheet.create({
   },
   label: {
     flex: 1,
+    gap: Spacing.half,
   },
 });

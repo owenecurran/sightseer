@@ -4,7 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { BrandFonts, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 const ITEM_HEIGHT = 40;
@@ -39,18 +39,22 @@ function clamp(n: number, min: number, max: number) {
 
 type WheelPickerProps = {
   itemCount: number;
+  // How many of those, from the top, can be picked. The rest are drawn
+  // faded and the wheel will not settle on them -- see DateCarousel.
+  enabledCount?: number;
   selectedIndex: number;
   renderLabel: (index: number) => string;
   onChange: (index: number) => void;
+  typed?: boolean;
 };
 
 // One independently-draggable vertical wheel — same absolute-position
 // Pan/snap mechanics originally built for the horizontal day carousel, just
 // on the Y axis, generalized to any fixed-length list of labels.
-function WheelPicker({ itemCount, selectedIndex, renderLabel, onChange }: WheelPickerProps) {
+function WheelPicker({ itemCount, enabledCount = itemCount, selectedIndex, renderLabel, onChange, typed = false }: WheelPickerProps) {
   const theme = useTheme();
   const translateY = useSharedValue(0);
-  const maxIndex = itemCount - 1;
+  const maxIndex = Math.min(enabledCount, itemCount) - 1;
 
   // Sync from outside (external value change, or another wheel's change
   // clamping this one — e.g. picking Feb clamps a day-31 selection down)
@@ -79,12 +83,21 @@ function WheelPicker({ itemCount, selectedIndex, renderLabel, onChange }: WheelP
       <View style={styles.track}>
         <View
           pointerEvents="none"
-          style={[styles.centerIndicator, { top: TOP_PADDING, backgroundColor: theme.backgroundSelected }]}
+          style={[
+            styles.centerIndicator,
+            { top: TOP_PADDING },
+            typed ? styles.typedIndicator : { backgroundColor: theme.backgroundSelected },
+          ]}
         />
         <Animated.View style={[styles.column, columnStyle, { paddingVertical: TOP_PADDING }]}>
           {Array.from({ length: itemCount }, (_, index) => (
-            <View key={index} style={styles.item}>
-              <ThemedText type="default">{renderLabel(index)}</ThemedText>
+            <View key={index} style={[styles.item, index > maxIndex && styles.itemDisabled]}>
+              <ThemedText
+                type="default"
+                themeColor={index === selectedIndex ? 'text' : 'textSecondary'}
+                style={typed && styles.typedLabel}>
+                {renderLabel(index)}
+              </ThemedText>
             </View>
           ))}
         </Animated.View>
@@ -101,9 +114,12 @@ type DateCarouselProps = {
   // (e.g. 100), so this is a prop rather than the module constant it used
   // to be.
   yearsBack?: number;
+  // Typewritten, with the chosen date ruled off above and below rather than
+  // sitting on a filled block: for the journal (see Add a review).
+  typed?: boolean;
 };
 
-export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK }: DateCarouselProps) {
+export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK, typed = false }: DateCarouselProps) {
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -149,39 +165,52 @@ export function DateCarousel({ value, onChange, yearsBack = DEFAULT_YEARS_BACK }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsed]);
 
+  // What can be picked, against what is drawn.
+  //
+  // The wheels used to be only as long as the pickable range. The default
+  // date is today, which is the LAST pickable month, day and year -- so all
+  // three wheels sat on their final item and the row under the centre was
+  // blank right across, a strip of nothing under the picker. They now run on
+  // past today, faded, the way the system date pickers show a date they will
+  // not take: the rows are always full, and it is visible that the wheel
+  // stops because the future is off limits, not because it ran out.
   const monthCount = year === currentYear ? today.getMonth() + 1 : 12;
   const dayCount =
     year === currentYear && month === today.getMonth() ? today.getDate() : daysInMonth(year, month);
 
-  const headerLabel = `${MONTH_LABELS[month]} ${day}, ${year}`;
-
+  // No date readout above the wheels any more. It said "Nov 2, 2026" over
+  // three wheels whose centre row already said Nov, 2, 2026.
   return (
     <View style={styles.container}>
-      <ThemedText type="smallBold">{headerLabel}</ThemedText>
-
       <View style={styles.wheelsRow}>
         <View style={styles.wheelWrap}>
           <WheelPicker
-            itemCount={monthCount}
+            itemCount={12}
+            enabledCount={monthCount}
             selectedIndex={month}
             renderLabel={(i) => MONTH_LABELS[i]}
             onChange={(i) => commit(year, i, day)}
+            typed={typed}
           />
         </View>
         <View style={styles.wheelWrap}>
           <WheelPicker
-            itemCount={dayCount}
+            itemCount={daysInMonth(year, month)}
+            enabledCount={dayCount}
             selectedIndex={day - 1}
             renderLabel={(i) => String(i + 1)}
             onChange={(i) => commit(year, month, i + 1)}
+            typed={typed}
           />
         </View>
         <View style={styles.wheelWrap}>
           <WheelPicker
-            itemCount={years.length}
+            itemCount={years.length + 1}
+            enabledCount={years.length}
             selectedIndex={years.indexOf(year)}
-            renderLabel={(i) => String(years[i])}
+            renderLabel={(i) => String(years[0] + i)}
             onChange={(i) => commit(years[i], month, day)}
+            typed={typed}
           />
         </View>
       </View>
@@ -219,5 +248,18 @@ const styles = StyleSheet.create({
     height: ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  itemDisabled: {
+    opacity: 0.3,
+  },
+  typedIndicator: {
+    borderRadius: 0,
+    borderTopWidth: 1.2,
+    borderBottomWidth: 1.2,
+    borderColor: 'rgba(234, 231, 207, 0.4)',
+  },
+  typedLabel: {
+    fontFamily: BrandFonts.typewriter,
+    fontSize: 18,
   },
 });

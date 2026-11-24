@@ -1,12 +1,17 @@
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { BackLink } from '@/components/ui/back-link';
+import { Button } from '@/components/ui/button';
+import { CircledTabs } from '@/components/ui/circled-tabs';
+import { PaperPanel } from '@/components/ui/paper-panel';
 import { BrandColors, Spacing } from '@/constants/theme';
 import {
+  CITY_COLOR,
+  CITY_RING,
   COUNTRY_FILL,
   COUNTRY_FILL_OPACITY,
   COUNTRY_LINE,
@@ -19,12 +24,15 @@ import {
   type LayerKey,
 } from '@/lib/map-layers';
 import {
+  getVisitedHierarchy,
   getVisitedPlacesWithCategory,
   getVisitedRegions,
   saveDefaultMapCamera,
   saveDefaultMapLayers,
+  type VisitedCity,
   type VisitedRegion,
 } from '@/lib/profile-map';
+import { userErrorMessage } from '@/lib/user-error';
 
 type ProfileMapModalProps = {
   visible: boolean;
@@ -35,7 +43,22 @@ type ProfileMapModalProps = {
   isOwnProfile?: boolean;
   // See the matching comment in profile-map-modal.native.tsx.
   onCameraLocked?: () => void;
+  // The same, after "Save layers": the preview reads its layers from that
+  // profile row too, and kept showing the old ones until a reload.
+  onLayersSaved?: () => void;
 };
+
+function citiesToFeatureCollection(cities: VisitedCity[]): GeoJSON.FeatureCollection<GeoJSON.Point> {
+  return {
+    type: 'FeatureCollection',
+    features: cities.map((city) => ({
+      type: 'Feature' as const,
+      id: city.id,
+      properties: { name: city.name },
+      geometry: { type: 'Point' as const, coordinates: [city.lng, city.lat] },
+    })),
+  };
+}
 
 const DEFAULT_ZOOM = 2;
 // Same style URL as location-search-modal.tsx's STYLE_URL — see that file's
@@ -71,10 +94,15 @@ export function ProfileMapModal({
   defaultCamera,
   isOwnProfile,
   onCameraLocked,
+  onLayersSaved,
 }: ProfileMapModalProps) {
   const [activeLayers, setActiveLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(defaultLayers));
   const [isSavingDefault, setIsSavingDefault] = useState(false);
   const [isLockingView, setIsLockingView] = useState(false);
+  // What the last save said. Both saves change what every visitor to this
+  // profile sees, and they gave no word either way: a save that worked
+  // looked the same as one that failed, and a failure was dropped.
+  const [saveNote, setSaveNote] = useState<{ text: string; failed: boolean } | null>(null);
   const containerRef = useRef<View>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -109,9 +137,12 @@ export function ProfileMapModal({
 
     let cancelled = false;
     (async () => {
-      const [places, regions] = await Promise.all([
+      const [places, regions, cities] = await Promise.all([
         getVisitedPlacesWithCategory(userId).catch(() => []),
         getVisitedRegions(userId).catch(() => []),
+        getVisitedHierarchy(userId)
+          .then((hierarchy) => hierarchy.cities)
+          .catch(() => [] as VisitedCity[]),
       ]);
       if (cancelled) return;
 
@@ -137,6 +168,10 @@ export function ProfileMapModal({
           }
         }
 
+        for (const id of ['cities-name', 'cities-dot']) {
+          if (map.getLayer(id)) map.removeLayer(id);
+        }
+        if (map.getSource('cities')) map.removeSource('cities');
         for (const id of ['countries', 'states']) {
           if (map.getLayer(`${id}-fill`)) map.removeLayer(`${id}-fill`);
           if (map.getLayer(`${id}-line`)) map.removeLayer(`${id}-line`);
@@ -172,6 +207,29 @@ export function ProfileMapModal({
             type: 'line',
             source: 'states',
             paint: { 'line-color': STATE_LINE, 'line-width': 2 },
+          });
+        }
+        // After the regions, so the dots sit on top of their fills. Named
+        // beside each, as on the phone.
+        if (layers.has('cities')) {
+          map.addSource('cities', { type: 'geojson', data: citiesToFeatureCollection(cities) });
+          map.addLayer({
+            id: 'cities-dot',
+            type: 'circle',
+            source: 'cities',
+            paint: {
+              'circle-radius': 6,
+              'circle-color': CITY_COLOR,
+              'circle-stroke-color': CITY_RING,
+              'circle-stroke-width': 2,
+            },
+          });
+          map.addLayer({
+            id: 'cities-name',
+            type: 'symbol',
+            source: 'cities',
+            layout: { 'text-field': ['get', 'name'], 'text-size': 12, 'text-anchor': 'top', 'text-offset': [0, 0.9] },
+            paint: { 'text-color': CITY_RING, 'text-halo-color': 'rgba(5, 15, 10, 0.85)', 'text-halo-width': 1.5 },
           });
         }
       }
@@ -216,8 +274,13 @@ export function ProfileMapModal({
 
   async function handleSaveDefault() {
     setIsSavingDefault(true);
+    setSaveNote(null);
     try {
       await saveDefaultMapLayers(userId, Array.from(activeLayers));
+      onLayersSaved?.();
+      setSaveNote({ text: 'Saved. Visitors now see these layers first.', failed: false });
+    } catch (err) {
+      setSaveNote({ text: userErrorMessage(err, 'Could not save these layers. Try again.'), failed: true });
     } finally {
       setIsSavingDefault(false);
     }
@@ -228,9 +291,13 @@ export function ProfileMapModal({
     if (!map) return;
     const center = map.getCenter();
     setIsLockingView(true);
+    setSaveNote(null);
     try {
       await saveDefaultMapCamera(userId, { lat: center.lat, lng: center.lng }, map.getZoom());
       onCameraLocked?.();
+      setSaveNote({ text: 'Saved. Your map now opens here for visitors.', failed: false });
+    } catch (err) {
+      setSaveNote({ text: userErrorMessage(err, 'Could not save this view. Try again.'), failed: true });
     } finally {
       setIsLockingView(false);
     }
@@ -242,42 +309,50 @@ export function ProfileMapModal({
         <View ref={containerRef} style={styles.map} />
 
         <View style={styles.overlay} pointerEvents="box-none">
-          <Pressable onPress={onClose} style={styles.closeButton}>
-            <ThemedText type="smallBold" themeColor="background">
-              Close
-            </ThemedText>
-          </Pressable>
+          {/* The app's back control, as every other screen leaves by: the
+              sticker arrow is its own disc of colour, so it reads over any
+              map. This was a cream pill. */}
+          <View style={styles.closeButton}>
+            <BackLink label="Close" onPress={onClose} seed="profile-map" />
+          </View>
 
-          <View style={styles.bottomBar}>
-            <View style={styles.chipRow}>
-              {LAYER_OPTIONS.map((option) => {
-                const active = activeLayers.has(option.key);
-                return (
-                  <Pressable key={option.key} onPress={() => toggleLayer(option.key)}>
-                    <ThemedView type={active ? 'backgroundSelected' : 'backgroundElement'} style={styles.chip}>
-                      <ThemedText type="small" themeColor={active ? 'text' : 'textSecondary'}>
-                        {option.label}
-                      </ThemedText>
-                    </ThemedView>
-                  </Pressable>
-                );
-              })}
-            </View>
+          {/* On a paper panel, with the same buttons and labels as the
+              phone's (profile-map-modal.native.tsx, which says why). This
+              copy had fallen behind: bare chips over the map tiles, with no
+              contrast over pale ground, and sage text saying "Set as
+              default" and "Lock this view". */}
+          <PaperPanel seed="map-controls" style={styles.bottomBar}>
+            {/* Typed and ringed in pen, each layer that is on, as Search's
+                filters are. These were pill chips. */}
+            <CircledTabs
+              items={LAYER_OPTIONS}
+              active={Array.from(activeLayers)}
+              onChange={toggleLayer}
+            />
             {isOwnProfile && (
               <View style={styles.ownerActionsRow}>
-                <Pressable onPress={handleSaveDefault} disabled={isSavingDefault}>
-                  <ThemedText type="small" themeColor="sage">
-                    {isSavingDefault ? 'Saving…' : 'Set as default'}
-                  </ThemedText>
-                </Pressable>
-                <Pressable onPress={handleLockView} disabled={isLockingView}>
-                  <ThemedText type="small" themeColor="sage">
-                    {isLockingView ? 'Locking…' : 'Lock this view'}
-                  </ThemedText>
-                </Pressable>
+                <Button
+                  label={isSavingDefault ? 'Saving…' : 'Save layers'}
+                  variant="secondary"
+                  onPress={handleSaveDefault}
+                  loading={isSavingDefault}
+                  style={styles.ownerAction}
+                />
+                <Button
+                  label={isLockingView ? 'Saving…' : 'Save view'}
+                  variant="secondary"
+                  onPress={handleLockView}
+                  loading={isLockingView}
+                  style={styles.ownerAction}
+                />
               </View>
             )}
-          </View>
+            {saveNote && (
+              <ThemedText type="small" themeColor={saveNote.failed ? 'danger' : 'sage'}>
+                {saveNote.text}
+              </ThemedText>
+            )}
+          </PaperPanel>
         </View>
       </View>
     </Modal>
@@ -298,12 +373,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: Spacing.three,
   },
+  // A dark wash behind the word only, so "Close" stays legible over pale
+  // ground; the arrow brings its own.
   closeButton: {
     alignSelf: 'flex-start',
-    backgroundColor: BrandColors.cream,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+    paddingLeft: Spacing.one,
+    paddingRight: Spacing.three,
     borderRadius: Spacing.five,
+    backgroundColor: 'rgba(5, 15, 10, 0.55)',
   },
   // Extra lift above the SDK's own bottom-left Mapbox logo/attribution mark
   // — see the matching comment in profile-map-modal.native.tsx.
@@ -315,14 +393,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.three,
   },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-  },
-  chip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
+  ownerAction: {
+    flex: 1,
   },
 });

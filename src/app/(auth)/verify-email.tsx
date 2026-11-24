@@ -20,7 +20,7 @@ export default function VerifyEmailScreen() {
         // Only reachable by opening the route directly with no param. There
         // is nothing to verify against, so it says so rather than showing a
         // code field that could never succeed.
-        <ThemedText type="default" themeColor="textSecondary">
+        <ThemedText type="lead">
           We do not know which address to verify. Sign in again to start over.
         </ThemedText>
       )}

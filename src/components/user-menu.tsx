@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { ReportModal } from '@/components/report-modal';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -59,46 +59,54 @@ export function UserMenu({
       </Pressable>
 
       {isOpen && (
-        <ThemedView type="backgroundSelected" style={styles.panel}>
+        <Unfold paper="backgroundSelected" style={styles.panel}>
           <View style={styles.list}>
-            <Pressable
-              onPress={() => {
-                setIsOpen(false);
-                setIsReportOpen(true);
-              }}>
-              <ThemedText type="small">Report</ThemedText>
-            </Pressable>
-            {targetFollowsMe && (
+            <Fold>
               <Pressable
                 onPress={() => {
                   setIsOpen(false);
-                  setConfirmingRemove(true);
+                  setIsReportOpen(true);
                 }}>
-                <ThemedText type="small">Remove as follower</ThemedText>
+                <ThemedText type="small">Report</ThemedText>
               </Pressable>
+            </Fold>
+            {targetFollowsMe && (
+              <Fold>
+                <Pressable
+                  onPress={() => {
+                    setIsOpen(false);
+                    setConfirmingRemove(true);
+                  }}>
+                  <ThemedText type="small">Remove as follower</ThemedText>
+                </Pressable>
+              </Fold>
             )}
-            <Pressable
-              onPress={() => {
-                if (isBlocked) {
-                  setIsOpen(false);
-                  onUnblock();
-                } else {
-                  setIsOpen(false);
-                  setConfirmingBlock(true);
-                }
-              }}
-              disabled={isUpdatingBlock}>
-              <ThemedText type="small" style={styles.destructiveLabel}>
-                {isBlocked ? 'Unblock' : 'Block'}
+            <Fold>
+              <Pressable
+                onPress={() => {
+                  if (isBlocked) {
+                    setIsOpen(false);
+                    onUnblock();
+                  } else {
+                    setIsOpen(false);
+                    setConfirmingBlock(true);
+                  }
+                }}
+                disabled={isUpdatingBlock}>
+                <ThemedText type="small" style={styles.destructiveLabel}>
+                  {isBlocked ? 'Unblock' : 'Block'}
+                </ThemedText>
+              </Pressable>
+            </Fold>
+          </View>
+          <Fold>
+            <Pressable onPress={() => setIsOpen(false)}>
+              <ThemedText type="action">
+                Close
               </ThemedText>
             </Pressable>
-          </View>
-          <Pressable onPress={() => setIsOpen(false)}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Close
-            </ThemedText>
-          </Pressable>
-        </ThemedView>
+          </Fold>
+        </Unfold>
       )}
 
       <ReportModal
@@ -147,7 +155,6 @@ const styles = StyleSheet.create({
   panel: {
     gap: Spacing.two,
     padding: Spacing.two,
-    borderRadius: Spacing.two,
   },
   list: {
     gap: Spacing.two,

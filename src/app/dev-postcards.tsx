@@ -68,7 +68,7 @@ const CASES: Case[] = [
   { key: 'tall', label: 'One tall photo', photos: [{ url: TALL, ratio: 0.667 }], rating: 6.1 },
   {
     key: 'square',
-    label: 'Square — caption printed below',
+    label: 'Square: caption printed below',
     photos: [{ url: SQUARE, ratio: 1 }],
     rating: 9.2,
   },
@@ -83,16 +83,16 @@ const CASES: Case[] = [
     ],
     rating: 7.0,
   },
-  { key: 'none', label: 'No photos — map stands in', photos: [], rating: null },
+  { key: 'none', label: 'No photos: map stands in', photos: [], rating: null },
   {
     key: 'narrow',
-    label: 'Narrower than the frame — columns of bare card, stamp in one',
+    label: 'Narrower than the frame: columns of bare card, stamp in one',
     photos: [{ url: NARROW, ratio: 1.2 }],
     rating: 8.8,
   },
   {
     key: 'panorama',
-    label: 'Wider than the frame — bands top and bottom, stamp and stickers',
+    label: 'Wider than the frame: bands top and bottom, stamp and stickers',
     photos: [{ url: PANORAMA, ratio: 2.4 }],
     rating: 5.5,
   },
@@ -101,7 +101,7 @@ const CASES: Case[] = [
     // A SHORT name, which is the case that exposed the broader location line
     // running past it: fill is capped, so a short name stops well short of
     // its box while the line was still aligning to the box's edge.
-    label: 'Short name — the region line must stay within it',
+    label: 'Short name: the region line must stay within it',
     photos: [{ url: WIDE, ratio: 1.5 }],
     rating: 9.0,
     id: 'fx-3',
@@ -111,7 +111,7 @@ const CASES: Case[] = [
     key: 'shortright',
     // The same short name, drawn on the RIGHT margin. It has to end where the
     // name ends, not at the card's edge.
-    label: 'Short name, right margin — ends where the name ends',
+    label: 'Short name, right margin: ends where the name ends',
     photos: [{ url: WIDE, ratio: 1.5 }],
     rating: 9.0,
     id: 'fx-12',
@@ -123,7 +123,7 @@ const CASES: Case[] = [
     key: 'cutoff',
     // A reported card: a long name with the region line above-right, where
     // the line looked cut off at the card's edge.
-    label: 'Long name, region above-right, no rating — reported as cut off',
+    label: 'Long name, region above-right, no rating: reported as cut off',
     photos: [{ url: WIDE, ratio: 1.5 }],
     // No rating, so no stamp in the top-right corner — which is what leaves
     // the region line on the right margin instead of being moved clear.
@@ -137,7 +137,7 @@ const CASES: Case[] = [
   {
     key: 'descenders',
     // A face with real lowercase descenders, on a descender-heavy string.
-    label: 'Lowercase region face — descenders must survive',
+    label: 'Lowercase region face: descenders must survive',
     photos: [{ url: WIDE, ratio: 1.5 }],
     rating: null,
     id: 'fx-2',
@@ -156,7 +156,7 @@ const CASES: Case[] = [
     // outlineCentred's halo is already in it, and a halo is a COLOUR, so
     // overwriting it would lose the effect. This one gets a plate instead —
     // the other branch of that fix, and the one no other fixture here covers.
-    label: 'Cream letters, light halo — the only draw whose edge is a plate',
+    label: 'Cream letters, light halo: the only draw whose edge is a plate',
     photos: [{ url: WIDE, ratio: 1.5 }],
     rating: 8.2,
     id: 'fx-114',
@@ -165,7 +165,7 @@ const CASES: Case[] = [
     key: 'nameinband',
     // Two labels WOULD fit the band, but this card's name is set along the
     // foot — the same strip — so they belong on the back instead.
-    label: 'Name along the foot — the band is the name’s, so no stickers',
+    label: 'Name along the foot: the band is the name’s, so no stickers',
     photos: [{ url: PANORAMA, ratio: 2.4 }],
     rating: 7.1,
     id: 'dev-band-0',
@@ -174,7 +174,7 @@ const CASES: Case[] = [
     key: 'manytags',
     // Six labels will not fit the band on one row. They must drop off the
     // front entirely rather than wrap up over the photograph.
-    label: 'Six tags — too many for the band, so none on the front',
+    label: 'Six tags: too many for the band, so none on the front',
     photos: [{ url: PANORAMA, ratio: 2.4 }],
     rating: 6.7,
     tags: MANY_TAGS,
@@ -224,6 +224,7 @@ function fixture({ key, photos, rating, id, tags, placeName, stateCountry }: Cas
     created_at: '2026-08-14T12:00:00Z',
     user_id: 'dev-user',
     authorName: 'Preview',
+    authorHandle: null,
     placeId: 'dev-place',
     placeName: placeName ?? 'Saint-Michel-de-Provence',
     placeLat: 43.6,

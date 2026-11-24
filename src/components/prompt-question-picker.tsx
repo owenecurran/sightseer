@@ -91,12 +91,12 @@ export function PromptQuestionPicker({
       <View style={styles.promptColumn}>
         <ScrollView contentContainerStyle={styles.promptColumnContent} showsVerticalScrollIndicator={false}>
           {selectedCategory == null && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta">
               Pick a category
             </ThemedText>
           )}
           {selectedCategory != null && promptsInCategory.length === 0 && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               No prompts left in this category.
             </ThemedText>
           )}

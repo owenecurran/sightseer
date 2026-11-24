@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { Pressable, StyleSheet, View, type ScrollView } from 'react-native';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -24,8 +24,11 @@ import { PageLoader } from '@/components/ui/page-loader';
 import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated';
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { StretchText } from '@/components/ui/stretch-text';
+import { JourneyLine } from '@/components/ui/journey-line';
+import { ClearZoneView, ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
+import { stopOf } from '@/lib/journey';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
-import { MaxContentWidth, Spacing, StickerAccents, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, StickerAccents, TopTabInset } from '@/constants/theme';
 import { hashSeed } from '@/lib/seeded-random';
 import { useTheme } from '@/hooks/use-theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
@@ -62,6 +65,10 @@ import {
 } from '@/lib/saved-collections';
 import type { Database } from '@/lib/database.types';
 import type { TaggedVisit } from '@/lib/tagged-visits';
+import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
+import { ErrorNotice } from '@/components/ui/error-notice';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -96,7 +103,10 @@ const VIEW_MODES: { key: CollectionViewMode; label: string }[] = [
 ];
 
 export default function TravelBookDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `missing` is set by New travel book to how many collaborators could not
+  // be added when it was made.
+  const { id, missing } = useLocalSearchParams<{ id: string; missing?: string }>();
+  const collaboratorsMissing = Number(missing) || 0;
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [book, setBook] = useState<TravelBookRow | null>(null);
@@ -146,7 +156,11 @@ export default function TravelBookDetailScreen() {
   const [ownRatings, setOwnRatings] = useState<Record<string, number>>({});
 
   const theme = useTheme();
-  const scrollHandler = useHideOnScrollHandler();
+  // The page's scroll stage, which the roads between postcards read to draw
+  // themselves out as they come up the screen (see JourneyLine).
+  const scrollRef = useRef<ScrollView>(null);
+  const { stage, scrollProps } = useScrollStage(scrollRef);
+  const scrollHandler = useHideOnScrollHandler(stage.scrollY);
 
   const isParticipant = Boolean(
     session && (book?.user_id === session.user.id || collaborators.some((c) => c.userId === session.user.id))
@@ -199,7 +213,7 @@ export default function TravelBookDetailScreen() {
           const placeIds = bookItems.map((item) => item.placeId);
           setOwnRatings(await getOwnRatingsForPlaces(session.user.id, placeIds));
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this travel book.');
+          setError(userErrorMessage(err, 'Could not load this travel book.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -214,7 +228,7 @@ export default function TravelBookDetailScreen() {
     try {
       setEligibleVisits(await getEligibleVisitsForTravelBook(session.user.id, id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load your eligible reviews.');
+      setError(userErrorMessage(err, 'Could not load your eligible reviews.'));
     } finally {
       setIsLoadingEligible(false);
     }
@@ -228,7 +242,7 @@ export default function TravelBookDetailScreen() {
       setEligibleVisits((prev) => prev.filter((v) => v.id !== visit.id));
       setItems(await getTravelBookItems(id, session.user.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that review.');
+      setError(userErrorMessage(err, 'Could not add that review.'));
     }
   }
 
@@ -238,7 +252,7 @@ export default function TravelBookDetailScreen() {
       await removeVisitFromTravelBook(item.itemId);
       setItems((prev) => prev.filter((i) => i.itemId !== item.itemId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that review.');
+      setError(userErrorMessage(err, 'Could not remove that review.'));
     }
   }
 
@@ -255,7 +269,7 @@ export default function TravelBookDetailScreen() {
       if (isChecked) await uncheckTravelBookItem(session.user.id, item.itemId);
       else await checkTravelBookItem(session.user.id, book.id, item.itemId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that checklist item.');
+      setError(userErrorMessage(err, 'Could not update that checklist item.'));
       setCheckedItemIds((prev) => {
         const next = new Set(prev);
         if (isChecked) next.add(item.itemId);
@@ -272,7 +286,7 @@ export default function TravelBookDetailScreen() {
       await setTravelBookCoverPhoto(book.id, photoId);
       setBook({ ...book, cover_photo_id: photoId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not set that cover photo.');
+      setError(userErrorMessage(err, 'Could not set that cover photo.'));
     }
   }
 
@@ -280,7 +294,7 @@ export default function TravelBookDetailScreen() {
     if (!book) return;
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -297,7 +311,7 @@ export default function TravelBookDetailScreen() {
       const urls = await getCoverViewUrls('travel_books', [book.id]);
       setCustomCoverUrl(urls[book.id]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that cover photo.');
+      setError(userErrorMessage(err, 'Could not upload that cover photo.'));
     } finally {
       setIsUploadingCover(false);
     }
@@ -312,7 +326,7 @@ export default function TravelBookDetailScreen() {
     if (ratingSaveTimeout.current) clearTimeout(ratingSaveTimeout.current);
     ratingSaveTimeout.current = setTimeout(() => {
       setTravelBookRating(book.id, rating).catch((err) =>
-        setError(err instanceof Error ? err.message : 'Could not save that rating.')
+        setError(userErrorMessage(err, 'Could not save that rating.'))
       );
     }, 400);
   }
@@ -326,7 +340,7 @@ export default function TravelBookDetailScreen() {
       setBook({ ...book, location_place_id: place.id });
       setLocationName(place.name);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that location.');
+      setError(userErrorMessage(err, 'Could not update that location.'));
     }
   }
 
@@ -338,7 +352,7 @@ export default function TravelBookDetailScreen() {
       await saveTravelBookForUpdates(session.user.id, book.id, false);
       setSavedState({ notifyOnNewItems: false });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that travel book.');
+      setError(userErrorMessage(err, 'Could not save that travel book.'));
     } finally {
       setIsSaving(false);
     }
@@ -352,7 +366,7 @@ export default function TravelBookDetailScreen() {
       await unsaveTravelBookForUpdates(session.user.id, book.id);
       setSavedState(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unsave that travel book.');
+      setError(userErrorMessage(err, 'Could not unsave that travel book.'));
     } finally {
       setIsSaving(false);
     }
@@ -365,7 +379,7 @@ export default function TravelBookDetailScreen() {
     try {
       await setSavedTravelBookNotify(session.user.id, book.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update notifications.');
+      setError(userErrorMessage(err, 'Could not update notifications.'));
     }
   }
 
@@ -379,8 +393,11 @@ export default function TravelBookDetailScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
+        <ScrollStageProvider stage={stage}>
+        <KeyboardAwareScroll
+          ref={scrollRef}
+          {...scrollProps}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -409,7 +426,7 @@ export default function TravelBookDetailScreen() {
             )}
           </View>
           {book?.description && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               {book.description}
             </ThemedText>
           )}
@@ -441,7 +458,16 @@ export default function TravelBookDetailScreen() {
             </Pressable>
           )}
 
-          {!isOwner && session && (
+          {collaboratorsMissing > 0 && isOwner && (
+            <ThemedText type="small" themeColor="danger">
+              {collaboratorsMissing === 1
+                ? 'The travel book was made, but one collaborator could not be added. Add them again in its settings.'
+                : `The travel book was made, but ${collaboratorsMissing} collaborators could not be added. Add them again in its settings.`}
+            </ThemedText>
+          )}
+
+          {/* Not for a book that failed to load: there is nothing to save. */}
+          {!isOwner && session && book && (
             <SaveCollectionButton
               isSaved={savedState != null}
               notifyOnNewItems={savedState?.notifyOnNewItems ?? false}
@@ -460,37 +486,36 @@ export default function TravelBookDetailScreen() {
             </View>
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
-          {items.length > 0 && (
-            <View style={styles.modeRow}>
-              {VIEW_MODES.map((mode) => (
-                <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
-                  <ThemedView
-                    type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'}
-                    style={styles.modeChip}>
-                    <ThemedText
-                      type="small"
-                      themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
-                      {mode.label}
-                    </ThemedText>
-                  </ThemedView>
-                </Pressable>
-              ))}
-            </View>
-          )}
+          {/* Typed and ringed in pen, as Search's filters and the feed's
+              switcher are, where these were pill chips. */}
+          {items.length > 0 && <CircledTabs items={VIEW_MODES} active={viewMode} onChange={setViewMode} />}
 
           <View style={styles.section}>
-            {items.length === 0 && (
-              <ThemedText type="small" themeColor="textSecondary">
+            {/* Only once the book has loaded: a failed load has no items
+                either, and said "No reviews in this trip yet." under the
+                error, as if the book were empty. */}
+            {book && items.length === 0 && (
+              <ThemedText type="caption">
                 No reviews in this trip yet.
               </ThemedText>
             )}
-            {items.map((item) => {
+            {items.map((item, index) => {
+              // The road in from the review above, as in the feed: where
+              // from and to, how far, how many days apart. Between two
+              // reviews only; a bare place has no date to measure from.
+              const previous = index > 0 ? items[index - 1] : null;
+              const road =
+                viewMode !== 'list' && item.kind === 'visit' && previous?.kind === 'visit' ? (
+                  <JourneyLine
+                    key={`road-${item.itemId}`}
+                    from={stopOf(previous)}
+                    to={stopOf(item)}
+                    seed={`${previous.itemId}-${item.itemId}`}
+                    style={styles.journey}
+                  />
+                ) : null;
               const isChecked = checkedItemIds.has(item.itemId);
               const ownRating = ownRatings[item.placeId];
               const showOwnRating = ownRating != null && !(item.kind === 'visit' && item.user_id === session?.user.id);
@@ -537,7 +562,7 @@ export default function TravelBookDetailScreen() {
                     )}
                     <View style={styles.itemInfo}>
                       <StretchText type="headline" fill>{item.placeName}</StretchText>
-                      <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                      <ThemedText type="meta" numberOfLines={1}>
                         {item.kind === 'visit'
                           ? [item.stateCountry, item.visited_on].filter(Boolean).join(' · ')
                           : (item.stateCountry ?? 'No review yet')}
@@ -560,7 +585,8 @@ export default function TravelBookDetailScreen() {
                 );
               }
 
-              return (
+              return [
+              road,
               <Pressable
                 key={item.itemId}
                 // A review is the card itself now, and the card's surface is
@@ -595,17 +621,25 @@ export default function TravelBookDetailScreen() {
                             is what belongs to the BOOK rather than to the
                             review: when it was visited, and the way to take
                             it back out again. */}
+                        {/* The date and the menu are clear zones, like
+                            the card's byline under them: the road in from
+                            the entry above passes under each, and draws on
+                            in the gap between. */}
                         <View style={styles.headerRow}>
-                          <ThemedText type="small" themeColor="textSecondary">
-                            {item.visited_on}
-                          </ThemedText>
+                          <ClearZoneView>
+                            <ThemedText type="meta">
+                              {item.visited_on}
+                            </ThemedText>
+                          </ClearZoneView>
                           {canManage && (
-                            <Pressable
-                              onPress={() => setConfirmingItem(item)}
-                              hitSlop={12}
-                              style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
-                              <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
-                            </Pressable>
+                            <ClearZoneView>
+                              <Pressable
+                                onPress={() => setConfirmingItem(item)}
+                                hitSlop={12}
+                                style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
+                                <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
+                              </Pressable>
+                            </ClearZoneView>
                           )}
                         </View>
                         <VisitCard
@@ -637,7 +671,7 @@ ${item.note ?? ''}`.trim());
                     ) : (
                       <>
                         <StretchText type="headline" fill>{item.placeName}</StretchText>
-                        <ThemedText type="small" themeColor="textSecondary">
+                        <ThemedText type="meta">
                           {item.stateCountry ?? 'No review yet'}
                         </ThemedText>
                         {showOwnRating && (
@@ -655,8 +689,8 @@ ${item.note ?? ''}`.trim());
                     </Pressable>
                   )}
                 </ItemSurface>
-              </Pressable>
-              );
+              </Pressable>,
+              ];
             })}
           </View>
 
@@ -669,8 +703,8 @@ ${item.note ?? ''}`.trim());
                   <ThemedText type="sectionLabel">Add one of your eligible reviews</ThemedText>
                   {isLoadingEligible && <ThemedText type="small">Loading…</ThemedText>}
                   {!isLoadingEligible && eligibleVisits.length === 0 && (
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Nothing eligible to add — only your own reviews, or ones you're tagged in, can go in this book.
+                    <ThemedText type="caption">
+                      Nothing eligible to add. Only your own reviews, or ones you're tagged in, can go in this book.
                     </ThemedText>
                   )}
                   {eligibleVisits.map((visit) => (
@@ -680,7 +714,7 @@ ${item.note ?? ''}`.trim());
                         {visit.rating != null ? (
                           <RatingGlassBadgeGated rating={visit.rating} size={24} seed={visit.id} />
                         ) : (
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ThemedText type="meta">
                             Visited
                           </ThemedText>
                         )}
@@ -697,14 +731,17 @@ ${item.note ?? ''}`.trim());
             {recap ? (
               <PaperPanel seed="book-recap" accentIndex={2} style={styles.recapCard}>
                 <ThemedText type="headlineWrapped">{recap.title}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {recap.is_published ? 'Published to your feed' : 'Draft — not published yet'}
+                <ThemedText type="meta">
+                  {recap.is_published ? 'Published to your feed' : 'Draft, not published yet'}
                 </ThemedText>
               </PaperPanel>
             ) : (
-              <ThemedText type="small" themeColor="textSecondary">
-                No recap written yet.
-              </ThemedText>
+              // Only of a book that loaded.
+              book && (
+                <ThemedText type="caption">
+                  No recap written yet.
+                </ThemedText>
+              )
             )}
             {session && book?.user_id === session.user.id && (
               <Button
@@ -714,7 +751,8 @@ ${item.note ?? ''}`.trim());
               />
             )}
           </View>
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
+        </ScrollStageProvider>
       </SafeAreaView>
 
       <ConfirmDeleteModal
@@ -778,17 +816,13 @@ const styles = StyleSheet.create({
   section: {
     gap: Spacing.two,
   },
+  // Into the list's gaps either side, so the road runs from one postcard to
+  // the next with nothing between.
+  journey: {
+    marginVertical: -Spacing.two,
+  },
   // A postcard entry: no panel, just the card and whatever belongs to the
   // BOOK rather than to the review stacked under it.
-  modeRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  modeChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.four,
-  },
   itemStack: {
     gap: Spacing.two,
   },

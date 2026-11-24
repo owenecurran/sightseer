@@ -24,6 +24,7 @@ import {
 } from '@/lib/google-places';
 import { getNearbyReviewedPlaces, getPlacePreviewReview, type NearbyPlace, type PlacePreview } from '@/lib/nearby-places';
 import { cachePlaceHierarchy, getLocalityName } from '@/lib/places-cache';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -181,20 +182,26 @@ export function LocationSearchModal({
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
       setSuggestions([]);
+      setIsSearching(false);
       return;
     }
+    // Set once the query moves on, so a slow answer to an earlier query
+    // cannot land over the answer to the one now in the field.
+    let stale = false;
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       setError(null);
       try {
-        setSuggestions(await autocompletePlaces(query, sessionTokenRef.current));
+        const found = await autocompletePlaces(query, sessionTokenRef.current);
+        if (!stale) setSuggestions(found);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
+        if (!stale) setError(userErrorMessage(err, 'Could not search places just now. Try again.'));
       } finally {
-        setIsSearching(false);
+        if (!stale) setIsSearching(false);
       }
     }, DEBOUNCE_MS);
     return () => {
+      stale = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query]);
@@ -229,7 +236,7 @@ export function LocationSearchModal({
         router.push({ pathname: '/place/[id]', params: { id: cached.id } });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load that place.');
+      setError(userErrorMessage(err, 'Could not load that place.'));
     }
   }
 
@@ -256,7 +263,7 @@ export function LocationSearchModal({
       const cached = await cachePlaceHierarchy(target);
       onSelect?.(cached);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not use that place.');
+      setError(userErrorMessage(err, 'Could not use that place.'));
     } finally {
       setIsConfirming(false);
     }
@@ -277,7 +284,7 @@ export function LocationSearchModal({
       onCancel();
       router.push({ pathname: '/place/[id]', params: { id: cached.id } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not open that place.');
+      setError(userErrorMessage(err, 'Could not open that place.'));
     }
   }
 
@@ -470,7 +477,7 @@ export function LocationSearchModal({
                   <Pressable key={s.placeId} onPress={() => handleSuggestionSelect(s)} style={styles.suggestionRow}>
                     <ThemedText type="small">{s.primaryText}</ThemedText>
                     {s.secondaryText && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {s.secondaryText}
                       </ThemedText>
                     )}
@@ -488,7 +495,7 @@ export function LocationSearchModal({
                     style={styles.suggestionRow}>
                     <ThemedText type="small">{place.displayName}</ThemedText>
                     {getLocalityName(place) && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {getLocalityName(place)}
                       </ThemedText>
                     )}
@@ -512,8 +519,8 @@ export function LocationSearchModal({
               !isLoadingCenterPlace &&
               hasSearchedCenter && (
                 <ThemedView type="backgroundElement" style={styles.messageBox}>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    No named place here — try dragging a bit or search instead.
+                  <ThemedText type="caption">
+                    No named place here. Try dragging a bit or search instead.
                   </ThemedText>
                 </ThemedView>
               )}
@@ -527,7 +534,7 @@ export function LocationSearchModal({
                     style={styles.suggestionRow}>
                     <ThemedText type="small">{place.displayName}</ThemedText>
                     {getLocalityName(place) && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {getLocalityName(place)}
                       </ThemedText>
                     )}

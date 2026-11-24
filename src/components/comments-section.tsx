@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { ThemedText } from '@/components/themed-text';
 import { ActionSticker } from '@/components/ui/action-sticker';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold, unfoldDelayAfter } from '@/components/ui/unfold';
 import { Avatar } from '@/components/ui/avatar';
 import { TextField } from '@/components/ui/text-field';
 import { BrandColors, Spacing } from '@/constants/theme';
@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import { getAvatarViewUrls } from '@/lib/avatar';
 import { addComment, deleteComment, listComments, type Comment } from '@/lib/comments';
+import { userErrorMessage } from '@/lib/user-error';
 
 // Short, glanceable relative time ("2h", "3d") rather than a full date/time —
 // matches how the rest of this app favors compact stat-style labels over
@@ -106,10 +107,14 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
     listComments(visitId)
       .then((fetched) => {
         setComments(fetched);
-        return getAvatarViewUrls([...new Set(fetched.map((c) => c.userId))]);
+        // Avatars are extras: their failing used to put "Could not load
+        // comments." over comments that had loaded.
+        return getAvatarViewUrls([...new Set(fetched.map((c) => c.userId))]).catch(
+          () => ({}) as Record<string, string>,
+        );
       })
       .then(setAvatarUrls)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load comments.'))
+      .catch((err) => setError(userErrorMessage(err, 'Could not load comments.')))
       .finally(() => setIsLoading(false));
   }, [visitId]);
 
@@ -129,7 +134,7 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
       }
       setNewComment('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that comment.');
+      setError(userErrorMessage(err, 'Could not add that comment.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -148,86 +153,108 @@ export function CommentsThread({ visitId, visitOwnerId, knownCount, onCountChang
       });
       setPendingDeleteId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete that comment.');
+      setError(userErrorMessage(err, 'Could not delete that comment.'));
     } finally {
       setIsDeleting(false);
     }
   }
 
+  // The thread's panels: an error, then the comments or the line saying there
+  // are none. The write field below starts as the last of them lands.
+  const threadRows = (error ? 1 : 0) + (comments.length > 0 ? comments.length : error ? 0 : 1);
+
   return (
     <View style={styles.wrap}>
-      {/* One bordered box for the whole thread — the same bordered-box
-          language used everywhere else in the app for a self-contained
-          section (prompt-question-picker.tsx's own `box`, review-form.tsx's
-          section boxes) rather than the previous plain, unbordered list
-          that didn't read as its own distinct area. */}
-      <ThemedView type="backgroundElement" style={styles.box}>
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-        )}
-        {isLoading && <ThemedText type="small">Loading…</ThemedText>}
+      {isLoading ? (
+        // Plain, not in the box: the box opens once, on the thread itself,
+        // rather than unfolding a loading line and then changing under it.
+        <ThemedText type="small">Loading…</ThemedText>
+      ) : (
+        // Falls open from the actions row, held along its top edge, one
+        // comment at a time.
+        <>
+          {/* One bordered box for the whole thread — the same bordered-box
+              language used everywhere else in the app for a self-contained
+              section (prompt-question-picker.tsx's own `box`, review-form.tsx's
+              section boxes) rather than the previous plain, unbordered list
+              that didn't read as its own distinct area. */}
+          <Unfold paper="backgroundElement" style={styles.box}>
+            {error && (
+              <Fold>
+                <ThemedText type="small" themeColor="danger">
+                  {error}
+                </ThemedText>
+              </Fold>
+            )}
 
-        {!isLoading && comments.length === 0 && !error && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.emptyText}>
-            No comments have been posted yet.
-          </ThemedText>
-        )}
+            {comments.length === 0 && !error && (
+              <Fold>
+                <ThemedText type="caption" style={styles.emptyText}>
+                  No comments have been posted yet.
+                </ThemedText>
+              </Fold>
+            )}
 
-        {comments.map((comment, index) => {
-          const canDelete =
-            !!session && (comment.userId === session.user.id || session.user.id === visitOwnerId);
-          return (
-            <View key={comment.id} style={[styles.commentRow, index > 0 && styles.commentRowDivider]}>
-              <Avatar uri={avatarUrls[comment.userId]} name={comment.authorName} size={28} />
-              <View style={styles.commentBody}>
-                <View style={styles.commentHeader}>
-                  <ThemedText type="smallBold">{comment.authorName}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    {relativeTime(comment.createdAt)}
-                  </ThemedText>
-                </View>
-                <ThemedText type="small">{comment.body}</ThemedText>
-              </View>
-              {canDelete && (
-                <Pressable onPress={() => setPendingDeleteId(comment.id)} hitSlop={8}>
-                  <Ionicons name="trash-outline" size={16} color={theme.textSecondary} />
-                </Pressable>
-              )}
-            </View>
-          );
-        })}
-      </ThemedView>
+            {comments.map((comment, index) => {
+              const canDelete =
+                !!session && (comment.userId === session.user.id || session.user.id === visitOwnerId);
+              return (
+                <Fold key={comment.id} style={[styles.commentRow, index > 0 && styles.commentRowDivider]}>
+                  <Avatar uri={avatarUrls[comment.userId]} name={comment.authorName} size={28} />
+                  <View style={styles.commentBody}>
+                    <View style={styles.commentHeader}>
+                      <ThemedText type="smallBold">{comment.authorName}</ThemedText>
+                      <ThemedText type="meta">
+                        {relativeTime(comment.createdAt)}
+                      </ThemedText>
+                    </View>
+                    <ThemedText type="small">{comment.body}</ThemedText>
+                  </View>
+                  {canDelete && (
+                    <Pressable onPress={() => setPendingDeleteId(comment.id)} hitSlop={8}>
+                      <Ionicons name="trash-outline" size={16} color={theme.textSecondary} />
+                    </Pressable>
+                  )}
+                </Fold>
+              );
+            })}
+          </Unfold>
+        </>
+      )}
 
       {/* The write box — its own bordered field with the send action
           inline inside it (a trailing icon button, not a separate full-width
           "Post" button below), matching how a chat/comment composer reads
           elsewhere (e.g. iMessage, most social apps) more than this app's
-          own full-form Button did here. */}
-      <View style={styles.addRow}>
-        <TextField
-          placeholder="Write your comment..."
-          value={newComment}
-          onChangeText={setNewComment}
-          style={styles.addInput}
-        />
-        <Pressable
-          onPress={handleAddComment}
-          disabled={isSubmitting || !newComment.trim()}
-          hitSlop={8}
-          style={({ pressed }) => [
-            styles.sendButton,
-            (isSubmitting || !newComment.trim()) && styles.sendButtonDisabled,
-            pressed && styles.pressed,
-          ]}>
-          {isSubmitting ? (
-            <ActivityIndicator color={BrandColors.background} size="small" />
-          ) : (
-            <Ionicons name="send" size={16} color={BrandColors.background} />
-          )}
-        </Pressable>
-      </View>
+          own full-form Button did here.
+
+          It is the fold's last panel, though not in the box: it unfolds on
+          its own, on bare page, timed to follow the thread above. */}
+      <Unfold paper="none" ready={!isLoading} delay={unfoldDelayAfter(threadRows)}>
+        <Fold style={styles.addRow}>
+          <TextField
+            placeholder="Write your comment..."
+            value={newComment}
+            onChangeText={setNewComment}
+            style={styles.addInput}
+          />
+          <Pressable
+            onPress={handleAddComment}
+            disabled={isSubmitting || !newComment.trim()}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.sendButton,
+              (isSubmitting || !newComment.trim()) && styles.sendButtonDisabled,
+              pressed && styles.pressed,
+            ]}>
+            {isSubmitting ? (
+              <ActivityIndicator color={BrandColors.background} size="small" />
+            ) : (
+              <Ionicons name="send" size={16} color={BrandColors.background} />
+            )}
+          </Pressable>
+        </Fold>
+      </Unfold>
 
       <ConfirmDeleteModal
         visible={pendingDeleteId != null}
@@ -252,7 +279,6 @@ const styles = StyleSheet.create({
   box: {
     borderWidth: 1,
     borderColor: 'rgba(234,231,207,0.35)',
-    borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.two,
   },

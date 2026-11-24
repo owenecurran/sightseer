@@ -11,9 +11,9 @@ type PostcardTurnMarkProps = {
   // box would print half on the torn edge.
   inset: number;
   // What the mark is struck in. Defaults to the card's own faded ink, which
-  // is right on the picture side and invisible on the written one — that face
-  // is a dark panel rather than bare card, and dark ink on it cannot be seen
-  // at all. Confirmed by turning a card over and finding nothing there.
+  // is right wherever the mark lands on bare card. Both faces put it there
+  // now; the written side used to run its dark panel down under the mark and
+  // needed a light ink to be seen at all.
   ink?: string;
   // What the card turns to. Read out by a screen reader and nothing else — the
   // printed words are always the same, because they are printing.
@@ -76,8 +76,6 @@ export function PostcardTurnMark({
 // is the same colour for the same reason. Printing on old card is never black
 // by the time it is scanned.
 const CARD_INK = 'rgba(28, 34, 24, 0.55)';
-// The written side's, for the same mark on a dark panel.
-export const TURN_MARK_PANEL_INK = 'rgba(238, 236, 214, 0.45)';
 
 // Dropped this much closer to the foot of the card on a phone.
 //

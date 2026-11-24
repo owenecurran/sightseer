@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -20,6 +20,7 @@ import type { Database } from '@/lib/database.types';
 import { searchUsers } from '@/lib/search';
 import { addCollaborator, createTravelBook } from '@/lib/travel-books';
 import { type PublicProfile } from '@/lib/public-profile';
+import { userErrorMessage } from '@/lib/user-error';
 
 // Narrowed to what the public column grant on `users` actually returns --
 // see 20260930130000_restrict_users_columns.sql.
@@ -52,14 +53,19 @@ export default function NewTravelBookScreen() {
       setPeopleSuggestions([]);
       return;
     }
+    // Set once the query moves on, so a slow answer to an earlier query
+    // cannot land over the answer to the one now in the field.
+    let stale = false;
     peopleDebounceRef.current = setTimeout(async () => {
       try {
-        setPeopleSuggestions(await searchUsers(peopleQuery, session.user.id));
+        const found = await searchUsers(peopleQuery, session.user.id);
+        if (!stale) setPeopleSuggestions(found);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
+        if (!stale) setError(userErrorMessage(err, 'Could not search people just now. Try again.'));
       }
     }, DEBOUNCE_MS);
     return () => {
+      stale = true;
       if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     };
   }, [peopleQuery, session]);
@@ -86,12 +92,24 @@ export default function NewTravelBookScreen() {
         isPrivate,
         locationPlaceId: location?.id,
       });
+      // The book exists from here. A collaborator who could not be added
+      // used to leave this form up saying "Could not create that travel
+      // book.", and pressing Create again made a second one. Now it goes to
+      // the book, which says how many are missing.
+      let notAdded = 0;
       for (const collaborator of collaborators) {
-        await addCollaborator(book.id, collaborator.id);
+        try {
+          await addCollaborator(book.id, collaborator.id);
+        } catch {
+          notAdded += 1;
+        }
       }
-      router.replace({ pathname: '/travel-book/[id]', params: { id: book.id } });
+      router.replace({
+        pathname: '/travel-book/[id]',
+        params: notAdded > 0 ? { id: book.id, missing: String(notAdded) } : { id: book.id },
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create that travel book.');
+      setError(userErrorMessage(err, 'Could not create that travel book.'));
     } finally {
       setIsCreating(false);
     }
@@ -100,7 +118,7 @@ export default function NewTravelBookScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -129,7 +147,7 @@ export default function NewTravelBookScreen() {
             </ThemedView>
             {location && (
               <Pressable onPress={() => setLocation(null)} hitSlop={8}>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="action">
                   Clear
                 </ThemedText>
               </Pressable>
@@ -139,7 +157,7 @@ export default function NewTravelBookScreen() {
           <CheckboxRow
             accentIndex={3}
             checked={isPrivate}
-            label="Private — only you and collaborators can see this book"
+            label="Private: only you and collaborators can see this book"
             onPress={() => setIsPrivate((prev) => !prev)}
           />
           </PaperPanel>
@@ -147,8 +165,8 @@ export default function NewTravelBookScreen() {
           <PaperPanel seed="book-collaborators" accentIndex={2}>
             <ThemedText type="sectionLabel">Collaborators</ThemedText>
           <View style={styles.section}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Optional — anyone added can also add their own reviews
+            <ThemedText type="caption">
+              Optional. Anyone added can also add their own reviews.
             </ThemedText>
             {collaborators.length > 0 && (
               <View style={styles.tagRow}>
@@ -173,13 +191,13 @@ export default function NewTravelBookScreen() {
           </PaperPanel>
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
           <Button label="Create travel book" onPress={handleCreate} loading={isCreating} disabled={!title.trim()} />
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
 
         <LocationSearchModal
           visible={isLocationPickerOpen}

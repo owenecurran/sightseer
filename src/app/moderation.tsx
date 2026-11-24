@@ -20,6 +20,8 @@ import {
   removeVisitAndResolveReport,
   type PendingReport,
 } from '@/lib/reports';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 const REASON_LABELS: Record<PendingReport['reason'], string> = {
   spam: 'Spam',
@@ -32,6 +34,7 @@ export default function ModerationScreen() {
   const bottomInset = useBottomTabInset();
   const [reports, setReports] = useState<PendingReport[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   // Which row is mid-confirm, if any. Holding the id rather than a boolean
@@ -44,12 +47,13 @@ export default function ModerationScreen() {
     useCallback(() => {
       setIsLoading(true);
       setError(null);
+      setLoadError(null);
       Promise.all([listPendingReports(), listBannedUsers()])
         .then(([pending, banned]) => {
           setReports(pending);
           setBannedUsers(banned);
         })
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load reports.'))
+        .catch((err) => setLoadError(userErrorMessage(err, 'Could not load reports.')))
         .finally(() => {
           setIsLoading(false);
           setHasLoadedOnce(true);
@@ -63,7 +67,7 @@ export default function ModerationScreen() {
       await dismissReport(reportId);
       setReports((prev) => prev.filter((r) => r.id !== reportId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not dismiss that report.');
+      setError(userErrorMessage(err, 'Could not dismiss that report.'));
     }
   }
 
@@ -75,11 +79,11 @@ export default function ModerationScreen() {
     if (!report.reportedUserId) return;
     setError(null);
     try {
-      await banUserAndResolveReport(report.id, report.reportedUserId, report.reason);
+      await banUserAndResolveReport(report.id);
       setReports((prev) => prev.filter((r) => r.id !== report.id));
       setBannedUsers(await listBannedUsers());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not ban that user.');
+      setError(userErrorMessage(err, 'Could not ban that user.'));
     } finally {
       setConfirmingBanId(null);
     }
@@ -91,7 +95,7 @@ export default function ModerationScreen() {
       await setUserBanned(userId, null);
       setBannedUsers((prev) => prev.filter((u) => u.id !== userId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not lift that ban.');
+      setError(userErrorMessage(err, 'Could not lift that ban.'));
     }
   }
 
@@ -99,10 +103,10 @@ export default function ModerationScreen() {
     if (!report.visitId) return;
     setError(null);
     try {
-      await removeVisitAndResolveReport(report.id, report.visitId);
+      await removeVisitAndResolveReport(report.id);
       setReports((prev) => prev.filter((r) => r.id !== report.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that visit.');
+      setError(userErrorMessage(err, 'Could not remove that visit.'));
     }
   }
 
@@ -121,13 +125,17 @@ export default function ModerationScreen() {
         <ThemedText type="displaySerif">Reports</ThemedText>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
 
-        {!isLoading && reports.length === 0 && (
-          <ThemedText type="small" themeColor="textSecondary">
+        {loadError && <ErrorNotice message={loadError} />}
+
+        {/* Not after a failed load, which has found nothing only because
+            it did not run. */}
+        {!isLoading && !loadError && reports.length === 0 && (
+          <ThemedText type="caption">
             No pending reports.
           </ThemedText>
         )}
@@ -138,7 +146,7 @@ export default function ModerationScreen() {
               <ThemedText type="smallBold">{report.placeName ?? report.authorName}</ThemedText>
               {report.placeName && (
                 <View style={styles.reportMeta}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.reportMetaText}>
+                  <ThemedText type="meta" style={styles.reportMetaText}>
                     {[report.authorName, report.visitNote].filter(Boolean).join(' · ')}
                   </ThemedText>
                   {report.visitRating != null && (
@@ -150,28 +158,28 @@ export default function ModerationScreen() {
                 Reported for {REASON_LABELS[report.reason]} by {report.reporterName}
               </ThemedText>
               {report.details && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   “{report.details}”
                 </ThemedText>
               )}
               {report.placeName && !report.visitId && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Visit already deleted by its owner.
                 </ThemedText>
               )}
               {!report.placeName && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  Reported this user directly — no specific post.
+                <ThemedText type="caption">
+                  Reported this user directly, not a specific post.
                 </ThemedText>
               )}
 
               {confirmingBanId === report.id ? (
                 <View style={styles.actionsRow}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.reportMetaText}>
+                  <ThemedText type="caption" style={styles.reportMetaText}>
                     Ban {report.authorName}?
                   </ThemedText>
                   <Pressable onPress={() => setConfirmingBanId(null)}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       Cancel
                     </ThemedText>
                   </Pressable>
@@ -182,7 +190,7 @@ export default function ModerationScreen() {
               ) : (
                 <View style={styles.actionsRow}>
                   <Pressable onPress={() => handleDismiss(report.id)}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       Dismiss
                     </ThemedText>
                   </Pressable>
@@ -215,7 +223,7 @@ export default function ModerationScreen() {
               {bannedUsers.map((user) => (
                 <ThemedView key={user.id} type="backgroundElement" style={styles.card}>
                   <ThemedText type="smallBold">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="caption">
                     {user.reason === UNDERAGE_REASON
                       ? 'Under the age minimum'
                       : (user.reason ?? 'No reason recorded')}

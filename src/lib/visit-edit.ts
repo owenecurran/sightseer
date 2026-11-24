@@ -1,4 +1,5 @@
 import { getPhotoViewUrls } from '@/lib/photo-view';
+import type { uploadReviewPhotoAssets } from '@/lib/photo-upload';
 import { supabase } from '@/lib/supabase';
 
 export type EditablePhoto = {
@@ -55,20 +56,28 @@ export async function getVisitForEdit(visitId: string, userId: string): Promise<
   };
 }
 
-export async function updateVisitFields(
-  visitId: string,
-  fields: { rating: number | null; note: string | null; visitedOn: string }
-): Promise<void> {
-  const { error } = await supabase
-    .from('visits')
-    .update({ rating: fields.rating, note: fields.note, visited_on: fields.visitedOn })
-    .eq('id', visitId);
-  if (error) throw error;
-}
+export type UploadedEditPhoto = Awaited<ReturnType<typeof uploadReviewPhotoAssets>>;
 
-// The existing `photos_delete_own` RLS policy already permits this — no new
-// policy needed (confirmed in supabase/migrations/*rls*).
-export async function deleteVisitPhoto(photoId: string): Promise<void> {
-  const { error } = await supabase.from('photos').delete().eq('id', photoId);
+export async function saveVisitEdit(params: {
+  visitId: string;
+  rating: number | null;
+  note: string | null;
+  visitedOn: string;
+  removedPhotoIds: string[];
+  newPhotos: UploadedEditPhoto[];
+}): Promise<void> {
+  const { error } = await supabase.rpc('save_review_edit', {
+    p_visit_id: params.visitId,
+    p_rating: params.rating,
+    p_note: params.note,
+    p_visited_on: params.visitedOn,
+    p_removed_photo_ids: params.removedPhotoIds,
+    p_new_photos: params.newPhotos.map((photo) => ({
+      r2_key: photo.r2Key,
+      thumb_r2_key: photo.storedThumbKey,
+      width: photo.width,
+      height: photo.height,
+    })),
+  });
   if (error) throw error;
 }

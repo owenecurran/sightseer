@@ -27,6 +27,19 @@
 // this slot is for.
 const STATIC_STYLE = 'mapbox/satellite-streets-v12';
 
+// The same satellite imagery with no names or roads drawn on it, for the one
+// place a map is lettered OVER: the picture side of a review with no photos.
+// There the postcard prints the place name across it in display type, and
+// satellite-streets printed its own names underneath -- "LOUVRE MUSEUM" over
+// "7TH ARRONDISSEMENT" and "Concorde Square", "Ile-de-France, France" over
+// "Nanterre". Two sets of lettering in one spot and neither readable.
+//
+// The reasoning above was satellite against the dark vector style, and that
+// still holds: this is still an image of somewhere. It only drops the text.
+// The written-side thumbnail and the place page keep the labelled style,
+// because there the names are how you tell where you are looking.
+const UNLABELLED_STYLE = 'mapbox/satellite-v9';
+
 // Mapbox rejects requests over 1280 in either dimension, and the @2x
 // suffix doubles the delivered pixels, so the requested box has to stay at
 // or under half the limit.
@@ -73,6 +86,8 @@ export type PlaceMapUrlOptions = {
   // Layout size in points. Doubled internally for retina, then clamped.
   width: number;
   height: number;
+  // False for a map with lettering set over it. Defaults to labelled.
+  labels?: boolean;
 };
 
 // Null when there is nothing to draw — no token configured, or a place
@@ -107,7 +122,7 @@ export function buildPlaceMapUrl(opts: PlaceMapUrlOptions): string | null {
   const pin = `pin-s+EAE7CF(${opts.lng.toFixed(5)},${opts.lat.toFixed(5)})`;
 
   return (
-    `https://api.mapbox.com/styles/v1/${STATIC_STYLE}/static/${pin}/` +
+    `https://api.mapbox.com/styles/v1/${opts.labels === false ? UNLABELLED_STYLE : STATIC_STYLE}/static/${pin}/` +
     `${opts.lng.toFixed(5)},${opts.lat.toFixed(5)},${zoom}/${w}x${h}${RETINA}` +
     `?access_token=${token}&attribution=false&logo=false`
   );

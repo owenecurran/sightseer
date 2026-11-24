@@ -13,6 +13,8 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { getArticle, type ArticleDetail } from '@/lib/articles';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 export default function ArticleDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -25,10 +27,13 @@ export default function ArticleDetailScreen() {
     if (!id) return;
     getArticle(id)
       .then(setArticle)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load this article.'));
+      .catch((err) => setError(userErrorMessage(err, 'Could not load this article.')));
   }, [id]);
 
-  if (article === undefined) return <PageLoader />;
+  // A failed load leaves the article undefined, the same as one still on
+  // its way, so the error has to be checked too. Without it the loader
+  // stayed up for good and the notice below never showed.
+  if (article === undefined && !error) return <PageLoader />;
 
   const paragraphs = article ? article.body.split(/\n\s*\n/).filter((p) => p.trim().length > 0) : [];
 
@@ -42,14 +47,10 @@ export default function ArticleDetailScreen() {
           scrollEventThrottle={16}>
           <BackLink seed="[id]" />
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {!article && !error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               This article isn't available.
             </ThemedText>
           )}
@@ -64,11 +65,11 @@ export default function ArticleDetailScreen() {
 
               <ThemedText type="displaySerif">{article.title}</ThemedText>
               {article.subtitle && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   {article.subtitle}
                 </ThemedText>
               )}
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="meta">
                 {article.authorName}
               </ThemedText>
 

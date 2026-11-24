@@ -1,19 +1,23 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ConfirmDeleteModal } from '@/components/confirm-delete-modal';
 import { BackLink } from '@/components/ui/back-link';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { ThemedText } from '@/components/themed-text';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { ThemedView } from '@/components/themed-view';
 import { PageLoader } from '@/components/ui/page-loader';
+import { SettingsRow } from '@/components/ui/settings-row';
 import { TextField } from '@/components/ui/text-field';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { searchUsers } from '@/lib/search';
 import {
   addCollaborator,
+  deleteTravelBook,
   getTravelBookDetail,
   removeCollaborator,
   updateTravelBookPrivacy,
@@ -21,6 +25,8 @@ import {
   type TravelBookRow,
 } from '@/lib/travel-books';
 import { type PublicProfile } from '@/lib/public-profile';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Narrowed to what the public column grant on `users` actually returns --
 // see 20260930130000_restrict_users_columns.sql.
@@ -35,6 +41,8 @@ export default function TravelBookSettingsScreen() {
   const [collaborators, setCollaborators] = useState<TravelBookCollaborator[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [peopleQuery, setPeopleQuery] = useState('');
   const [peopleSuggestions, setPeopleSuggestions] = useState<UserRow[]>([]);
@@ -50,7 +58,7 @@ export default function TravelBookSettingsScreen() {
           setBook(detail.book);
           setCollaborators(detail.collaborators);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this travel book.');
+          setError(userErrorMessage(err, 'Could not load this travel book.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -69,14 +77,19 @@ export default function TravelBookSettingsScreen() {
       setPeopleSuggestions([]);
       return;
     }
+    // Set once the query moves on, so a slow answer to an earlier query
+    // cannot land over the answer to the one now in the field.
+    let stale = false;
     peopleDebounceRef.current = setTimeout(async () => {
       try {
-        setPeopleSuggestions(await searchUsers(peopleQuery, session.user.id));
+        const found = await searchUsers(peopleQuery, session.user.id);
+        if (!stale) setPeopleSuggestions(found);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
+        if (!stale) setError(userErrorMessage(err, 'Could not search people just now. Try again.'));
       }
     }, DEBOUNCE_MS);
     return () => {
+      stale = true;
       if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     };
   }, [peopleQuery, session]);
@@ -88,7 +101,7 @@ export default function TravelBookSettingsScreen() {
     try {
       await updateTravelBookPrivacy(book.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update privacy.');
+      setError(userErrorMessage(err, 'Could not update privacy.'));
     }
   }
 
@@ -105,7 +118,7 @@ export default function TravelBookSettingsScreen() {
       await addCollaborator(book.id, user.id);
     } catch (err) {
       setCollaborators((prev) => prev.filter((c) => c.userId !== user.id));
-      setError(err instanceof Error ? err.message : 'Could not add that collaborator.');
+      setError(userErrorMessage(err, 'Could not add that collaborator.'));
     }
   }
 
@@ -117,7 +130,28 @@ export default function TravelBookSettingsScreen() {
       await removeCollaborator(book.id, userId);
     } catch (err) {
       if (removed) setCollaborators((prev) => [...prev, removed]);
-      setError(err instanceof Error ? err.message : 'Could not remove that collaborator.');
+      setError(userErrorMessage(err, 'Could not remove that collaborator.'));
+    }
+  }
+
+  async function handleDelete() {
+    if (!book) return;
+    setIsDeleting(true);
+    try {
+      await deleteTravelBook(book.id);
+      setIsConfirmingDelete(false);
+      // Out past the book's own page as well as this one, which has nothing
+      // behind it now, to whichever tab this was opened from.
+      //
+      // Not then switched to the Boards tab. Doing that as well left the
+      // pager showing Home with the Boards icon lit (seen on Android), and
+      // from there tapping Boards did nothing, because a tap on the lit icon
+      // counts as a re-tap. Without it the pager stays where it was.
+      if (router.canDismiss()) router.dismissAll();
+    } catch (err) {
+      setError(userErrorMessage(err, 'Could not delete this travel book.'));
+      setIsConfirmingDelete(false);
+      setIsDeleting(false);
     }
   }
 
@@ -128,13 +162,22 @@ export default function TravelBookSettingsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
+        {/* A scroll view where there was a plain View, so the collaborator
+            search can move up out from under the keyboard. The offset is
+            the field plus a few of the suggestions that appear beneath it
+            as you type -- those are what you are looking for, and the field
+            alone clearing the keyboard would leave them all hidden. */}
+        <KeyboardAwareScroll
+          style={styles.safeArea}
+          contentContainerStyle={styles.content}
+          bottomOffset={160}
+          keyboardShouldPersistTaps="handled">
           <BackLink seed="settings" />
 
           <ThemedText type="displaySerif">Travel book settings</ThemedText>
 
           {!isOwner ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Only this travel book's owner can change its settings.
             </ThemedText>
           ) : (
@@ -142,13 +185,13 @@ export default function TravelBookSettingsScreen() {
               <CheckboxRow
                 accentIndex={3}
                 checked={book?.is_private ?? false}
-                label="Private — only visible to people who can already see my content"
+                label="Private: only visible to people who can already see my content"
                 onPress={handleTogglePrivate}
               />
 
               <View style={styles.section}>
                 <ThemedText type="sectionLabel">Trip collaborators</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Anyone added can also add their own reviews to this trip.
                 </ThemedText>
                 {collaborators.length > 0 && (
@@ -171,16 +214,29 @@ export default function TravelBookSettingsScreen() {
                   </Pressable>
                 ))}
               </View>
+
+              {/* There was no way to delete a travel book anywhere in the
+                  app -- the database allowed it, nothing called it. */}
+              <SettingsRow
+                label="Delete travel book"
+                description="Removes the book, its recap and its collaborators. The reviews in it stay where they are."
+                tone="danger"
+                onPress={() => setIsConfirmingDelete(true)}
+              />
             </>
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
-        </View>
+          {error && <ErrorNotice message={error} />}
+        </KeyboardAwareScroll>
       </SafeAreaView>
+
+      <ConfirmDeleteModal
+        visible={isConfirmingDelete}
+        message="Delete this travel book? Its recap goes with it. The reviews in it are not deleted. This cannot be undone."
+        isConfirming={isDeleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setIsConfirmingDelete(false)}
+      />
     </ThemedView>
   );
 }
@@ -200,6 +256,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.four + TopTabInset,
+    paddingBottom: Spacing.six,
   },
   section: {
     gap: Spacing.two,

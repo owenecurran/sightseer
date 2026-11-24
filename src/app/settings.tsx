@@ -2,14 +2,13 @@ import * as Linking from 'expo-linking';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { PaperPanel } from '@/components/ui/paper-panel';
 import { EmailLink } from '@/components/email-link';
-import { PhoneVerify } from '@/components/phone-verify';
 import { SettingsRow } from '@/components/ui/settings-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -22,17 +21,21 @@ import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { listBlockedUsers } from '@/lib/blocks';
 import { setDiscoverableByContacts } from '@/lib/contacts';
+import { setDistanceUnit, useDistanceUnit } from '@/lib/distance-units';
 import { linkAppleAccount, linkGoogleAccount } from '@/lib/social-auth';
+import { userErrorMessage } from '@/lib/user-error';
 import { supabase } from '@/lib/supabase';
-import { unregisterPush } from '@/lib/push';
+import { signOutWithPushCleanup } from '@/lib/push';
 import { hasPrivacyPolicy, hasSupportEmail, PRIVACY_POLICY_URL, SUPPORT_EMAIL } from '@/lib/legal';
 
 export default function SettingsScreen() {
   const { session, profile, refreshProfile } = useAuth();
+  const distanceUnit = useDistanceUnit();
   const scrollHandler = useHideOnScrollHandler();
   const bottomInset = useBottomTabInset();
 
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -44,6 +47,11 @@ export default function SettingsScreen() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const [isSavingDiscoverable, setIsSavingDiscoverable] = useState(false);
+  // The two privacy switches failed in silence: the box simply did not tick,
+  // which reads as a switch that does not work. Most of all for "Private
+  // account", where somebody could walk away believing they were hidden.
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
+  const [discoverableError, setDiscoverableError] = useState<string | null>(null);
 
   const [isLinkingApple, setIsLinkingApple] = useState(false);
   const [isLinkingGoogle, setIsLinkingGoogle] = useState(false);
@@ -73,7 +81,7 @@ export default function SettingsScreen() {
       await linkAppleAccount();
       await refreshProfile();
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : 'Could not connect your Apple account.');
+      setLinkError(userErrorMessage(err, 'Could not connect your Apple account.'));
     } finally {
       setIsLinkingApple(false);
     }
@@ -86,20 +94,23 @@ export default function SettingsScreen() {
       await linkGoogleAccount();
       await refreshProfile();
     } catch (err) {
-      setLinkError(err instanceof Error ? err.message : 'Could not connect your Google account.');
+      setLinkError(userErrorMessage(err, 'Could not connect your Google account.'));
     } finally {
       setIsLinkingGoogle(false);
     }
   }
 
   async function handleSignOut() {
+    if (!session) return;
     setIsSigningOut(true);
-    // Before signOut, not after: the delete is RLS-scoped to auth.uid(), so
-    // once the session is gone the row can no longer be removed and the next
-    // account on this device would inherit these notifications.
-    await unregisterPush();
-    await supabase.auth.signOut();
-    setIsSigningOut(false);
+    setSignOutError(null);
+    try {
+      await signOutWithPushCleanup(session.user.id);
+    } catch (err) {
+      setSignOutError(userErrorMessage(err, 'Could not sign out. Try again.'));
+    } finally {
+      setIsSigningOut(false);
+    }
   }
 
   async function handleChangePassword() {
@@ -117,7 +128,7 @@ export default function SettingsScreen() {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setIsSavingPassword(false);
     if (error) {
-      setPasswordError(error.message);
+      setPasswordError(userErrorMessage(error, 'Could not change your password.'));
       return;
     }
     setPasswordSuccess(true);
@@ -128,22 +139,28 @@ export default function SettingsScreen() {
   async function handleTogglePrivacy() {
     if (!session || !profile) return;
     setIsSavingPrivacy(true);
+    setPrivacyError(null);
     const { error } = await supabase
       .from('users')
       .update({ is_private: !profile.is_private })
       .eq('id', session.user.id);
     setIsSavingPrivacy(false);
-    if (!error) await refreshProfile();
+    if (error) {
+      setPrivacyError(userErrorMessage(error, 'Could not change that. Try again.'));
+      return;
+    }
+    await refreshProfile();
   }
 
   async function handleToggleDiscoverable() {
     if (!session || !profile) return;
     setIsSavingDiscoverable(true);
+    setDiscoverableError(null);
     try {
       await setDiscoverableByContacts(session.user.id, !profile.discoverable_by_contacts);
       await refreshProfile();
-    } catch {
-      // Best-effort, same as handleSavePhone above.
+    } catch (err) {
+      setDiscoverableError(userErrorMessage(err, 'Could not change that. Try again.'));
     } finally {
       setIsSavingDiscoverable(false);
     }
@@ -152,7 +169,7 @@ export default function SettingsScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -183,6 +200,25 @@ export default function SettingsScreen() {
             />
           </PaperPanel>
 
+          {/* How distances read everywhere: the routes between postcards,
+              the places to go. Starts from where you live until you pick. */}
+          <PaperPanel seed="settings-distances" accentIndex={2}>
+            <ThemedText type="sectionLabel">Distances</ThemedText>
+            <CheckboxRow
+              label="Kilometres"
+              checked={distanceUnit === 'km'}
+              onPress={() => setDistanceUnit('km')}
+            />
+            <CheckboxRow
+              label="Miles"
+              checked={distanceUnit === 'mi'}
+              onPress={() => setDistanceUnit('mi')}
+            />
+            <ThemedText type="caption">
+              Until you choose, this follows your first home location.
+            </ThemedText>
+          </PaperPanel>
+
           {/* Who can see you, and who cannot. Blocking lives here rather
               than in its own section because it answers the same question
               the private-account toggle does. */}
@@ -195,6 +231,11 @@ export default function SettingsScreen() {
               onPress={handleTogglePrivacy}
               disabled={isSavingPrivacy}
             />
+            {privacyError && (
+              <ThemedText type="small" themeColor="danger">
+                {privacyError}
+              </ThemedText>
+            )}
 
             <View style={styles.divider} />
 
@@ -225,10 +266,28 @@ export default function SettingsScreen() {
                 Your number is verified. Friends who have it in their contacts can find you.
               </ThemedText>
             ) : (
-              <PhoneVerify
-                mode="link"
-                caption="Verify your phone number so friends who sync their contacts can find you. We text you a code. The number is hashed before it is stored and never kept as plain text."
-                onVerified={() => void refreshProfile()}
+              // A ROW OUT, not a form in.
+              //
+              // This used to hold PhoneVerify inline, with a four-line
+              // paragraph above it explaining the hashing. That was the same
+              // question the find-friends step asks, asked a second way: a
+              // plain number field and a wall of reassurance, next to a flow
+              // that had since grown a country picker, an as-you-type mask
+              // and a line that goes green when the number is dialable. Two
+              // screens for one feature, and the one nobody was looking at
+              // was the one that drifted.
+              //
+              // The destination is the same route the contacts row above
+              // uses, which is not a duplicate so much as the same door
+              // reached from the two questions that lead to it. It derives
+              // its own step from hashed_phone, so arriving here without a
+              // number lands exactly on the number screen. It writes no
+              // has_seen_find_friends either, so coming through Settings
+              // cannot re-fire a tutorial somebody has already finished.
+              <SettingsRow
+                label="Verify your phone number"
+                description="So people who already have it can find you here"
+                onPress={() => router.push('/contacts-sync')}
               />
             )}
             <CheckboxRow
@@ -237,6 +296,11 @@ export default function SettingsScreen() {
               onPress={handleToggleDiscoverable}
               disabled={isSavingDiscoverable}
             />
+            {discoverableError && (
+              <ThemedText type="small" themeColor="danger">
+                {discoverableError}
+              </ThemedText>
+            )}
           </PaperPanel>
 
           {/* Sign-in credentials in one card: the providers you can sign in
@@ -280,14 +344,14 @@ export default function SettingsScreen() {
               />
             )}
             {linkError && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="small" themeColor="danger">
                 {linkError}
               </ThemedText>
             )}
 
             <View style={styles.divider} />
 
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta">
               Change password
             </ThemedText>
             <TextField
@@ -305,7 +369,7 @@ export default function SettingsScreen() {
               textContentType="newPassword"
             />
             {passwordError && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="small" themeColor="danger">
                 {passwordError}
               </ThemedText>
             )}
@@ -319,6 +383,7 @@ export default function SettingsScreen() {
             <View style={styles.divider} />
 
             <Button label="Sign out" variant="secondary" onPress={handleSignOut} loading={isSigningOut} />
+            {signOutError && <ThemedText type="small" themeColor="danger">{signOutError}</ThemedText>}
           </PaperPanel>
 
           <PaperPanel seed="settings-about" accentIndex={4}>
@@ -328,7 +393,7 @@ export default function SettingsScreen() {
                 past the terms of use to find the way to say so. */}
             <SettingsRow
               label="Report a bug"
-              description="Tell us what went wrong — your app version is included automatically"
+              description="Tell us what went wrong. Your app version is included automatically."
               onPress={() => router.push('/report-bug')}
             />
             <SettingsRow label="Terms of use" onPress={() => router.push('/terms')} />
@@ -360,7 +425,7 @@ export default function SettingsScreen() {
               onPress={() => setIsDeleteOpen(true)}
             />
           </PaperPanel>
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
         <DeleteAccountModal
           visible={isDeleteOpen}
           handle={profile?.handle ?? null}

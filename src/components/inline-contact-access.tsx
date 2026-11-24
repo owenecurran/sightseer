@@ -75,7 +75,7 @@ export function InlineContactAccess({ query, onAccessChanged }: InlineContactAcc
         tintColor={BrandColors.sage}
         style={styles.button}
       />
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="caption">
         Sharing one contact does not give Sightseer the rest of your address book.
       </ThemedText>
     </View>

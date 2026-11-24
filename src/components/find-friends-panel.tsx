@@ -28,6 +28,8 @@ import { followUser } from "@/lib/follows";
 import { ensureInviteCode, inviteUrl } from "@/lib/invites";
 import { shareText } from "@/lib/share";
 import { SITE_ORIGIN } from "@/lib/site";
+import { userErrorMessage } from '@/lib/user-error';
+import { openAppSettings } from '@/lib/permissions';
 
 type MatchedRow = { contactName: string; user: MatchedUser };
 type UnmatchedRow = { contactName: string };
@@ -186,7 +188,7 @@ export function FindFriendsPanel({
         setStatus("idle");
         return;
       }
-      setError(err instanceof Error ? err.message : "Could not sync contacts.");
+      setError(userErrorMessage(err, "Could not sync contacts."));
       setStatus("error");
     }
   }
@@ -197,12 +199,11 @@ export function FindFriendsPanel({
       await followUser({
         followerId: session.user.id,
         followeeId: row.user.id,
-        followeeIsPrivate: row.user.is_private,
       });
       setFollowingIds((prev) => new Set(prev).add(row.user.id));
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not follow that person.",
+        userErrorMessage(err, "Could not follow that person."),
       );
     }
   }
@@ -256,7 +257,7 @@ export function FindFriendsPanel({
         {showContacts && status === "idle" && (
           <>
             {contactsCaption ? (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 {contactsCaption}
               </ThemedText>
             ) : null}
@@ -266,16 +267,22 @@ export function FindFriendsPanel({
 
         {showContacts && status === "loading" && <PageLoader />}
 
+        {/* With the way there: once refused, the phone does not ask again,
+            so Settings is the only place this can be turned back on. */}
         {showContacts && status === "denied" && (
-          <ThemedText type="small" themeColor="textSecondary">
-            Contacts permission was denied. You can allow it from your
-            device&apos;s system settings for Sightseer, then come back and try
-            again.
-          </ThemedText>
+          <View style={styles.section}>
+            <ThemedText type="caption">
+              Sightseer needs access to your contacts for this. Allow it in
+              Settings, then come back and try again.
+            </ThemedText>
+            <ThemedText type="action" onPress={openAppSettings}>
+              Open settings
+            </ThemedText>
+          </View>
         )}
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
@@ -309,7 +316,7 @@ export function FindFriendsPanel({
             dressed up as a claim about the whole address book. */}
         {showContacts && status === "loaded" && access === "limited" && (
           <View style={styles.section}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               You have shared only some of your contacts with Sightseer, so this
               list covers just those. You can share more without giving access
               to all of them.
@@ -331,7 +338,7 @@ export function FindFriendsPanel({
         {showContacts && canShareOneContact && (
           <View style={styles.section}>
             <ThemedText type="sectionLabel">Find one person</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Search for someone by name and share just their contact, without giving Sightseer
               the rest.
             </ThemedText>
@@ -351,7 +358,7 @@ export function FindFriendsPanel({
             <View style={styles.section}>
               <ThemedText type="sectionLabel">Already on Sightseer</ThemedText>
               {matched.length === 0 && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   {/* The unqualified sentence is a claim about your whole
                       address book, and under a limited grant this screen has
                       not seen your whole address book. */}
@@ -400,7 +407,7 @@ export function FindFriendsPanel({
             <View style={styles.section}>
               <ThemedText type="sectionLabel">Not on Sightseer yet</ThemedText>
               {unmatched.length === 0 && (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Everyone with a number matches an existing account.
                 </ThemedText>
               )}

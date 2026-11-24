@@ -53,8 +53,10 @@ export async function recordInviteClick(code: string): Promise<void> {
 // Attribution, called once the invited person actually has an account.
 // Returns whether this call is the one that recorded it; false covers
 // already-attributed, unknown code, and opening your own link.
-export async function redeemInvite(code: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc('redeem_invite', { p_code: code });
+export async function redeemInvite(code: string, accessToken?: string): Promise<boolean> {
+  const request = supabase.rpc('redeem_invite', { p_code: code });
+  if (accessToken) request.setHeader('Authorization', `Bearer ${accessToken}`);
+  const { data, error } = await request;
   if (error) return false;
   return data === true;
 }
@@ -97,10 +99,12 @@ export async function clearPendingInviteCode(): Promise<void> {
 // Redeem whatever is parked, if anything. Safe to call on every sign-in:
 // redeem_invite is write-once, so a stale code that survived a failed clear
 // cannot overwrite an existing attribution.
-export async function consumePendingInvite(): Promise<boolean> {
+export async function consumePendingInvite(accessToken: string, isCurrent: () => boolean): Promise<boolean> {
   const code = await getPendingInviteCode();
-  if (!code) return false;
-  const redeemed = await redeemInvite(code);
-  await clearPendingInviteCode();
+  if (!code || !isCurrent()) return false;
+  const redeemed = await redeemInvite(code, accessToken).catch(() => false);
+  if ((redeemed || isCurrent()) && await getPendingInviteCode() === code) {
+    await clearPendingInviteCode();
+  }
   return redeemed;
 }

@@ -44,7 +44,7 @@ export function FloatingNavBar() {
   const pathname = usePathname();
   const hidden = useNavBarHidden();
   const insets = useSafeAreaInsets();
-  const { activeIndex, setActivePage } = useTabPager();
+  const { activeIndex, setActivePage, signalRetap } = useTabPager();
 
   // `hidden` is one shared value for the whole app (NavBarVisibilityProvider's
   // own comment), so scrolling down on one tab leaves the bar hidden after
@@ -104,7 +104,14 @@ export function FloatingNavBar() {
           const isActive = Platform.OS === 'web' ? pathname === href : index === activeIndex;
           return (
             <View key={href} style={styles.iconRow}>
-              <Pressable onPress={() => setActivePage(index)} hitSlop={8} style={styles.iconButton}>
+              {/* Tapping the tab you are already on is a refresh, not a
+                  switch -- see useTabRetapEffect. isActive is computed above
+                  and is already right on both platforms, which is why the
+                  decision is made here rather than inside setActivePage. */}
+              <Pressable
+                onPress={() => (isActive ? signalRetap(index) : setActivePage(index))}
+                hitSlop={8}
+                style={styles.iconButton}>
                 {index === PROFILE_TAB_INDEX && profile?.avatar_r2_key && avatarUrl ? (
                   // The ring is how this tab says "active", since a
                   // photograph has no outline/filled pair to switch between

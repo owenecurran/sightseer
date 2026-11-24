@@ -39,7 +39,7 @@ export function NearbyPlacePreviewCard({ preview, onPress }: NearbyPlacePreviewC
               </View>
             )}
           </View>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+          <ThemedText type="meta" numberOfLines={1}>
             {preview.authorName}
           </ThemedText>
           {preview.note && (

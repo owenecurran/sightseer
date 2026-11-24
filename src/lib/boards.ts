@@ -344,11 +344,23 @@ export async function updateBoardPrivacy(boardId: string, isPrivate: boolean): P
   await updateBoardOrThrow(boardId, { is_private: isPrivate }, 'Could not update privacy.');
 }
 
-// Admin-only in practice — authorized by the additive boards_update_admin
-// RLS policy (full-row grant, same trust model as visits_delete_admin),
-// not by anything this function checks client-side.
+// The board and everything hanging off it -- its items, other people's saves
+// of it, checklists, notifications, profile prompts pointing at it -- all of
+// which cascade in the schema. The reviews that were saved to it are not
+// touched; a board only ever pointed at them.
+//
+// Authorized by boards_delete_own. Selected back for the same reason as
+// updateBoardOrThrow: a delete RLS refuses is not an error, it is zero rows,
+// and without the check a refusal would look exactly like success.
+export async function deleteBoard(boardId: string): Promise<void> {
+  const { data, error } = await supabase.from('boards').delete().eq('id', boardId).select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error('Could not delete this board.');
+}
+
+// The database checks admin access when the featured flag changes.
 export async function setBoardFeatured(boardId: string, featured: boolean): Promise<void> {
-  await updateBoardOrThrow(boardId, { is_featured: featured }, 'Could not update featured status — you may not have permission.');
+  await updateBoardOrThrow(boardId, { is_featured: featured }, 'Could not update featured status. You may not have permission.');
 }
 
 // No RPC needed — boards_select RLS already scopes results correctly per

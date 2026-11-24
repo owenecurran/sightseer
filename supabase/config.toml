@@ -487,3 +487,19 @@ enabled = true
 # role to remove the auth user, which a client can never do directly.
 verify_jwt = true
 import_map = "./functions/delete-account/deno.json"
+
+[functions.cleanup-account-media]
+enabled = true
+# The database scheduler authenticates with the existing x-push-secret.
+verify_jwt = false
+import_map = "./functions/cleanup-account-media/deno.json"
+
+[functions.cache-google-place]
+enabled = true
+verify_jwt = false
+import_map = "./functions/cache-google-place/deno.json"
+
+[functions.fetch-place-boundary]
+enabled = true
+verify_jwt = false
+import_map = "./functions/fetch-place-boundary/deno.json"

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { signInWithGoogle } from '@/lib/social-auth';
+import { userErrorMessage } from '@/lib/user-error';
 
 type GoogleSignInButtonProps = {
   onError: (message: string) => void;
@@ -20,7 +21,7 @@ export function GoogleSignInButton({ onError }: GoogleSignInButtonProps) {
     try {
       await signInWithGoogle();
     } catch (err) {
-      onError(err instanceof Error ? err.message : 'Could not sign in with Google.');
+      onError(userErrorMessage(err, 'Could not sign in with Google.'));
     } finally {
       setIsSubmitting(false);
     }

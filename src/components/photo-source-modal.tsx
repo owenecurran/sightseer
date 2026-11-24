@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -29,24 +29,32 @@ export function PhotoSourceModal({ visible, onCancel, onPickCamera, onPickLibrar
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <Pressable style={styles.overlay} onPress={onCancel}>
-        <ThemedView type="backgroundElement" style={styles.sheet}>
+        <Unfold paper="backgroundElement" style={styles.sheet}>
           {Platform.OS !== 'web' && (
-            <Pressable onPress={onPickCamera} style={styles.option}>
-              <Ionicons name="camera-outline" size={22} color={theme.text} />
-              <ThemedText type="smallBold">Take photo</ThemedText>
-            </Pressable>
+            <Fold>
+              <Pressable onPress={onPickCamera} style={styles.option}>
+                <Ionicons name="camera-outline" size={22} color={theme.text} />
+                <ThemedText type="small">Take photo</ThemedText>
+              </Pressable>
+            </Fold>
           )}
-          <Pressable onPress={onPickLibrary} style={styles.option}>
-            <Ionicons name="image-outline" size={22} color={theme.text} />
-            <ThemedText type="smallBold">Choose from library</ThemedText>
-          </Pressable>
-          <View style={styles.divider} />
-          <Pressable onPress={onCancel} style={styles.option}>
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              Cancel
-            </ThemedText>
-          </Pressable>
-        </ThemedView>
+          <Fold>
+            <Pressable onPress={onPickLibrary} style={styles.option}>
+              <Ionicons name="image-outline" size={22} color={theme.text} />
+              <ThemedText type="small">Choose from library</ThemedText>
+            </Pressable>
+          </Fold>
+          {/* The rule rides on Cancel's panel: on a panel of its own it
+              would be a one-pixel crease. */}
+          <Fold>
+            <View style={styles.divider} />
+            <Pressable onPress={onCancel} style={styles.option}>
+              <ThemedText type="action">
+                Cancel
+              </ThemedText>
+            </Pressable>
+          </Fold>
+        </Unfold>
       </Pressable>
     </Modal>
   );
@@ -63,9 +71,7 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%',
     maxWidth: 360,
-    borderRadius: Spacing.three,
     paddingVertical: Spacing.two,
-    overflow: 'hidden',
   },
   option: {
     flexDirection: 'row',

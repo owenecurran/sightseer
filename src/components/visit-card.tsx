@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { guardCardPress } from "@/lib/card-drag-guard";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSequence,
@@ -15,6 +16,8 @@ import { FeedAuthorLine } from "@/components/feed-author-line";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Avatar } from "@/components/ui/avatar";
+import { ClearZoneView } from "@/components/ui/scroll-stage";
+import { StampLanding } from "@/components/ui/deal-in";
 import { FeedRatingStamp, STAMP_SIZE } from "@/components/ui/feed-rating-stamp";
 import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
 import { ImageLoadingIcon } from "@/components/ui/image-loading-icon";
@@ -22,6 +25,7 @@ import { PostcardFlip } from "@/components/ui/postcard-flip";
 import { PostcardMap } from "@/components/ui/postcard-map";
 import { LayeredHeadline } from "@/components/ui/layered-headline";
 import { PostcardGrain } from "@/components/ui/postcard-grain";
+import { RegionLine } from "@/components/ui/region-line";
 import {
   grainFor,
   seededGrain,
@@ -33,19 +37,22 @@ import {
   PostcardPaper,
   turnMarkInsetFor,
 } from "@/components/ui/postcard-paper";
-import {
-  TURN_MARK_PANEL_INK,
-  turnMarkClearance,
-} from "@/components/ui/postcard-turn-mark";
+import { turnMarkClearance } from "@/components/ui/postcard-turn-mark";
 import { PostcardPhotos } from "@/components/ui/postcard-photos";
 import { Postmark } from "@/components/ui/postmark";
 import { StretchText } from "@/components/ui/stretch-text";
-import { TagSticker } from "@/components/ui/tag-sticker";
+import {
+  BackStickerLayer,
+  FrontStickers,
+  frontStickerRow,
+  useBackStickers,
+} from "@/components/ui/card-stickers";
 import { VisitActionsRow } from "@/components/visit-actions-row";
 import { VisitMenu } from "@/components/visit-menu";
-import { BrandColors, Spacing } from "@/constants/theme";
+import { BrandColors, MaxContentWidth, Spacing } from "@/constants/theme";
 import { hapticLike, hapticUnlike } from "@/lib/haptics";
 import type { FeedVisit } from "@/lib/feed";
+import { useAvatarUrl } from "@/hooks/use-avatar-url";
 import { useImageAccent } from "@/hooks/use-image-accent";
 import { hashSeed } from "@/lib/seeded-random";
 import { headlineTreatmentFor } from "@/lib/headline-style";
@@ -114,6 +121,14 @@ const DOUBLE_TAP_GUARD_MS = 500;
 const REVEAL_TIMEOUT_MS = 4000;
 // The fade in, once it is ready.
 const REVEAL_FADE_MS = 180;
+// How long after the fade should have ended before the card is forced solid
+// anyway. Long enough that the animation's own completion callback is normally
+// what settles it, short enough to go unnoticed when it is not.
+const REVEAL_SETTLE_SLACK_MS = 400;
+// What the fade-in's cover is painted in when a screen says nothing else:
+// the screen's own background, the middle of its near-flat gradient
+// (#07120a to #031009), which nothing over it can be told from.
+const SCREEN_COVER = '#05110a';
 // How much of the name's band the region line is pulled back into, to sit
 // against the lettering rather than off it. See the call site.
 const REGION_TUCK_SHARE = 0.16;
@@ -126,15 +141,49 @@ const REGION_TUCK_SHARE = 0.16;
 // bottom row on the deckle and their top row against the underside of the
 // photograph. Filling a band edge to edge is not sitting in it.
 const STICKER_BAND_CLEARANCE = Spacing.two;
+// How deep the scans' torn bottom edge goes, as a share of the card's width:
+// the first row up from the bottom where the paper is solid across, read off
+// the alpha of every card-*.png. The deepest of them, so the sticker band
+// stops above the deckle on every sheet: 1.3 to 2.2% on the landscape sheets,
+// 1.7 to 3.8% on the portrait ones.
+const FRONT_DECKLE = { horizontal: 0.022, vertical: 0.038 } as const;
+// Clear card between the front's stickers and that line. Less than above
+// them, because on most sheets the solid paper starts below it anyway: on a
+// typical one this leaves about as much card under the row as over it.
+const STICKER_DECKLE_CLEARANCE = Spacing.one;
+// How much of the band's width the front's sticker row may use. The rest is
+// left bare, so a row never reaches the turn-over mark in the bottom-right.
+const FRONT_ROW_SHARE = 0.6;
 // What share of the card's height the name is lettered at. Fixed, so every
 // card in a feed carries its name at the same size relative to the card rather
 // than at whatever size its own character count produced — a short name was
 // coming out enormous and a long one small.
 const CAPTION_HEIGHT_SHARE = 0.25;
-// The written side stops short of its own content, which begins 30pt in
-// (the printed border plus the panel's padding). Reaching 44 here would put
-// the strip straight on top of the like button.
+// The written side stops short of its own content, which begins at least
+// 26pt in (the paper's border plus the panel's padding, before the card has
+// been measured; further once it has). Reaching 44 here would put the strip
+// straight on top of the like button on that first frame.
 const BACK_FLIP_REACH = 26;
+
+// How wide the written side's address column is, by orientation. Fixed per
+// orientation rather than content-sized: a column whose width followed its
+// contents would move the ruled divider from card to card down the feed.
+//
+// A landscape card carries its map in this column, at the column's width, so
+// it needs the room for a map you can read a location off. A portrait card
+// carries its map as a thumbnail in the action row instead, leaving only the
+// stamp (64) and the postmark (56) here, and giving it the landscape width
+// took 40pt off a message column that the card's side margins already cost.
+const BACK_COLUMN_WIDTH = { horizontal: 112, vertical: 72 } as const;
+// The message area's least height: enough that the ruled line reads as a
+// divider running down a card rather than an underline between two short
+// rows. The tag stickers can raise it when the writing leaves them no bare
+// card (see useBackStickers).
+const BACK_BODY_MIN_HEIGHT = 120;
+
+// How much of the photograph's colour reaches the written side. A tint in
+// the stock rather than a coloured panel -- see panelWash.
+const PANEL_WASH_OPACITY = 0.2;
 
 // `visitNumber` optional (not required the way FeedVisit itself demands) —
 // tagged-in.tsx's own TaggedVisit type (Omit<FeedVisit, 'visitNumber'>)
@@ -150,6 +199,7 @@ type VisitCardProps = {
   // Grid-sized copies, keyed the same way. Optional: screens that haven't
   // fetched them just render full images, exactly as before.
   photoThumbUrls?: Record<string, string>;
+  preferPhotoThumbnails?: boolean;
   avatarUrl?: string;
   isOwner: boolean;
   isCopied: boolean;
@@ -182,6 +232,11 @@ type VisitCardProps = {
   // the lesson there, so it has to be a real one rather than a replica that
   // can drift.
   onFlipChange?: (isFlipped: boolean) => void;
+  // The colour of whatever the card sits on, for the cover it fades in
+  // from (see the reveal below). The screen's background when left out;
+  // null to have the card simply appear, for a background no flat colour
+  // can stand in for.
+  revealCover?: string | null;
 };
 
 // The feed's own visit card — a postcard with two sides.
@@ -199,6 +254,7 @@ export function VisitCard({
   visit,
   photoUrls,
   photoThumbUrls,
+  preferPhotoThumbnails,
   avatarUrl,
   isOwner,
   isCopied,
@@ -210,7 +266,10 @@ export function VisitCard({
   maxStampRise,
   onPhotoLayout,
   initialCommentsOpen = false,
+  revealCover = SCREEN_COVER,
 }: VisitCardProps) {
+  // The screen's own avatar when it fetched one, the card's when it did not.
+  const authorAvatarUrl = useAvatarUrl(visit.user_id, avatarUrl);
   const [isCommentsOpen, setIsCommentsOpen] = useState(initialCommentsOpen);
   const [commentCount, setCommentCount] = useState(visit.commentCount);
   // Which side is showing. A review can be written to open on its message
@@ -234,7 +293,15 @@ export function VisitCard({
   // a fixed number of points, because the border itself is: the frame is one
   // image stretched over the card, so it reaches further in the bigger the
   // card gets. See pictureInsetFor.
-  const [cardWidth, setCardWidth] = useState(0);
+  //
+  // Starts at the width a card in a feed column will come out at, so the
+  // first layout already has the right border and the card does not change
+  // height once it is measured. A screen with a different column corrects it
+  // on the first layout.
+  const { width: windowWidth } = useWindowDimensions();
+  const [cardWidth, setCardWidth] = useState(
+    () => Math.min(windowWidth, MaxContentWidth) - Spacing.four * 2,
+  );
   // How wide the place name actually came out. `fill` is capped, so a short
   // name stops well short of its box — and the broader location line has to
   // stay within the NAME's range, not the box's. Zero until it is measured,
@@ -310,7 +377,54 @@ export function VisitCard({
   // of them, which is the exact flicker this exists to remove.
   const expectsPhotos = visit.photoIds.length > 0;
   const [photosReady, setPhotosReady] = useState(false);
-  const revealed = !expectsPhotos || photosReady;
+
+  // Whether the url pass has run at all.
+  //
+  // Both feeds load in TWO passes -- the rows first, the presigned photo
+  // urls second, deliberately, so a tab is not held blank on pictures. A
+  // card therefore mounts knowing it has photoIds but with none of them
+  // resolved yet, and `photos` below is empty in that window.
+  //
+  // One resolved url anywhere in the batch means that second pass has
+  // landed. If this card's own ids are not in it by then, they are not
+  // coming: the photographs are gone, or expired, and no further waiting
+  // will produce them.
+  const urlsResolved = Object.keys(photoUrls).length > 0;
+
+  // The shapes of the photos the card is laid out for: the ones it has once
+  // the urls are in, and until then the ones the post says it has, which
+  // arrive with the post itself. Laid out off the resolved list alone, every
+  // card went down landscape and photo-less, then reflowed to its real shape
+  // when the urls landed: about 250 points growing to 500, animated, under
+  // the finger of anyone already scrolling.
+  const layoutRatios = urlsResolved
+    ? photos.map((p) => p.ratio)
+    : visit.photoAspectRatios.slice(0, visit.photoIds.length);
+
+  // Still waiting to be worth looking at.
+  //
+  // Keyed on WHAT THIS CARD ACTUALLY DRAWS, which is the fix. It used to be
+  // `!expectsPhotos || photosReady`, reading readiness off photoIds -- and
+  // photoIds is right about intent but wrong about the render. When the ids
+  // resolve to nothing the picture falls back to the place map, which means
+  // PostcardPhotos is never mounted, which means onReady can never fire.
+  // Those cards sat at opacity 0 for the full four seconds of the rescue
+  // timeout below and read as empty gaps in the feed, every time somebody
+  // switched between Feed and Discover. Cards WITH photographs never showed
+  // it, because their images report the moment they land.
+  //
+  // So: a card drawing photographs waits for them. A card drawing the map
+  // has nothing left to wait for and is shown. The anti-flicker reason the
+  // gate was keyed on photoIds survives -- while the urls are genuinely
+  // still in flight, urlsResolved is false and the card still waits rather
+  // than flashing a map it is about to replace.
+  // photosReady is honoured in BOTH branches so the rescue timer below still
+  // works. If the whole batch resolves to nothing, urlsResolved stays false
+  // and this would otherwise wait for ever -- the timeout sets photosReady,
+  // and that has to be able to end the wait whichever branch is drawing.
+  const waitingOnPictures =
+    photos.length > 0 ? !photosReady : expectsPhotos && !urlsResolved && !photosReady;
+  const revealed = !waitingOnPictures;
 
   useEffect(() => {
     if (!expectsPhotos || photosReady) return;
@@ -323,41 +437,82 @@ export function VisitCard({
     return () => clearTimeout(timer);
   }, [expectsPhotos, photosReady]);
 
-  const revealStyle = useAnimatedStyle(() => ({
-    // Faded rather than switched on: a card snapping from invisible to solid
-    // reads as a glitch, where a short fade reads as it arriving.
-    opacity: withTiming(revealed ? 1 : 0, { duration: REVEAL_FADE_MS }),
-  }));
-
-  // Once the fade has finished, STOP driving opacity from an animated style.
+  // Faded rather than switched on: a card snapping from invisible to solid
+  // reads as a glitch, where a short fade reads as it arriving.
   //
-  // An animated opacity sitting above PostcardFlip is not free: the faces
-  // below carry perspective/rotateY and overlap as absolutely-positioned
-  // layers, and an animating group opacity over a 3D-transformed subtree
-  // makes Core Animation composite the whole group offscreen. That buffer is
-  // not guaranteed to be allocated at the screen's scale, and in a release
-  // build it came out at 1x — which is why a card's headline, its shadow AND
-  // its photographs all went soft together while every other pixel on the
-  // screen stayed sharp. One layer, rendered once, at the wrong size.
+  // The animation is started from an effect rather than written inside
+  // useAnimatedStyle. Both work -- Reanimated's plugin collects the worklet's
+  // closure, so the style is only re-evaluated when `revealed` itself
+  // changes, and a re-rendering parent does NOT restart the timing (measured,
+  // by re-rendering a card every frame and watching it still fade in
+  // normally). What the effect buys is not a fix for that; it is a completion
+  // callback, which is what lets the settle below stop being a second timer
+  // racing this one.
   //
-  // Swapping the STYLE rather than the component keeps PostcardFlip mounted:
-  // remounting it would reset which side is showing and start every image
-  // loading again, which is the thing this whole gate exists to avoid.
+  // It only ever moves UPWARD. Nothing here animates a card back to
+  // invisible: a review that has already been shown and then has its
+  // readiness retracted -- a recycled row, a refetch -- stays on the screen.
+  // Of the two ways to be wrong, showing a card a moment early is the
+  // recoverable one and quietly emptying the feed is not.
+  //
+  // THE CARD ITSELF IS NEVER FADED. Its opacity is only ever 0 or 1, set by
+  // React, and the fade is a cover in the background's colour over it that
+  // fades out and is then removed.
+  //
+  // It was the other way round: the card's own opacity animated from 0 to 1
+  // by Reanimated, with a plain style swapped in once the fade was done.
+  // That kept leaving some postcards faint, typically after a few screens
+  // and back. Reanimated writes opacity straight to the native view, and a
+  // value it wrote can outlast the style swap: the card stays mounted (it
+  // cannot be remounted without reloading its photographs and its flip), so
+  // nothing ever clears it. Two fixes went after the order of those writes
+  // (see the backstop below, and git history) and it came back after both.
+  // A cover cannot fail that way: when the fade ends it is unmounted, and a
+  // view that is gone leaves nothing behind. It also ends the other cost of
+  // a group opacity over the card, the offscreen pass iOS makes for it (see
+  // the note further down).
+  //
+  // `shown` only ever goes from false to true, which keeps the old rule: a
+  // card that has been shown stays shown, whatever its readiness does later
+  // (a recycled row, a refetch).
+  const [shown, setShown] = useState(revealed);
+  if (revealed && !shown) setShown(true);
+  const coverOpacity = useSharedValue(1);
   const [fadeSettled, setFadeSettled] = useState(false);
+
   useEffect(() => {
-    if (!revealed || fadeSettled) return;
-    const timer = setTimeout(() => setFadeSettled(true), REVEAL_FADE_MS);
+    if (!shown || revealCover == null) return;
+    coverOpacity.value = withTiming(0, { duration: REVEAL_FADE_MS }, (finished) => {
+      if (finished) runOnJS(setFadeSettled)(true);
+    });
+  }, [shown, coverOpacity, revealCover]);
+
+  const coverStyle = useAnimatedStyle(() => ({ opacity: coverOpacity.value }));
+
+  // Why the card is not faded by its own opacity, besides the above: an
+  // animating group opacity over PostcardFlip, whose faces carry
+  // perspective/rotateY and overlap as absolutely-positioned layers, makes
+  // Core Animation composite the whole group offscreen. That buffer is not
+  // guaranteed to be allocated at the screen's scale, and in a release build
+  // it came out at 1x, so a card's headline, shadow and photographs all went
+  // soft together while everything else stayed sharp.
+  //
+  // The cover is removed by the fade's own completion callback. This timer
+  // is a BACKSTOP behind it, for a callback that never arrives (the screen
+  // detached under us, the animation interrupted): it removes the cover
+  // anyway, and a removed cover leaves the card as it is, fully shown. It is
+  // slower than the fade, so normally it fires into a no-op.
+  useEffect(() => {
+    if (!shown || fadeSettled) return;
+    const timer = setTimeout(() => setFadeSettled(true), REVEAL_FADE_MS + REVEAL_SETTLE_SLACK_MS);
     return () => clearTimeout(timer);
-  }, [revealed, fadeSettled]);
+  }, [shown, fadeSettled]);
 
   // The author's choice wins; otherwise the photos decide, which is what
   // every review written before the choice existed still does.
   const orientation =
     visit.card.orientation ??
-    orientationForPhotos(
-      photos.map((p) => p.ratio),
-      photos.length,
-    );
+    orientationForPhotos(layoutRatios, layoutRatios.length);
   const stock = visit.card.stock ?? seededStock(visit.id);
   const grain = visit.card.grain ?? seededGrain(visit.id);
   const lat = visit.placeLat;
@@ -380,21 +535,47 @@ export function VisitCard({
   // carry the sender's name on the picture, and keeping the byline outside
   // the flip means it stays put while the card turns — the card changes
   // sides, not owners.
+  //
+  // The avatar, the name and the handle are each a clear zone: the dashed
+  // road from the post above passes under them, and only them. One box
+  // round all three also took the road out beside a short name, above a
+  // longer handle, where nothing was in the way.
   const byline = (
     <View style={styles.byline}>
-      <Pressable
-        onPress={guardCardPress(() =>
-          router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
+      <ClearZoneView>
+        <Pressable
+          onPress={guardCardPress(() =>
+            router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
+          )}
+        >
+          <Avatar uri={authorAvatarUrl} name={visit.authorName} size={36} />
+        </Pressable>
+      </ClearZoneView>
+      <View style={styles.bylineText}>
+        <ClearZoneView>
+          <FeedAuthorLine
+            authorId={visit.user_id}
+            authorName={visit.authorName}
+            taggedUsers={visit.taggedUsers}
+          />
+        </ClearZoneView>
+        {/* Not when there is no display name: the line above is already
+            the handle then. */}
+        {visit.authorHandle && visit.authorHandle !== visit.authorName && (
+          <ClearZoneView>
+            <ThemedText
+              type="small"
+              themeColor="textMeta"
+              numberOfLines={1}
+              onPress={guardCardPress(() =>
+                router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
+              )}
+            >
+              @{visit.authorHandle}
+            </ThemedText>
+          </ClearZoneView>
         )}
-      >
-        <Avatar uri={avatarUrl} name={visit.authorName} size={28} />
-      </Pressable>
-      <FeedAuthorLine
-        authorId={visit.user_id}
-        authorName={visit.authorName}
-        taggedUsers={visit.taggedUsers}
-        style={styles.bylineText}
-      />
+      </View>
     </View>
   );
 
@@ -407,9 +588,9 @@ export function VisitCard({
   // it leaves bare is a scatter of gaps between photos rather than one
   // margin wide enough to put anything in.
   const singlePictureRatio =
-    photos.length === 1
-      ? photos[0].ratio
-      : photos.length === 0
+    layoutRatios.length === 1
+      ? layoutRatios[0]
+      : layoutRatios.length === 0
         ? POSTCARD_FRAME_RATIO[orientation]
         : null;
   const fit = fitPicture(frame.width, frame.height, singlePictureRatio);
@@ -465,25 +646,9 @@ export function VisitCard({
   // smaller than it is today — this only ever lets it grow.
   const stampCap = Math.max(STAMP_SIZE, Math.round(cardWidth * STAMP_WIDTH_SHARE));
   const stampSize = Math.round(Math.min(stampCap, Math.max(MIN_STAMP, stampMargin * 1.1)));
-  // The labels only go on the front when there is genuinely a clean band for
-  // them. Two things can take that band away, and both were letting them
-  // through onto the picture:
-  //
-  //  - The NAME, when it is set along the foot of the card. That is the same
-  //    strip the labels sit in, so they printed straight over each other.
-  //  - Their own number. The row wraps, and it used to be given a box of a
-  //    fixed height — so a second row of labels did not make the box taller,
-  //    it hung out of the top of it and over the photograph.
-  //
-  // The first is known up front. The second is only knowable once the row has
-  // been laid out and measured, which is what stickerRowHeight is for.
-  //
-  // Nothing is lost by dropping them: every tag is printed on the written
-  // side regardless, which is where a card carries them anyway.
-  const [stickerRowHeight, setStickerRowHeight] = useState(0);
-  const stickersMeasured = stickerRowHeight > 0;
-  const stickersFit =
-    stickersMeasured && stickerRowHeight + 2 * STICKER_BAND_CLEARANCE <= topMargin;
+  // The written side's stickers, set out as a group wherever the writing
+  // leaves bare card rather than stacked under it.
+  const backStickers = useBackStickers(visit.tags, visit.id, BACK_BODY_MIN_HEIGHT);
   // The right margin is not always free. The stamp sits in the card's
   // top-right corner, so a region line drawn there too ends up underneath it
   // — confirmed on a card whose line read "PROVENCE," with "FRANCE" behind
@@ -497,11 +662,45 @@ export function VisitCard({
   const regionAlignRight =
     headline.region.alignRight &&
     !(captionAnchor === "top" && headline.region.above && showFrontStamp);
+  // The stickers only go on the front when there is a clean band of bare card
+  // under the picture for them. The name takes that band away when it is set
+  // along the foot of the card: it is the same strip, and the two printed
+  // straight over each other.
   const showFrontStickers =
     visit.tags.length > 0 &&
     !captionBelow &&
     captionAnchor !== "bottom" &&
     topMargin >= MIN_ORNAMENT_BAND;
+  // The same stickers as the written side and the tag picker (drawings,
+  // colours, cut and lean all match the back), sized to the band: as large as
+  // fits with clear card above and below, or none at all when only an
+  // illegibly small size would. Nothing is lost then: every tag is on the
+  // written side regardless, which is where a card carries them anyway.
+  //
+  // Worked out from the stickers' own shapes, so the row never has to be laid
+  // out and measured first. It used to be: a row of printed labels that could
+  // wrap, hidden until its height was known.
+  const frontStickerBand = cardWidth - 2 * pictureInset;
+  // The band runs from the picture down to the card's edge, but the bottom of
+  // that is the scan's torn deckle, and a few points of nothing beyond it. The
+  // stickers were centred in all of it, so they sat low and the largest ones
+  // hung over the edge of the paper. The band now stops at the deepest the
+  // deckle goes on any scan (see FRONT_DECKLE).
+  const frontStickerDeckle = Math.round(cardWidth * FRONT_DECKLE[orientation]);
+  const frontStickerHeight = Math.max(0, topMargin - frontStickerDeckle);
+  const frontRow = useMemo(
+    () =>
+      showFrontStickers
+        ? frontStickerRow(
+            visit.tags,
+            frontStickerBand * FRONT_ROW_SHARE,
+            frontStickerHeight,
+            { above: STICKER_BAND_CLEARANCE, below: STICKER_DECKLE_CLEARANCE },
+            visit.id,
+          )
+        : null,
+    [showFrontStickers, visit.tags, frontStickerBand, frontStickerHeight, visit.id],
+  );
 
   const picture =
     photos.length > 0 ? (
@@ -510,6 +709,7 @@ export function VisitCard({
         thumbUrls={
           photoThumbUrls ? photos.map((p) => photoThumbUrls[p.id] ?? p.url) : undefined
         }
+        preferThumbnails={preferPhotoThumbnails}
         orientation={orientation}
         // Printed above its caption, the picture keeps its own shape.
         frameRatio={
@@ -529,6 +729,9 @@ export function VisitCard({
         level={visit.placeLevel}
         size="block"
         ratio={POSTCARD_FRAME_RATIO[orientation]}
+        // The place name is lettered across this one, so the map's own
+        // names have to go or the two overprint each other.
+        labels={false}
       />
     ) : (
       // Neither photos nor coordinates: an empty frame, so the card still
@@ -551,39 +754,29 @@ export function VisitCard({
   const ornaments = (
     <>
       {/* Laid along the bare card under the picture, never on top of it.
-          Only the horizontal margin is ever wide enough: a stack of wide
-          labels cannot fit in the 40-odd points a side column leaves. */}
-      {showFrontStickers && (
+          Only the horizontal margin is ever wide enough: a side column is
+          too narrow for a row of stickers. */}
+      {frontRow && (
         <View
           style={[
             styles.frontStickers,
             {
-              // No fixed height — that is what let a wrapped second row hang
-              // out of the box. The row takes its own height and is centred
-              // in the band once that height is known.
-              bottom: stickersMeasured ? Math.max((topMargin - stickerRowHeight) / 2, 0) : 0,
-              // Held off the deckle by the same distance the picture is, so a
-              // label never starts on the torn edge of the card.
-              left: pictureInset + Spacing.three,
-              right: pictureInset + Spacing.three,
-              // Transparent until measured, so a row that turns out not to
-              // fit is never seen doing it. It stays mounted rather than
-              // being torn out — unmounting would lose the measurement and
-              // the two would chase each other forever.
-              opacity: stickersFit ? 1 : 0,
+              // The band from the picture down to the deckle: frontStickerRow
+              // centres each sticker in it.
+              bottom: frontStickerDeckle,
+              height: frontStickerHeight,
+              // Held off the deckle by the same distance the picture is, so
+              // the first sticker's edge lines up with the picture's. It was
+              // 16 points further in, room for a sticker's lean, and lined up
+              // with nothing; the stickers' footprints include their lean
+              // now.
+              left: pictureInset,
+              right: pictureInset,
             },
           ]}
           pointerEvents="none"
-          onLayout={(e) => setStickerRowHeight(e.nativeEvent.layout.height)}
         >
-          {visit.tags.map((tag) => (
-            <TagSticker
-              key={tag.slug}
-              slug={tag.slug}
-              label={tag.label}
-              placementSeed={visit.id}
-            />
-          ))}
+          <FrontStickers tags={visit.tags} row={frontRow} seed={visit.id} />
         </View>
       )}
 
@@ -753,9 +946,10 @@ export function VisitCard({
                   reverse direction is what lets the line be last, and so on
                   top, without moving.
 
-                  It carries its own shadow because the gradient that used to
+                  It carries its own outline because the gradient that used to
                   back this whole block is gone: grey type straight onto an
-                  arbitrary photograph is unreadable about half the time. */}
+                  arbitrary photograph is unreadable about half the time. See
+                  RegionLine. */}
               {(region || visitedLine) && (
                 // Held to the name's own extent rather than the caption's.
                 // The name grows from its left edge (StretchText's transform
@@ -799,9 +993,9 @@ export function VisitCard({
                   ]}
                   pointerEvents="none"
                 >
-                <ThemedText numberOfLines={1} style={[styles.captionLine, headline.region.style]}>
+                <RegionLine treatment={headline.region}>
                   {[region, visitedLine].filter(Boolean).join(" · ")}
-                </ThemedText>
+                </RegionLine>
                 </View>
               )}
             </View>
@@ -859,6 +1053,32 @@ export function VisitCard({
     />
   ) : null;
 
+  // The written side's panel, coloured per card.
+  //
+  // Square-cornered, like the photograph on the other side, so the two faces
+  // read as the same card: a print laid on bare stock with a clear margin
+  // round it. It used to carry a seeded radius on each corner, to look cut by
+  // hand, and that was the one thing that made the back look like a
+  // different object from the front.
+  //
+  // COLOUR. The panel was one flat green on every card in the app. It takes
+  // a wash of the review's OWN photograph now -- the same colour the place
+  // name is lettered in, via useImageAccent -- so the message side of a
+  // card about a sunset is warm and one about a forest is not, and two
+  // cards in a row never look like the same sheet twice.
+  //
+  // Held very low on purpose. This is a tint in the stock, not a coloured
+  // panel: much past this and the cream border stops reading as the same
+  // object as what is printed on it. Null while the picture is still being
+  // sampled, which simply means no wash yet rather than a flash of colour.
+  // `complement` rather than `dominant`. The dominant colour of a forest
+  // photograph is green, and a green wash over a green panel is no wash at
+  // all -- measured on a card whose picture was a hillside, where the tint
+  // was invisible. The complement is by definition the colour the picture is
+  // NOT, so it always reads, and it keeps the pairing a decision the
+  // photograph made rather than a swatch picked off a list.
+  const panelWash = accent?.complement ?? null;
+
   const back = (
     // The same sheet of card, seeded identically — turning a postcard over
     // does not change what it is printed on, so the shade and the worn edge
@@ -866,14 +1086,45 @@ export function VisitCard({
     <PostcardPaper
       sheet={sheet}
       onFlip={() => setFlipped(false)}
+      // Stretched to the picture side's height when it is the shorter face.
+      // See backAtLeastFront.
+      style={styles.backPaper}
       flipLabel="Show the picture side"
       flipReach={BACK_FLIP_REACH}
       onDoubleTap={handleDoubleTap}
+      // Held off the card's edges by what the photograph is held off them on
+      // the front, so turning a card over keeps the same margin of bare card
+      // round what is printed on it. The sides take this card's own front
+      // margin exactly. Every point there comes off the message column, and
+      // the address column narrows on a portrait card to give some of it
+      // back (see BACK_COLUMN_WIDTH).
+      inset={pictureInset}
+      // The top and bottom take a portrait card's margin on every card,
+      // landscape included: a landscape front's own margin is shallower (its
+      // frame is), and on the back that left the turn-over mark printed hard
+      // against the foot of the panel.
+      insetVertical={pictureInsetFor(cardWidth, "vertical")}
+      // On bare card under the panel now, as it is on the front, so in the
+      // card's own ink.
       turnMark
-      // The written side is a dark panel, not bare card.
-      turnMarkInk={TURN_MARK_PANEL_INK}
     >
-    <ThemedView type="backgroundElement" style={styles.back} collapsable={false}>
+    <ThemedView
+      type="backgroundElement"
+      style={styles.back}
+      collapsable={false}
+      // The panel's size, so a tapped sticker's name is put where it fits.
+      onLayout={backStickers.onPanelLayout}
+    >
+      {/* The wash, under everything and catching nothing. */}
+      {panelWash != null && (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: panelWash, opacity: PANEL_WASH_OPACITY },
+          ]}
+        />
+      )}
       {/* Where it was, and the way back to the picture. The overflow menu
           lives here rather than on the front, where the stamp already owns
           the top corner. */}
@@ -888,7 +1139,10 @@ export function VisitCard({
             {visit.placeName}
           </ThemedText>
           {region && (
-            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+            // Two lines rather than one: with the panel held in off the
+            // card's sides, "ILLINOIS, UNITED STATES" no longer fit beside
+            // the menu button in these wide capitals and lost its last word.
+            <ThemedText type="meta" numberOfLines={2}>
               {region}
             </ThemedText>
           )}
@@ -908,7 +1162,7 @@ export function VisitCard({
             onDeleted={onDeleted}
             authorId={visit.user_id}
             authorName={visit.authorName}
-            authorAvatarUrl={avatarUrl}
+            authorAvatarUrl={authorAvatarUrl}
             placeName={visit.placeName}
             note={visit.note}
             isViewerTagged={visit.isViewerTagged}
@@ -919,41 +1173,42 @@ export function VisitCard({
 
       <View style={styles.rule} />
 
-      <View style={styles.backBody}>
+      <View
+        style={[styles.backBody, { minHeight: backStickers.room }]}
+        onLayout={backStickers.onAreaLayout}
+      >
+        {/* The message column sits at the area's origin, so the writing's
+            own layout is already in the area's coordinates. */}
         <View style={styles.message}>
           {visit.note ? (
-            <ThemedText type="body">{visit.note}</ThemedText>
+            <ThemedText
+              type="postcardMessage"
+              onLayout={backStickers.onWritingLayout}
+              onTextLayout={backStickers.onWritingTextLayout}
+            >
+              {visit.note}
+            </ThemedText>
           ) : (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.noMessage}>
+            <ThemedText
+              type="caption"
+              style={styles.noMessage}
+              onLayout={backStickers.onWritingLayout}
+              onTextLayout={backStickers.onWritingTextLayout}
+            >
               No message
             </ThemedText>
-          )}
-
-          {/* Under the message rather than in the address column beside it.
-              They went in the column first, to match the sketch, and a
-              128px column broke every one of them across two lines — a tag
-              is a printed label, and a label that wraps stops looking like
-              one. Here they get the card's full text width, and the front
-              edge shows as many as happen to fit up there. */}
-          {visit.tags.length > 0 && (
-            <View style={styles.backStickers}>
-              {visit.tags.map((tag) => (
-                <TagSticker
-                  key={tag.slug}
-                  slug={tag.slug}
-                  label={tag.label}
-                  placementSeed={visit.id}
-                />
-              ))}
-            </View>
           )}
         </View>
 
         {/* On a real card this separates what you wrote from who it is going
-            to; here it separates the message from where and when. */}
-        <View style={styles.backDivider} />
+            to; here it separates the message from where and when. The
+            stickers keep clear of it (see useBackStickers). */}
+        <View style={styles.backDivider} onLayout={backStickers.onDividerLayout} />
 
-        <View style={styles.backColumn}>
+        <View
+          style={[styles.backColumn, { width: BACK_COLUMN_WIDTH[orientation] }]}
+          onLayout={backStickers.onColumnLayout}
+        >
           {/* Top of the address column, which is where a card actually
               carries its stamp — the picture side only gets one when the
               photo leaves a margin wide enough to stick it in. */}
@@ -962,13 +1217,15 @@ export function VisitCard({
             // absolutely positioned, because its whole job on the picture
             // side is to sit crooked in a corner. Here it is stuck square
             // in the address column, which is how a stamp actually goes on.
-            <RatingGlassBadgeGated
-              rating={visit.rating}
-              size={64}
-              seed={visit.id}
-              tags={visit.tags.map((tag) => tag.slug)}
-              placeId={visit.placeId}
-            />
+            <StampLanding>
+              <RatingGlassBadgeGated
+                rating={visit.rating}
+                size={64}
+                seed={visit.id}
+                tags={visit.tags.map((tag) => tag.slug)}
+                placeId={visit.placeId}
+              />
+            </StampLanding>
           )}
           <Postmark
             line={postmarkDate.line}
@@ -981,6 +1238,15 @@ export function VisitCard({
               the action row instead. */}
           {orientation === "horizontal" && backMap}
         </View>
+
+        {/* Last, so they and their name labels are drawn over everything
+            else in the area. */}
+        <BackStickerLayer
+          tags={visit.tags}
+          spots={backStickers.spots}
+          sides={backStickers.sides}
+          seed={visit.id}
+        />
       </View>
 
       {isCommentsOpen && (
@@ -1025,9 +1291,19 @@ export function VisitCard({
           load anything at all, and it has to occupy its height the whole time
           or the feed shoves itself around as each one arrives. */}
       <View>
-        <Animated.View style={fadeSettled ? styles.settled : revealStyle}>
-          <PostcardFlip isFlipped={isFlipped} front={front} back={back} />
-        </Animated.View>
+        {/* 0 or 1, by React alone: see the reveal above. */}
+        <View style={shown ? styles.shown : styles.hidden}>
+          <PostcardFlip isFlipped={isFlipped} front={front} back={back} backAtLeastFront />
+        </View>
+
+        {/* The fade-in: the background's colour over the card, fading out,
+            then gone. */}
+        {shown && !fadeSettled && revealCover != null && (
+          <Animated.View
+            style={[StyleSheet.absoluteFill, { backgroundColor: revealCover }, coverStyle]}
+            pointerEvents="none"
+          />
+        )}
 
         {/* Something to look at while the card is still at opacity 0.
             Without it the byline sits above a tall blank gap, which reads as
@@ -1044,7 +1320,7 @@ export function VisitCard({
             be a postcard is a worse lie than an honest spinner — it promises
             a specific layout, and when the real card arrives with a
             different headline and stamp, everything it implied was wrong. */}
-        {!revealed && (
+        {!shown && (
           <View style={styles.loadingOverlay} pointerEvents="none">
             <ImageLoadingIcon />
           </View>
@@ -1064,10 +1340,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // A plain, non-animated opacity. Replaces revealStyle the moment the fade
-  // is over so no animated node is left driving this layer — see fadeSettled.
-  settled: {
+  // The card's only two opacities, set by React. See the reveal.
+  shown: {
     opacity: 1,
+  },
+  hidden: {
+    opacity: 0,
   },
   card: {
     gap: Spacing.two,
@@ -1078,8 +1356,11 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.one,
   },
+  // Lines hug their own words rather than stretching across the row, so
+  // each one's clear zone is only as wide as what it says.
   bylineText: {
     flex: 1,
+    alignItems: "flex-start",
   },
 
   // --- picture side ---
@@ -1101,13 +1382,6 @@ const styles = StyleSheet.create({
     // screen. See the line's own note at the call site.
     flexDirection: "column-reverse",
   },
-  // Deliberately carries no colour, opacity or shadow of its own any more:
-  // the region treatment supplies all three, so that this line is struck in
-  // the same ink as the name above or below it and is given a ground only
-  // when light type on a photograph actually needs one. A cream set here
-  // would simply have been overridden on every card, and the flat 0.85
-  // opacity was dimming a colour that had been chosen to match.
-  captionLine: {},
   // The band the broader location line is allowed to sit in: exactly as wide
   // as the name above or below it. See the call site.
   regionRange: {
@@ -1123,16 +1397,11 @@ const styles = StyleSheet.create({
     // here costs nothing in the ordinary case and removes that whole class.
     maxWidth: "100%",
   },
-  // A row along the bare card under the picture. `height` is set inline to
-  // whatever margin the picture actually left.
+  // The bare card under the picture, which the front's stickers are placed
+  // in. Its height and sides are set inline to the margin the picture left.
   frontStickers: {
     position: "absolute",
-    left: Spacing.three,
-    right: Spacing.three,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: Spacing.two,
+    bottom: 0,
   },
   // The box the stamp anchors inside — one of the two margins the picture
   // left. Sized and sided inline.
@@ -1183,7 +1452,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     // The card's own ink, faded — it is a printed caption, not UI text on a
     // dark ground, so the theme's secondary cream would be invisible here.
-    color: "rgba(28, 34, 24, 0.62)",
+    // Faded less than it was (0.62), which left a 12pt line grey enough on
+    // cream to be hard work to read.
+    color: "rgba(28, 34, 24, 0.8)",
   },
   heartBurst: {
     ...StyleSheet.absoluteFill,
@@ -1192,10 +1463,16 @@ const styles = StyleSheet.create({
   },
 
   // --- written side ---
+  backPaper: {
+    flexGrow: 1,
+  },
   back: {
-    borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.two,
+    overflow: 'hidden',
+    // Down the chain from backAtLeastFront to the message area, which is
+    // what takes the extra height.
+    flexGrow: 1,
   },
   backHeader: {
     flexDirection: "row",
@@ -1216,24 +1493,23 @@ const styles = StyleSheet.create({
   },
   backBody: {
     flexDirection: "row",
-    // Enough that the ruled line reads as a divider running down a card
-    // rather than an underline between two short rows.
-    minHeight: 120,
-    // Tight, because every point taken here comes off the message column,
-    // and the longest tag labels need about 175 to stay on one line.
+    // minHeight inline: BACK_BODY_MIN_HEIGHT, or more when the stickers
+    // need it.
+    // Tight, because every point taken here comes off the message column.
     gap: Spacing.two,
+    // The bare card a back held to its front's height has spare goes here,
+    // under the writing, where the stickers can use it.
+    flexGrow: 1,
   },
   message: {
     flex: 1,
     paddingTop: Spacing.one,
     gap: Spacing.three,
   },
-  backStickers: {
-    alignItems: "flex-start",
-    gap: Spacing.two,
-  },
+  // No italic: this is the serif caption now, and iOS will not fake a slant
+  // for a custom face the way Android does, so the two platforms drew it
+  // differently. The dimming alone says "nothing was written here".
   noMessage: {
-    fontStyle: "italic",
     opacity: 0.6,
   },
   backDivider: {
@@ -1242,13 +1518,12 @@ const styles = StyleSheet.create({
     backgroundColor: `${BrandColors.cream}2e`,
   },
   backColumn: {
-    // Fixed rather than content-sized: a column whose width followed its
-    // contents would move the ruled divider from card to card down the feed.
-    // As narrow as the postmark and a legible map allow, for the same reason
-    // as the gap above.
-    width: 112,
+    // Width per orientation; see BACK_COLUMN_WIDTH.
     alignItems: "flex-end",
     gap: Spacing.two,
+    // Only as tall as what is in it, not stretched down the row, so its
+    // measured box is the part of the column the stickers have to keep off.
+    alignSelf: "flex-start",
   },
   backFooter: {
     flexDirection: "row",

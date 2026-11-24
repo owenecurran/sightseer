@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +14,9 @@ import { PromptQuestionPicker } from '@/components/prompt-question-picker';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
+import { CircledTabs } from '@/components/ui/circled-tabs';
+import { HandLink, MarginAction } from '@/components/ui/journal-fields';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
@@ -45,11 +48,20 @@ import { supabase } from '@/lib/supabase';
 import { listUserTravelBooks } from '@/lib/travel-books';
 import { goBack } from '@/lib/navigation';
 import { OWN_VISITS_CAP } from '@/lib/query-caps';
+import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
+import { ErrorNotice, FormError } from '@/components/ui/error-notice';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
 const TEXT_ANSWER_MAX_LENGTH = 200;
 const MAX_GRID_PHOTOS = 4;
+
+// How a board or travel book attachment shows its photos.
+const DISPLAY_MODES = [
+  { key: 'cover', label: 'Cover photo' },
+  { key: 'grid', label: 'Photo grid' },
+] as const;
 
 type LocalAttachment = {
   // Only set for an attachment loaded from an existing saved prompt — used
@@ -127,6 +139,7 @@ export default function PromptEditorScreen() {
   const bottomInset = useBottomTabInset();
 
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [existingId, setExistingId] = useState<string | undefined>(undefined);
   const [position, setPosition] = useState(0);
   const [usedSlugs, setUsedSlugs] = useState<string[]>([]);
@@ -275,7 +288,12 @@ export default function PromptEditorScreen() {
       }
 
       setIsLoaded(true);
-    })();
+    })().catch((err) => {
+      // Without this a failed fetch left the loader up for good: nothing
+      // ever set isLoaded. The form is not shown half-filled instead,
+      // because saving it could write over the prompt that failed to load.
+      setLoadError(userErrorMessage(err, 'Could not load your prompts.'));
+    });
   }, [session, promptId]);
 
   function handleSelectVisit(index: number, visitId: string) {
@@ -339,15 +357,18 @@ export default function PromptEditorScreen() {
     if (options.length === 0) return null;
     return (
       <View style={styles.photoOptionRow}>
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="meta">
           Cover photo (optional)
         </ThemedText>
         <View style={styles.chipRow}>
-          <Pressable onPress={() => onSelect(null)}>
-            <ThemedView type={selectedId == null ? 'backgroundSelected' : 'background'} style={styles.chip}>
-              <ThemedText type="small">None</ThemedText>
-            </ThemedView>
-          </Pressable>
+          {/* The word ringed when no photo is chosen, as the photos beside
+              it are framed when one is. */}
+          <CircledTabs
+            items={[{ key: 'none', label: 'None' }]}
+            active={selectedId == null ? 'none' : null}
+            onChange={() => onSelect(null)}
+            role="radio"
+          />
           {options.map((photo) => (
             <Pressable key={photo.id} onPress={() => onSelect(photo.id)}>
               <LoadableImage
@@ -365,24 +386,19 @@ export default function PromptEditorScreen() {
     if (options.length === 0) return null;
     return (
       <View style={styles.photoOptionRow}>
-        <View style={styles.chipRow}>
-          {(['cover', 'grid'] as const).map((mode) => (
-            <Pressable key={mode} onPress={() => updateAttachment(index, { displayMode: mode })}>
-              <ThemedView
-                type={attachment.displayMode === mode ? 'backgroundSelected' : 'background'}
-                style={styles.chip}>
-                <ThemedText type="small">{mode === 'cover' ? 'Cover photo' : 'Photo grid'}</ThemedText>
-              </ThemedView>
-            </Pressable>
-          ))}
-        </View>
+        <CircledTabs
+          items={DISPLAY_MODES}
+          active={attachment.displayMode}
+          onChange={(mode) => updateAttachment(index, { displayMode: mode })}
+          role="radio"
+        />
         {attachment.displayMode === 'cover' ? (
           renderCoverPhotoPicker(options, attachment.coverPhotoId, (photoId) =>
             updateAttachment(index, { coverPhotoId: photoId })
           )
         ) : (
           <View style={styles.photoOptionRow}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta">
               {attachment.gridPhotoIds.length}/{MAX_GRID_PHOTOS} selected
             </ThemedText>
             <View style={styles.chipRow}>
@@ -473,7 +489,7 @@ export default function PromptEditorScreen() {
   async function handlePickPhoto(index: number) {
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -555,7 +571,6 @@ export default function PromptEditorScreen() {
 
       await savePrompt({
         id: existingId,
-        userId: session.user.id,
         promptSlug,
         position,
         attachments: resolved,
@@ -563,7 +578,7 @@ export default function PromptEditorScreen() {
 
       goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that prompt.');
+      setError(userErrorMessage(err, 'Could not save that prompt.'));
       setIsSaving(false);
     }
   }
@@ -575,8 +590,24 @@ export default function PromptEditorScreen() {
       await deletePrompt(existingId);
       goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that prompt.');
+      setError(userErrorMessage(err, 'Could not remove that prompt.'));
     }
+  }
+
+  if (loadError) {
+    return (
+      <ThemedView type="screen" style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.header}>
+            <BackLink seed="prompt-editor" />
+            <ThemedText type="displaySerif">{promptId ? 'Edit prompt' : 'Add a prompt'}</ThemedText>
+          </View>
+          <View style={styles.scrollContent}>
+            <ErrorNotice message={loadError} />
+          </View>
+        </SafeAreaView>
+      </ThemedView>
+    );
   }
 
   if (!isLoaded) return <PageLoader />;
@@ -592,12 +623,6 @@ export default function PromptEditorScreen() {
         <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}>
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
-
           <PromptQuestionPicker
             categories={categories}
             selectedCategory={selectedCategory}
@@ -610,12 +635,12 @@ export default function PromptEditorScreen() {
           {attachments.map((attachment, index) => (
             <View key={index} style={styles.attachmentBlock}>
               <View style={styles.row}>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="meta">
                   Attachment {index + 1}
                 </ThemedText>
                 {attachments.length > 1 && (
                   <Pressable onPress={() => handleRemoveAttachment(index)}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       Remove
                     </ThemedText>
                   </Pressable>
@@ -678,7 +703,7 @@ export default function PromptEditorScreen() {
                       than one photo to choose between. */}
                   {attachment.visitId && (visitPhotoOptions[attachment.visitId]?.length ?? 0) > 1 && (
                     <View style={styles.photoOptionRow}>
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         Photo to feature
                       </ThemedText>
                       <View style={styles.chipRow}>
@@ -708,39 +733,31 @@ export default function PromptEditorScreen() {
                       BESPOKE layout, only appear once it is turned off.
                       Showing all three together invited the obvious
                       question of why hiding the review text did nothing. */}
+                  {/* Ringed boxes to tick, as in Settings, where these were
+                      chips that relabelled themselves ("Postcard ✓", "Review
+                      text hidden") to say which way they were set. */}
                   {attachment.visitId && (
-                    <View style={styles.chipRow}>
-                      <Pressable
-                        onPress={() =>
-                          updateAttachment(index, { showPostcard: !attachment.showPostcard })
-                        }>
-                        <ThemedView
-                          type={attachment.showPostcard ? 'backgroundSelected' : 'background'}
-                          style={styles.chip}>
-                          <ThemedText type="small">
-                            {attachment.showPostcard ? 'Postcard ✓' : 'Show as postcard'}
-                          </ThemedText>
-                        </ThemedView>
-                      </Pressable>
-                    </View>
+                    <CheckboxRow
+                      label="Show it as a postcard"
+                      checked={attachment.showPostcard}
+                      onPress={() => updateAttachment(index, { showPostcard: !attachment.showPostcard })}
+                    />
                   )}
 
                   {attachment.visitId && !attachment.showPostcard && (
-                    <View style={styles.chipRow}>
-                      <Pressable onPress={() => updateAttachment(index, { showNote: !attachment.showNote })}>
-                        <ThemedView type={attachment.showNote ? 'backgroundSelected' : 'background'} style={styles.chip}>
-                          <ThemedText type="small">{attachment.showNote ? 'Review text ✓' : 'Review text hidden'}</ThemedText>
-                        </ThemedView>
-                      </Pressable>
-                      <Pressable onPress={() => updateAttachment(index, { showRatingStamp: !attachment.showRatingStamp })}>
-                        <ThemedView
-                          type={attachment.showRatingStamp ? 'backgroundSelected' : 'background'}
-                          style={styles.chip}>
-                          <ThemedText type="small">
-                            {attachment.showRatingStamp ? 'Rating stamp ✓' : 'Rating stamp hidden'}
-                          </ThemedText>
-                        </ThemedView>
-                      </Pressable>
+                    <View style={styles.toggleGroup}>
+                      <CheckboxRow
+                        label="Show the review text"
+                        checked={attachment.showNote}
+                        onPress={() => updateAttachment(index, { showNote: !attachment.showNote })}
+                        accentIndex={1}
+                      />
+                      <CheckboxRow
+                        label="Show the rating stamp"
+                        checked={attachment.showRatingStamp}
+                        onPress={() => updateAttachment(index, { showRatingStamp: !attachment.showRatingStamp })}
+                        accentIndex={2}
+                      />
                     </View>
                   )}
                 </>
@@ -748,22 +765,19 @@ export default function PromptEditorScreen() {
 
               {!attachment.formatExpanded && attachment.attachmentType === 'board' && (
                 <>
-                  <View style={styles.chipRow}>
-                    {ownBoards.length === 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        No boards yet.
-                      </ThemedText>
-                    )}
-                    {ownBoards.map((b) => (
-                      <Pressable key={b.id} onPress={() => handleSelectBoard(index, b.id)}>
-                        <ThemedView
-                          type={attachment.boardId === b.id ? 'backgroundSelected' : 'background'}
-                          style={styles.chip}>
-                          <ThemedText type="small">{b.name}</ThemedText>
-                        </ThemedView>
-                      </Pressable>
-                    ))}
-                  </View>
+                  {ownBoards.length === 0 ? (
+                    <ThemedText type="caption">
+                      No boards yet.
+                    </ThemedText>
+                  ) : (
+                    // Circle one, as Search's filters are. These were chips.
+                    <CircledTabs
+                      items={ownBoards.map((b) => ({ key: b.id, label: b.name }))}
+                      active={attachment.boardId}
+                      onChange={(boardId) => handleSelectBoard(index, boardId)}
+                      role="radio"
+                    />
+                  )}
                   {attachment.boardId &&
                     renderCoverOrGridPicker(index, attachment, boardPhotoOptions[attachment.boardId] ?? [])}
                 </>
@@ -771,22 +785,18 @@ export default function PromptEditorScreen() {
 
               {!attachment.formatExpanded && attachment.attachmentType === 'travel_book' && (
                 <>
-                  <View style={styles.chipRow}>
-                    {ownTravelBooks.length === 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
-                        No travel books yet.
-                      </ThemedText>
-                    )}
-                    {ownTravelBooks.map((b) => (
-                      <Pressable key={b.id} onPress={() => handleSelectTravelBook(index, b.id)}>
-                        <ThemedView
-                          type={attachment.travelBookId === b.id ? 'backgroundSelected' : 'background'}
-                          style={styles.chip}>
-                          <ThemedText type="small">{b.title}</ThemedText>
-                        </ThemedView>
-                      </Pressable>
-                    ))}
-                  </View>
+                  {ownTravelBooks.length === 0 ? (
+                    <ThemedText type="caption">
+                      No travel books yet.
+                    </ThemedText>
+                  ) : (
+                    <CircledTabs
+                      items={ownTravelBooks.map((b) => ({ key: b.id, label: b.title }))}
+                      active={attachment.travelBookId}
+                      onChange={(bookId) => handleSelectTravelBook(index, bookId)}
+                      role="radio"
+                    />
+                  )}
                   {attachment.travelBookId &&
                     renderCoverOrGridPicker(index, attachment, travelBookPhotoOptions[attachment.travelBookId] ?? [])}
                 </>
@@ -794,18 +804,19 @@ export default function PromptEditorScreen() {
 
               {!attachment.formatExpanded && attachment.attachmentType === 'place' && (
                 <View style={styles.placePicker}>
-                  {attachment.placeId && attachment.placeName && (
-                    <ThemedView type="backgroundSelected" style={styles.chip}>
-                      <ThemedText type="small">{attachment.placeName}</ThemedText>
-                    </ThemedView>
-                  )}
-                  <Pressable onPress={() => setLocationPickerIndex(index)}>
-                    <ThemedView type="backgroundElement" style={styles.chip}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        {attachment.placeId ? 'Change place' : 'Search for a place'}
+                  {/* As Add a review picks its place: the name, with a
+                      word in the margin to change it, or a pen line to pick
+                      one. These were two chips, one of them a button. */}
+                  {attachment.placeId && attachment.placeName ? (
+                    <View style={styles.placeRow}>
+                      <ThemedText type="lead" style={styles.placeName}>
+                        {attachment.placeName}
                       </ThemedText>
-                    </ThemedView>
-                  </Pressable>
+                      <MarginAction label="change" onPress={() => setLocationPickerIndex(index)} />
+                    </View>
+                  ) : (
+                    <HandLink label="+ search for a place" onPress={() => setLocationPickerIndex(index)} />
+                  )}
                   {attachment.placeId &&
                     renderCoverPhotoPicker(placePhotoOptions[attachment.placeId] ?? [], attachment.coverPhotoId, (photoId) =>
                       updateAttachment(index, { coverPhotoId: photoId })
@@ -815,7 +826,7 @@ export default function PromptEditorScreen() {
 
               {!attachment.formatExpanded && (
                 <View style={styles.previewSection}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="meta">
                     Preview
                   </ThemedText>
                   <AttachmentPreview
@@ -827,10 +838,15 @@ export default function PromptEditorScreen() {
             </View>
           ))}
 
+          {/* By the Save button, where the press was. It used to sit at the
+              top of a long form, so a failed save or "Pick a prompt." showed
+              up off screen and Save seemed to do nothing. */}
+          {error && <FormError message={error} />}
+
           <View style={styles.row}>
             <Button label="Save" onPress={handleSave} loading={isSaving} />
             <Pressable onPress={() => goBack()}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Cancel
               </ThemedText>
             </Pressable>
@@ -838,7 +854,7 @@ export default function PromptEditorScreen() {
 
           {existingId && (
             <Pressable onPress={handleRemovePrompt}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Remove this prompt
               </ThemedText>
             </Pressable>
@@ -923,10 +939,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
   },
-  chip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
+  toggleGroup: {
+    gap: Spacing.two,
+  },
+  placeRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Spacing.three,
+  },
+  placeName: {
+    flexShrink: 1,
   },
   placePicker: {
     gap: Spacing.two,

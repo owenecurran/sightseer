@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
+import { StampLanding } from "@/components/ui/deal-in";
 import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
 import { STAMP_VIEWBOX_HEIGHT, STAMP_VIEWBOX_WIDTH } from "@/lib/stamp-shape";
 
@@ -283,7 +284,10 @@ export function FeedRatingStamp({
         },
       ]}
     >
-      <RatingGlassBadgeGated rating={rating} size={size} seed={seed} tags={tags} placeId={placeId} />
+      {/* Pressed onto the card as it settles, on a card dealt into a feed. */}
+      <StampLanding>
+        <RatingGlassBadgeGated rating={rating} size={size} seed={seed} tags={tags} placeId={placeId} />
+      </StampLanding>
     </View>
   );
 }

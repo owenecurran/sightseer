@@ -6,8 +6,10 @@ import { Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type PagerView from 'react-native-pager-view';
 
+import { AccountUnreachable } from '@/components/account-unreachable';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { ScreenFrame } from '@/components/screen-frame';
 import { FloatingNavBar } from '@/components/floating-nav-bar';
 import { WebLanding } from '@/components/web-landing';
 import { KeyboardProviderWrapper } from '@/components/keyboard-provider-wrapper';
@@ -36,6 +38,14 @@ const AUTH_PATHS = [
   // not confirmed yet, so without this the redirect below bounces the
   // person straight back to /welcome and the code can never be entered.
   '/verify-email',
+  // Same reason. Someone who has forgotten their password is signed out by
+  // definition, and the session the screen needs only exists once it has
+  // exchanged the tokens in the link. Without this entry the redirect below
+  // replaces the screen with /welcome on arrival, while that exchange is
+  // already in flight -- which, going by the code, signs them in without
+  // ever showing the new-password form. Found by reading the guards, not
+  // seen on a device: testing it needs a signed-out phone and a real link.
+  '/reset-password',
 ];
 
 // Invite links are signed-out by definition and are NOT a fixed path, so
@@ -73,7 +83,7 @@ function isLandingPath(pathname: string): boolean {
 }
 
 function RootNavigator() {
-  const { session, profile, isLoading } = useAuth();
+  const { session, profile, isLoading, profileFailed } = useAuth();
   const pathname = usePathname();
   const pagerRef = useRef<PagerView>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -133,6 +143,13 @@ function RootNavigator() {
     if (!session || !hasFinishedSignup || tutorialSeen !== false) return;
     warmTutorialCard(session.user.id);
   }, [session, hasFinishedSignup, tutorialSeen]);
+
+  // See useTabRetapEffect. Held here with the rest of the pager state so it
+  // reaches the tab screens the same way activeIndex does.
+  const [retap, setRetap] = useState({ index: -1, nonce: 0 });
+  function signalRetap(index: number) {
+    setRetap((prev) => ({ index, nonce: prev.nonce + 1 }));
+  }
 
   function setActivePage(index: number) {
     if (Platform.OS === 'web') {
@@ -259,14 +276,46 @@ function RootNavigator() {
     return <SiteMeta />;
   }
 
+  // Signed in, but the account would not load, which every guard below
+  // would otherwise read as a signup not yet finished (see
+  // AccountUnreachable). Only while there is no profile at all: a refresh
+  // failing later keeps the one already loaded.
+  if (isAuthenticated && profile == null && profileFailed) {
+    return (
+      <>
+        <SiteMeta />
+        <AccountUnreachable />
+      </>
+    );
+  }
+
   return (
     <NavBarVisibilityProvider>
       <SiteMeta />
       <TabPagerProvider
-        value={{ pagerRef, activeIndex, setActiveIndexInternal: setActiveIndex, setActivePage }}
+        value={{
+          pagerRef,
+          activeIndex,
+          setActiveIndexInternal: setActiveIndex,
+          setActivePage,
+          signalRetap,
+          retap,
+        }}
       >
         <View style={{ flex: 1 }}>
-          <Stack screenOptions={{ headerShown: false }}>
+          {/* Every screen framed (see ScreenFrame): a crash replaces only
+              that screen, with a way back and a way to report it, and a
+              screen that failed to load can be loaded again. */}
+          <Stack
+            screenOptions={{ headerShown: false }}
+            screenLayout={({ children, route, navigation }) => (
+              <ScreenFrame
+                routeName={route.name}
+                canGoBack={() => navigation.canGoBack()}
+                goBack={() => navigation.goBack()}>
+                {children}
+              </ScreenFrame>
+            )}>
             <Stack.Protected guard={!isAuthenticated}>
               <Stack.Screen name="(auth)/welcome" />
               {/* Both rise from the bottom rather than sliding in from the
@@ -469,6 +518,12 @@ export default function RootLayout() {
     AntarcticanLight: require('@/assets/fonts/AntarcticanHeadlineLight.ttf'),
     BohemianSoul: require('@/assets/fonts/BohemianSoul.otf'),
     BuenaparkJf: require('@/assets/fonts/BuenaparkJfRegular.ttf'),
+    // The journal's hands: a typewriter for labels, a neat hand to write in,
+    // a quick scrawl for notes in the margin. From Google Fonts; licences in
+    // assets/fonts/licenses.
+    SpecialElite: require('@/assets/fonts/SpecialElite-Regular.ttf'),
+    PatrickHand: require('@/assets/fonts/PatrickHand-Regular.ttf'),
+    ReenieBeanie: require('@/assets/fonts/ReenieBeanie.ttf'),
   });
 
   // Native splash stays up (SplashScreen.preventAutoHideAsync() above) until

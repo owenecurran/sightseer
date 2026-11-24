@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { StickerLink } from '@/components/ui/sticker-link';
 import { ThemedText } from '@/components/themed-text';
 import { Avatar } from '@/components/ui/avatar';
+import { ClearZoneView } from '@/components/ui/scroll-stage';
 import { ThemedView } from '@/components/themed-view';
 import { TripDayReviews } from '@/components/trip-day-reviews';
 import { TripMapSquare } from '@/components/trip-map-square';
@@ -14,6 +15,7 @@ import type { FeedTrip, FeedVisit } from '@/lib/feed';
 import { createTravelBookFromTrip } from '@/lib/travel-books';
 import { getAreaOptions, setTripDisplayPlace, type AreaOption } from '@/lib/trips';
 import { formatVisitedRange } from '@/lib/visited-date';
+import { userErrorMessage } from '@/lib/user-error';
 
 type TripGroupCardProps = {
   feedTrip: FeedTrip;
@@ -104,7 +106,7 @@ export function TripGroupCard({
       await setTripDisplayPlace(trip, option.placeId === trip.autoAreaPlaceId ? null : option.placeId);
     } catch (err) {
       setAreaName(trip.areaName);
-      setError(err instanceof Error ? err.message : 'Could not change how this is labeled.');
+      setError(userErrorMessage(err, 'Could not change how this is labeled.'));
     }
   }
 
@@ -116,7 +118,7 @@ export function TripGroupCard({
       onConverted(trip.key, bookId);
       router.push({ pathname: '/travel-book/[id]', params: { id: bookId } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not make a travel book from this trip.');
+      setError(userErrorMessage(err, 'Could not make a travel book from this trip.'));
     } finally {
       setIsConverting(false);
     }
@@ -129,7 +131,9 @@ export function TripGroupCard({
             opened straight onto a place name, and it wasn't clear the
             reviews below were somebody's — per direct feedback, that the
             location didn't obviously relate to the posts under it. */}
-        <View style={styles.authorRow}>
+        {/* The author line and the heading are clear zones: the dashed road
+            from the post above runs on into the frame and under them. */}
+        <ClearZoneView style={styles.authorRow}>
           <Pressable
             onPress={() => router.push({ pathname: '/user/[id]', params: { id: trip.userId } })}
             hitSlop={6}>
@@ -141,12 +145,12 @@ export function TripGroupCard({
             onPress={() => router.push({ pathname: '/user/[id]', params: { id: trip.userId } })}>
             {authorName}
           </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             {isOuting ? 'had a night out' : 'took a trip'}
           </ThemedText>
-        </View>
+        </ClearZoneView>
 
-        <View style={styles.headerRow}>
+        <ClearZoneView style={styles.headerRow}>
           <TripMapSquare
             visits={allVisits}
             center={trip.areaLat != null && trip.areaLng != null ? { lat: trip.areaLat, lng: trip.areaLng } : null}
@@ -167,18 +171,18 @@ export function TripGroupCard({
                 {areaName}
               </StretchText>
             </Pressable>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="meta">
               {formatVisitedRange(trip.startDate, trip.endDate)} · {visitCount} review
               {visitCount === 1 ? '' : 's'}
               {isOuting ? '' : ` · ${days.length} day${days.length === 1 ? '' : 's'}`}
             </ThemedText>
           </View>
-        </View>
+        </ClearZoneView>
 
         {isPickingArea && areaOptions != null && (
           <View style={styles.areaOptions}>
             {areaOptions.length === 0 ? (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 No broader area to show this as.
               </ThemedText>
             ) : (
@@ -196,7 +200,7 @@ export function TripGroupCard({
         )}
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}
@@ -231,6 +235,7 @@ export function TripGroupCard({
           dayNumber={1}
           photoUrls={photoUrls}
           photoThumbUrls={photoThumbUrls}
+          preferPhotoThumbnails
           avatarUrls={avatarUrls}
           viewerId={viewerId}
           copiedVisitId={copiedVisitId}
@@ -248,6 +253,7 @@ export function TripGroupCard({
               dayNumber={dayNumber}
               photoUrls={photoUrls}
               photoThumbUrls={photoThumbUrls}
+              preferPhotoThumbnails
               avatarUrls={avatarUrls}
               viewerId={viewerId}
               copiedVisitId={copiedVisitId}
@@ -303,10 +309,14 @@ const styles = StyleSheet.create({
   },
   // The map square sits beside the trip's own text rather than above it —
   // the square is fixed-size, so the text column takes whatever's left.
+  // Hugging its contents rather than spanning the frame, so the road is
+  // left out only where the avatar and words are.
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   // Sits between the avatar and the trailing descriptor, so a long name
   // truncates rather than pushing "took a trip" off the card.

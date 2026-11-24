@@ -14,6 +14,7 @@ import { flagSelfUnderage, MIN_AGE_YEARS } from '@/lib/bans';
 import type { Database } from '@/lib/database.types';
 import { addHomeLocation } from '@/lib/home-locations';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -112,7 +113,7 @@ export default function DemographicsScreen() {
     setIsSubmitting(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save that. Try again.'));
       return;
     }
     await refreshProfile();
@@ -172,15 +173,15 @@ export default function DemographicsScreen() {
         <ThemedText type="displaySerif" style={styles.title}>
           Tell us about yourself
         </ThemedText>
-        <ThemedText type="default" style={styles.title} themeColor="textSecondary">
+        <ThemedText type="lead" style={styles.title}>
           Your date of birth is required. Where you are based is optional and helps us build better
-          recommendations — you can add it later in Settings.
+          recommendations. You can add it later in Settings.
         </ThemedText>
 
         <View style={styles.section}>
           <ThemedText type="smallBold">Where are you based?</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            Reviews you post around here count as everyday life — anything further afield gets grouped
+          <ThemedText type="caption">
+            Reviews you post around here count as everyday life. Anything further afield gets grouped
             into a trip. You can add up to 5 places later in Settings.
           </ThemedText>
           <Pressable onPress={() => setIsPickerOpen(true)}>
@@ -192,7 +193,7 @@ export default function DemographicsScreen() {
           </Pressable>
           {homePlace && (
             <Pressable onPress={() => setHomePlace(null)} hitSlop={8}>
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="action">
                 Clear
               </ThemedText>
             </Pressable>
@@ -209,7 +210,7 @@ export default function DemographicsScreen() {
                 yearsBack={BIRTHDATE_YEARS_BACK}
               />
               <Pressable onPress={() => setBirthdate(null)} hitSlop={8}>
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="action">
                   Clear
                 </ThemedText>
               </Pressable>
@@ -226,7 +227,7 @@ export default function DemographicsScreen() {
         </View>
 
         {error && (
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="small" themeColor="danger">
             {error}
           </ThemedText>
         )}

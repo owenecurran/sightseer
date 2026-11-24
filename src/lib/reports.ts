@@ -1,4 +1,3 @@
-import { setUserBanned } from '@/lib/bans';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 
@@ -21,10 +20,7 @@ export type PendingReport = {
   placeName: string | null;
   authorName: string;
   reporterName: string;
-  // Who a ban would land on: the reported user for a direct report, or the
-  // author of the reported visit. Null only when the visit has already been
-  // deleted and the report named no user — nothing left to act against, so
-  // moderation.tsx hides the ban action rather than offering a dead button.
+  // The report's verified account target, if it is still available.
   reportedUserId: string | null;
 };
 
@@ -40,26 +36,19 @@ type RawReport = {
   snapshot_rating: number | null;
   snapshot_note: string | null;
   visits: {
-    user_id: string;
     rating: number | null;
     note: string | null;
     places: { name: string } | null;
-    users: { handle: string | null; name: string | null } | null;
   } | null;
+  target: { handle: string | null; name: string | null } | null;
   reporter: { handle: string | null; name: string | null } | null;
 };
 
 export type SubmitReportParams = {
   reporterId: string;
   reason: ReportReason;
-  // Free-text context alongside the fixed reason category — blank/whitespace
-  // normalized to null rather than stored as ''.
   details?: string;
-  // At least one of these two must be set (reports_has_target, see the
-  // migration) — a visit report, a direct user report, or both (e.g.
-  // reporting the person while a specific post is what prompted it).
-  visitId?: string;
-  reportedUserId?: string;
+  target: { visitId: string; reportedUserId?: never } | { reportedUserId: string; visitId?: never };
 };
 
 export async function submitReport(params: SubmitReportParams): Promise<void> {
@@ -67,8 +56,8 @@ export async function submitReport(params: SubmitReportParams): Promise<void> {
     reporter_id: params.reporterId,
     reason: params.reason,
     details: params.details?.trim() || null,
-    visit_id: params.visitId ?? null,
-    reported_user_id: params.reportedUserId ?? null,
+    visit_id: params.target.visitId ?? null,
+    reported_user_id: params.target.reportedUserId ?? null,
   });
   if (error) throw error;
 }
@@ -77,7 +66,7 @@ export async function listPendingReports(): Promise<PendingReport[]> {
   const { data, error } = await supabase
     .from('reports')
     .select(
-      'id, reason, details, created_at, visit_id, reported_user_id, snapshot_place_name, snapshot_author_name, snapshot_rating, snapshot_note, visits(user_id, rating, note, places!place_id(name), users!user_id(handle, name)), reporter:users!reporter_id(handle, name)'
+      'id, reason, details, created_at, visit_id, reported_user_id, snapshot_place_name, snapshot_author_name, snapshot_rating, snapshot_note, visits(rating, note, places!place_id(name)), target:users!reported_user_id(handle, name), reporter:users!reporter_id(handle, name)'
     )
     .eq('status', 'pending')
     .order('created_at', { ascending: true });
@@ -92,47 +81,28 @@ export async function listPendingReports(): Promise<PendingReport[]> {
     visitRating: r.visits?.rating ?? r.snapshot_rating,
     visitNote: r.visits?.note ?? r.snapshot_note,
     placeName: r.visits?.places?.name ?? r.snapshot_place_name,
-    authorName:
-      r.visits?.users?.name ?? r.visits?.users?.handle ?? r.snapshot_author_name ?? 'Someone',
+    authorName: r.target?.name ?? r.target?.handle ?? r.snapshot_author_name ?? 'Someone',
     reporterName: r.reporter?.name ?? r.reporter?.handle ?? 'Someone',
-    // reported_user_id first: a report filed against the person is a
-    // stronger statement of intent than one inferred from a post's author.
-    reportedUserId: r.reported_user_id ?? r.visits?.user_id ?? null,
+    reportedUserId: r.reported_user_id,
   }));
 }
 
-export async function dismissReport(reportId: string): Promise<void> {
-  const { error } = await supabase.from('reports').update({ status: 'dismissed' }).eq('id', reportId);
+async function resolveReport(reportId: string, action: 'dismiss' | 'ban_user' | 'remove_visit') {
+  const { error } = await supabase.rpc('resolve_report', {
+    p_report_id: reportId,
+    p_action: action,
+  });
   if (error) throw error;
 }
 
-// Bans the reported account, then marks the report resolved.
-//
-// Mirrors removeVisitAndResolveReport, including the ordering: the action
-// that matters happens first, so a failure to close the report leaves an
-// enforced ban and a report still visible in the queue, rather than a
-// closed report and an unbanned user.
-//
-// It deliberately leaves the reported content in place. Removing a post and
-// banning its author are separate judgements, and an admin who wants both
-// has both buttons.
-export async function banUserAndResolveReport(
-  reportId: string,
-  userId: string,
-  reason: string
-): Promise<void> {
-  await setUserBanned(userId, reason);
-  const { error } = await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId);
-  if (error) throw error;
+export function dismissReport(reportId: string): Promise<void> {
+  return resolveReport(reportId, 'dismiss');
 }
 
-// Removes the reported visit entirely, then marks the report resolved.
-export async function removeVisitAndResolveReport(reportId: string, visitId: string): Promise<void> {
-  const { error: deleteError } = await supabase.from('visits').delete().eq('id', visitId);
-  if (deleteError) throw deleteError;
-  const { error: updateError } = await supabase
-    .from('reports')
-    .update({ status: 'resolved' })
-    .eq('id', reportId);
-  if (updateError) throw updateError;
+export function banUserAndResolveReport(reportId: string): Promise<void> {
+  return resolveReport(reportId, 'ban_user');
+}
+
+export function removeVisitAndResolveReport(reportId: string): Promise<void> {
+  return resolveReport(reportId, 'remove_visit');
 }

@@ -31,7 +31,7 @@ export function TermsContent() {
 // text and the stamp, rather than after it.
 export function TermsVersionStamp() {
   return (
-    <ThemedText type="small" themeColor="textSecondary" style={styles.version}>
+    <ThemedText type="meta" style={styles.version}>
       Version {TERMS_VERSION}
     </ThemedText>
   );

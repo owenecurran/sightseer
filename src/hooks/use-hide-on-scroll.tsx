@@ -36,13 +36,17 @@ const TOP_THRESHOLD = 24;
 // Attach the returned handler to a screen's scrollable container's
 // `onScroll` (via `Animated.FlatList`/`Animated.ScrollView`, which both
 // accept a reanimated scroll handler directly) plus `scrollEventThrottle={16}`.
-export function useHideOnScrollHandler() {
+//
+// `scrollY`, when given, is kept at the scroll position, for anything else
+// on the screen that moves with the scroll (see DealIn).
+export function useHideOnScrollHandler(scrollY?: SharedValue<number>) {
   const hidden = useNavBarHidden();
   const lastY = useSharedValue(0);
 
   return useAnimatedScrollHandler({
     onScroll: (event) => {
       const y = event.contentOffset.y;
+      scrollY?.set(y);
       const delta = y - lastY.value;
 
       if (y <= TOP_THRESHOLD) {

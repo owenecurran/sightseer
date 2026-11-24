@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { Fold, Unfold } from '@/components/ui/unfold';
 import { Button } from '@/components/ui/button';
 import { Spacing } from '@/constants/theme';
 import { registerForPush } from '@/lib/push';
@@ -60,28 +60,38 @@ export function PushPrimingModal({ userId }: PushPrimingModalProps) {
   return (
     <Modal visible={isVisible} transparent animationType="fade" onRequestClose={handleNotNow}>
       <View style={styles.overlay}>
-        <ThemedView type="backgroundElement" style={styles.sheet}>
-          <ThemedText type="displaySerif">Get notified</ThemedText>
-          <ThemedText type="body" themeColor="textSecondary">
-            We&apos;ll let you know when someone likes or comments on your review, tags you in
-            theirs, or follows you — plus a weekly catch-up if you fall behind on people you
-            follow.
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            You can change any of this later in Settings.
-          </ThemedText>
-
-          <Button
-            label={isBusy ? 'Just a moment…' : 'Turn on notifications'}
-            onPress={handleEnable}
-            disabled={isBusy}
-          />
-          <Pressable onPress={handleNotNow} disabled={isBusy} hitSlop={8} style={styles.notNow}>
-            <ThemedText type="small" themeColor="textSecondary">
-              Not now
+        <Unfold paper="backgroundElement" style={styles.sheet}>
+          <Fold>
+            <ThemedText type="displaySerif">Get notified</ThemedText>
+          </Fold>
+          <Fold>
+            <ThemedText type="lead">
+              We&apos;ll let you know when someone likes or comments on your review, tags you in
+              theirs, or follows you, plus a weekly catch-up if you fall behind on people you
+              follow.
             </ThemedText>
-          </Pressable>
-        </ThemedView>
+          </Fold>
+          <Fold>
+            <ThemedText type="caption">
+              You can change any of this later in Settings.
+            </ThemedText>
+          </Fold>
+
+          <Fold>
+            <Button
+              label={isBusy ? 'Just a moment…' : 'Turn on notifications'}
+              onPress={handleEnable}
+              disabled={isBusy}
+            />
+          </Fold>
+          <Fold>
+            <Pressable onPress={handleNotNow} disabled={isBusy} hitSlop={8} style={styles.notNow}>
+              <ThemedText type="action">
+                Not now
+              </ThemedText>
+            </Pressable>
+          </Fold>
+        </Unfold>
       </View>
     </Modal>
   );
@@ -98,7 +108,6 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%',
     maxWidth: 400,
-    borderRadius: Spacing.four,
     padding: Spacing.four,
     gap: Spacing.three,
   },

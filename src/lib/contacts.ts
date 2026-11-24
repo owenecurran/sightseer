@@ -159,7 +159,6 @@ export async function matchContactsToUsers(hashes: string[]): Promise<MatchedUse
 // Replaces, rather than accumulates: a contact you have since deleted stops
 // being one you get told about.
 export async function syncContactHashes(hashes: string[]): Promise<MatchedUser[]> {
-  if (hashes.length === 0) return [];
   const { data, error } = await supabase.rpc('sync_contact_hashes', {
     p_hashes: [...new Set(hashes)],
   });

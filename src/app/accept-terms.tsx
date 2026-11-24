@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 import { TERMS_VERSION } from '@/lib/terms';
 
 // The terms gate. Sits ahead of onboarding in the root layout's guard chain,
@@ -47,7 +48,7 @@ export default function AcceptTermsScreen() {
       .eq('id', session.user.id);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save that. Try again.'));
       setIsAccepting(false);
       return;
     }
@@ -67,14 +68,14 @@ export default function AcceptTermsScreen() {
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
           <ThemedText type="displaySerif">Terms of use</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Please read and accept these to continue.
           </ThemedText>
 
           <TermsContent />
 
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}

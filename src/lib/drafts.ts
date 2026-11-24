@@ -1,5 +1,5 @@
 import { getPhotoViewUrls } from '@/lib/photo-view';
-import { downscaleForUpload, makeThumbForUpload } from '@/lib/photo-downscale';
+import { uploadReviewPhotoAssets } from '@/lib/photo-upload';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
 import type { EditablePhoto } from '@/lib/visit-edit';
@@ -7,8 +7,6 @@ import { DRAFTS_CAP, reportIfCapped } from '@/lib/query-caps';
 
 type DraftVisitRow = Database['public']['Tables']['draft_visits']['Row'];
 type PlaceRow = Database['public']['Tables']['places']['Row'];
-
-const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export type DraftListItem = {
   id: string;
@@ -147,77 +145,15 @@ type UploadDraftPhotoParams = {
   position?: number;
 };
 
-// Mirrors uploadPhotoForVisit (photo-upload.ts) exactly, targeting the
-// draft-scoped edge function/ownership check instead.
 export async function uploadPhotoForDraft(params: UploadDraftPhotoParams): Promise<string> {
-  const { draftId, uri, mimeType, width, height, position = 0 } = params;
-  // Downscale before anything touches the network — see photo-downscale.ts.
-  const scaled = await downscaleForUpload(uri, width, height, mimeType);
-  // NOT a fallback — an assertion.
-  //
-  // This used to read `ALLOWED.includes(x) ? x : 'image/jpeg'`, which took a
-  // type it did not support and relabelled it as one it did. The bytes were
-  // unchanged, so a HEIC went to R2 under a .jpeg key with an image/jpeg
-  // content type and every non-Apple client refused to draw it. Nine photos
-  // in production are still like that.
-  //
-  // downscaleForUpload now guarantees a web-safe type, so reaching this
-  // branch means that guarantee broke. Failing the upload is the right
-  // answer: an error the person can retry is recoverable, and a file that
-  // silently will not render for anyone is not.
-  if (!ALLOWED_CONTENT_TYPES.includes(scaled.mimeType)) {
-    throw new Error(`Cannot upload ${scaled.mimeType} — the image was not converted.`);
-  }
-  const contentType = scaled.mimeType;
-
-  const { data, error: fnError } = await supabase.functions.invoke('create-draft-photo-upload-url', {
-    body: { draftId, contentType },
-  });
-  if (fnError) throw fnError;
-  const { uploadUrl, r2Key, thumbUploadUrl, thumbR2Key } = data as {
-    uploadUrl: string;
-    r2Key: string;
-    thumbUploadUrl?: string;
-    thumbR2Key?: string;
-  };
-
-  const fileResponse = await fetch(scaled.uri);
-  const blob = await fileResponse.blob();
-
-  const uploadResponse = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: blob,
-  });
-  if (!uploadResponse.ok) {
-    throw new Error(`Upload to storage failed (${uploadResponse.status})`);
-  }
-
-  // Best-effort: a failed thumb leaves thumb_r2_key null and the grid falls
-  // back to the full image. Losing the optimisation is not worth failing an
-  // upload the user already completed.
-  let storedThumbKey: string | null = null;
-  if (thumbUploadUrl && thumbR2Key) {
-    try {
-      const thumb = await makeThumbForUpload(scaled.uri, scaled.width, scaled.height);
-      const thumbBlob = await (await fetch(thumb.uri)).blob();
-      const thumbResponse = await fetch(thumbUploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'image/jpeg' },
-        body: thumbBlob,
-      });
-      if (thumbResponse.ok) storedThumbKey = thumbR2Key;
-    } catch {
-      // Swallowed deliberately -- see above.
-    }
-  }
-
+  const { draftId, position = 0 } = params;
+  const { r2Key, storedThumbKey, width, height } = await uploadReviewPhotoAssets({ draftId }, params);
   const { error: insertError } = await supabase.from('photos').insert({
     draft_visit_id: draftId,
     r2_key: r2Key,
     thumb_r2_key: storedThumbKey,
-    width: scaled.width,
-    height: scaled.height,
+    width,
+    height,
     position,
   });
   if (insertError) throw insertError;
@@ -225,8 +161,7 @@ export async function uploadPhotoForDraft(params: UploadDraftPhotoParams): Promi
   return r2Key;
 }
 
-// Identical body to deleteVisitPhoto (visit-edit.ts) — same photos table,
-// RLS already covers the draft branch.
+// The photo delete policy checks ownership through the owning draft.
 export async function deleteDraftPhoto(photoId: string): Promise<void> {
   const { error } = await supabase.from('photos').delete().eq('id', photoId);
   if (error) throw error;

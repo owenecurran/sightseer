@@ -1,12 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { BrandColors, Spacing } from '@/constants/theme';
+import { penRing } from '@/components/ui/circled-tabs';
+import { InkBlot } from '@/components/ui/ink-blot';
+import { Fold, Unfold } from '@/components/ui/unfold';
+import { BrandColors, BrandFonts, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+
+// How far the ring reaches past the trigger, as CircledTabs' does.
+const RING_X = 10;
+const RING_Y = 7;
 
 export type MenuOption = {
   value: string;
@@ -92,38 +99,57 @@ export function FilterSortMenu({ groups }: { groups: MenuGroup[] }) {
     0
   );
 
+  // The trigger's size, for drawing the pen ring round it while a filter
+  // is on (see penRing).
+  const [triggerSize, setTriggerSize] = useState<{ w: number; h: number } | null>(null);
+  function onTriggerLayout(event: LayoutChangeEvent) {
+    const w = Math.round(event.nativeEvent.layout.width);
+    const h = Math.round(event.nativeEvent.layout.height);
+    if (!triggerSize || triggerSize.w !== w || triggerSize.h !== h) setTriggerSize({ w, h });
+  }
+  const ring = useMemo(
+    () => (activeCount > 0 && triggerSize ? penRing('filter-trigger', triggerSize.w, triggerSize.h, RING_X, RING_Y) : null),
+    [activeCount, triggerSize],
+  );
+
   return (
     <>
-      <Pressable onPress={() => setIsOpen(true)} hitSlop={6} style={styles.triggerWrap}>
-        <ThemedView
-          type={activeCount > 0 ? 'backgroundSelected' : 'backgroundElement'}
-          style={styles.trigger}>
-          <Ionicons name="options-outline" size={16} color={theme.text} />
-          <ThemedText type="small" numberOfLines={1} style={styles.triggerLabel}>
-            {summary || 'Sort & filter'}
-          </ThemedText>
-          <Ionicons name="chevron-down" size={14} color={theme.textSecondary} />
-        </ThemedView>
+      {/* Typed, as the view modes beside it are, and ringed in pen while a
+          filter is on, as a circled word is chosen everywhere else. It was
+          a pill, shaded while filtering. */}
+      <Pressable
+        onPress={() => setIsOpen(true)}
+        hitSlop={8}
+        onLayout={onTriggerLayout}
+        accessibilityRole="button"
+        accessibilityLabel={`Sort and filter: ${summary || 'none'}`}
+        style={({ pressed }) => [styles.triggerWrap, styles.trigger, pressed && styles.triggerPressed]}>
+        {ring && <Image source={{ uri: ring }} style={styles.triggerRing} />}
+        <Ionicons name="options-outline" size={15} color={theme.textSecondary} />
+        <Text numberOfLines={1} style={styles.triggerLabel}>
+          {summary || 'Sort & filter'}
+        </Text>
+        <Ionicons name="chevron-down" size={13} color={theme.textSecondary} />
       </Pressable>
 
       <Modal
         visible={isOpen}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setIsOpen(false)}>
         <Pressable style={styles.overlay} onPress={() => setIsOpen(false)}>
           {/* The sheet swallows taps so a press near an option edge cannot
               dismiss the sheet instead of selecting. */}
           <Pressable style={styles.sheetWrap} onPress={(e) => e.stopPropagation()}>
-            <ThemedView type="backgroundElement" style={styles.sheet}>
-              <View style={styles.header}>
-                <ThemedText type="sectionLabel">Sort & filter</ThemedText>
+            <Unfold paper="backgroundElement" from="bottom" style={styles.sheet}>
+              <Fold style={styles.header}>
+                <ThemedText type="displaySerif">Sort & filter</ThemedText>
                 <Pressable onPress={() => setIsOpen(false)} hitSlop={8}>
-                  <ThemedText type="smallBold" themeColor="sage">
+                  <ThemedText type="action" themeColor="sage">
                     Done
                   </ThemedText>
                 </Pressable>
-              </View>
+              </Fold>
 
               <ScrollView
                 style={styles.scroll}
@@ -134,48 +160,49 @@ export function FilterSortMenu({ groups }: { groups: MenuGroup[] }) {
                 showsVerticalScrollIndicator={false}>
                 {groups.map((group) => (
                   <View key={group.key} style={styles.group}>
-                    <ThemedText
-                      type="sectionLabel"
-                      themeColor="textSecondary"
-                      style={styles.groupLabel}>
-                      {group.label}
-                    </ThemedText>
+                    <Fold>
+                      <ThemedText type="meta" style={styles.groupLabel}>
+                        {group.label}
+                      </ThemedText>
+                    </Fold>
                     {group.options.map((option) => {
                       const isSelected =
                         group.kind === 'single'
                           ? group.value === option.value
                           : group.values.includes(option.value);
                       return (
-                        <Pressable
-                          key={option.value}
-                          onPress={() =>
-                            group.kind === 'single'
-                              ? group.onChange(option.value)
-                              : group.onToggle(option.value)
-                          }
-                          style={[styles.row, isSelected && styles.rowSelected]}>
-                          {group.kind === 'multi' && group.renderOption ? (
-                            group.renderOption(option, isSelected)
-                          ) : (
-                            <ThemedText
-                              type="small"
-                              themeColor={isSelected ? 'text' : 'textSecondary'}>
-                              {option.label}
-                              {option.count != null ? '  ' + option.count : ''}
-                            </ThemedText>
-                          )}
-                          {isSelected && (
-                            <ThemedText type="small" themeColor="sage">
-                              ✓
-                            </ThemedText>
-                          )}
-                        </Pressable>
+                        <Fold key={option.value}>
+                          <Pressable
+                            onPress={() =>
+                              group.kind === 'single'
+                                ? group.onChange(option.value)
+                                : group.onToggle(option.value)
+                            }
+                            accessibilityRole={group.kind === 'single' ? 'radio' : 'checkbox'}
+                            accessibilityState={{ checked: isSelected }}
+                            style={styles.row}>
+                            {group.kind === 'multi' && group.renderOption ? (
+                              group.renderOption(option, isSelected)
+                            ) : (
+                              <ThemedText
+                                type="small"
+                                themeColor={isSelected ? 'text' : 'textSecondary'}>
+                                {option.label}
+                                {option.count != null ? '  ' + option.count : ''}
+                              </ThemedText>
+                            )}
+                            {/* A blot of ink, as the app's tick-boxes mark a
+                                choice, where this was a sage outline and a
+                                "✓". */}
+                            {isSelected && <InkBlot size={12} seed={`menu:${group.key}:${option.value}`} color={BrandColors.sage} />}
+                          </Pressable>
+                        </Fold>
                       );
                     })}
                   </View>
                 ))}
               </ScrollView>
-            </ThemedView>
+            </Unfold>
           </Pressable>
         </Pressable>
       </Modal>
@@ -191,13 +218,30 @@ const styles = StyleSheet.create({
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
+    gap: Spacing.one + 2,
+    paddingVertical: 2,
+    // In line with the page's edge, as CircledTabs' words are: the ring
+    // reaches past the words into the margin rather than pushing them in.
+    // Room above and below for it, as that row keeps.
+    marginLeft: Spacing.one,
+    marginVertical: RING_Y - 2,
+  },
+  triggerPressed: {
+    opacity: 0.6,
+  },
+  triggerRing: {
+    position: 'absolute',
+    top: -RING_Y,
+    left: -RING_X,
+    right: -RING_X,
+    bottom: -RING_Y,
   },
   triggerLabel: {
     flexShrink: 1,
+    fontFamily: BrandFonts.typewriter,
+    fontSize: 15,
+    color: BrandColors.cream,
+    includeFontPadding: false,
   },
   overlay: {
     flex: 1,
@@ -222,8 +266,6 @@ const styles = StyleSheet.create({
     // is how a long option list (the place page reaches five sorts, three
     // filters and up to eight tags) runs off the bottom of the screen.
     flexShrink: 1,
-    borderTopLeftRadius: Spacing.four,
-    borderTopRightRadius: Spacing.four,
     paddingTop: Spacing.three,
   },
   header: {
@@ -248,8 +290,6 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   groupLabel: {
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
     marginBottom: Spacing.half,
   },
   row: {
@@ -258,11 +298,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.two,
-    borderRadius: Spacing.two,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  rowSelected: {
-    borderColor: BrandColors.sage,
   },
 });

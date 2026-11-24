@@ -69,7 +69,23 @@ export const Colors = {
   // both — visible inside a card, and still visible on the bare screen
   // background where the auth fields live.
   backgroundField: '#091a11',
+  // Dimmed cream. Still right for what it now mostly does -- the inactive
+  // half of a toggle, a placeholder, an icon -- where "less than the text
+  // beside it" is the whole message. It is NOT the colour for words that
+  // are meant to be read: the green shows through the transparency and
+  // turns it a flat olive-grey, which is what made every caption in the
+  // app look unfinished. Those have the two colours below.
   textSecondary: 'rgba(234,231,207,0.65)',
+  // Captions and asides, set in the serif (ThemedText type="caption").
+  // Opaque and warm, like the cream aged a shade, so a sentence under a
+  // heading reads as a quieter voice rather than as text that is switched
+  // off.
+  textCaption: '#c4bfa0',
+  // Metadata in the wide face (type="meta"): times, counts, places. Leans
+  // toward the sage so a line of facts is told apart from a line of prose
+  // by colour as well as by face, without being sage itself, which means
+  // "you can press this".
+  textMeta: '#b3c2a4',
   sage: BrandColors.sage,
   // Links. A desaturated blue pulled up toward the cream's lightness, so a
   // link reads as a different KIND of text rather than a different palette.
@@ -105,6 +121,12 @@ export const BrandFonts = {
   regionGrotesqueLight: 'AntarcticanLight',
   regionDidone: 'BohemianSoul',
   regionDeco: 'BuenaparkJf',
+  // Things written and typed rather than printed, for the parts of the app
+  // that are a journal being filled in: a typewriter's labels, a neat hand
+  // for what someone writes, and a quick scrawl for notes in the margin.
+  typewriter: 'SpecialElite',
+  hand: 'PatrickHand',
+  scrawl: 'ReenieBeanie',
 } as const;
 
 export const Fonts = Platform.select({
@@ -160,3 +182,10 @@ export const NavBarHeight = 76;
 // sites, since `Spacing.x + TopTabInset` is a harmless no-op at 0.
 export const TopTabInset = 0;
 export const MaxContentWidth = 800;
+// The safe-area edges for a screen whose content scrolls under the floating
+// nav bar. Not the bottom: such a screen's scroll content already pads its
+// own bottom past the gesture bar (useBottomTabInset includes that inset),
+// and padding the frame as well stopped the scroll view short of the
+// screen, so content was cut off in a band above the gesture bar rather
+// than by the edge of the screen.
+export const ScrollScreenEdges = ['top', 'left', 'right'] as const;

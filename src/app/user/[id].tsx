@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TeaserCard } from '@/components/ui/teaser-card';
 import { UserMenu } from '@/components/user-menu';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { getHarmony, type Harmony } from '@/lib/harmony';
@@ -31,6 +31,8 @@ import { getPhotoViewUrls } from '@/lib/photo-view';
 import { firstPhotoId, getProfileShowcase, type ShowcaseVisit } from '@/lib/profile-showcase';
 import { supabase } from '@/lib/supabase';
 import { PUBLIC_USER_COLUMNS, type PublicProfile } from '@/lib/public-profile';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Narrowed to what the public column grant actually returns — see
 // PUBLIC_USER_COLUMNS.
@@ -65,6 +67,12 @@ export default function UserProfileScreen() {
   const [targetFollowsMe, setTargetFollowsMe] = useState(false);
   const [isRemovingFollower, setIsRemovingFollower] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // Set once the account and its follow state have both loaded. Until then
+  // the counts, the sights-seen line and the Follow button are starting
+  // values, not facts: a failed load used to show "0 following 0
+  // followers", "0 sights seen" and a live Follow button for an account
+  // that never loaded.
+  const [isLoaded, setIsLoaded] = useState(false);
   const scrollHandler = useHideOnScrollHandler();
 
   useFocusEffect(
@@ -98,6 +106,7 @@ export default function UserProfileScreen() {
           setTotalVisits(showcase.totalVisits);
           setLatestVisit(showcase.latestVisit);
           setIsBlocked(blocked);
+          setIsLoaded(true);
 
           // First photo by position, matching profile.tsx's own "Latest
           // reviews" teaser — a multi-photo review shows its first photo
@@ -105,7 +114,7 @@ export default function UserProfileScreen() {
           const photoId = firstPhotoId(showcase.latestVisit);
           setLatestVisitPhotoUrl(photoId ? (await getPhotoViewUrls([photoId]))[photoId] : undefined);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this profile.');
+          setError(userErrorMessage(err, 'Could not load this profile.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -122,7 +131,6 @@ export default function UserProfileScreen() {
         const status = await followUser({
           followerId: session.user.id,
           followeeId: user.id,
-          followeeIsPrivate: user.is_private,
         });
         setFollowStatus(status);
       } else {
@@ -130,7 +138,7 @@ export default function UserProfileScreen() {
         setFollowStatus(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that follow.');
+      setError(userErrorMessage(err, 'Could not update that follow.'));
     } finally {
       setIsUpdatingFollow(false);
     }
@@ -146,7 +154,7 @@ export default function UserProfileScreen() {
       setFollowStatus(null);
       setTargetFollowsMe(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not block that user.');
+      setError(userErrorMessage(err, 'Could not block that user.'));
     } finally {
       setIsUpdatingBlock(false);
     }
@@ -160,7 +168,7 @@ export default function UserProfileScreen() {
       await unblockUser(session.user.id, user.id);
       setIsBlocked(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unblock that user.');
+      setError(userErrorMessage(err, 'Could not unblock that user.'));
     } finally {
       setIsUpdatingBlock(false);
     }
@@ -174,7 +182,7 @@ export default function UserProfileScreen() {
       await removeFollower(session.user.id, user.id);
       setTargetFollowsMe(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that follower.');
+      setError(userErrorMessage(err, 'Could not remove that follower.'));
     } finally {
       setIsRemovingFollower(false);
     }
@@ -203,7 +211,7 @@ export default function UserProfileScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <Animated.ScrollView
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
@@ -234,19 +242,21 @@ export default function UserProfileScreen() {
               <View style={styles.headerInfo}>
                 <ThemedText type="displaySerif">{user?.name ?? user?.handle ?? 'Profile'}</ThemedText>
                 {user?.handle && (
-                  <ThemedText type="displaySerif" style={styles.handleText}>
+                  <ThemedText type="default" themeColor="textMeta" style={styles.handleText}>
                     @{user.handle}
                   </ThemedText>
                 )}
-                <ThemedText type="roundedStat" themeColor="sage">
-                  {totalVisits} sight{totalVisits === 1 ? '' : 's'} seen
-                </ThemedText>
+                {isLoaded && (
+                  <ThemedText type="roundedStat" themeColor="sage">
+                    {totalVisits} sight{totalVisits === 1 ? '' : 's'} seen
+                  </ThemedText>
+                )}
               </View>
             </View>
 
             {user?.bio && <ThemedText type="default">{user.bio}</ThemedText>}
 
-            {!isSelf && !isBlocked && (
+            {isLoaded && !isSelf && !isBlocked && (
               <Button
                 label={followLabel(followStatus)}
                 variant={followStatus === 'accepted' ? 'secondary' : 'primary'}
@@ -255,31 +265,33 @@ export default function UserProfileScreen() {
               />
             )}
 
-            <View style={styles.statsRow}>
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: '/follow-list',
-                    params: { type: 'following', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
-                  })
-                }>
-                <ThemedText type="statLine">{followCounts.following} following</ThemedText>
-              </Pressable>
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: '/follow-list',
-                    params: { type: 'followers', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
-                  })
-                }>
-                <ThemedText type="statLine">{followCounts.followers} followers</ThemedText>
-              </Pressable>
-            </View>
+            {isLoaded && (
+              <View style={styles.statsRow}>
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: '/follow-list',
+                      params: { type: 'following', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
+                    })
+                  }>
+                  <ThemedText type="statLine">{followCounts.following} following</ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: '/follow-list',
+                      params: { type: 'followers', userId: user?.id ?? '', name: user?.name ?? user?.handle ?? '' },
+                    })
+                  }>
+                  <ThemedText type="statLine">{followCounts.followers} followers</ThemedText>
+                </Pressable>
+              </View>
+            )}
 
-            {error && <ThemedText type="small">{error}</ThemedText>}
+            {error && <ErrorNotice message={error} />}
 
             {!canSeeContent && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 {isBlocked ? 'You’ve blocked this account.' : 'This account is private.'}
               </ThemedText>
             )}

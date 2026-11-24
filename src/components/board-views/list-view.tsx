@@ -11,6 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { InkBlot } from '@/components/ui/ink-blot';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { TicketCard } from '@/components/ui/ticket-card';
+import { Fold } from '@/components/ui/unfold';
 import { Spacing, StickerAccents } from '@/constants/theme';
 import { hashSeed } from '@/lib/seeded-random';
 import type { BoardItem } from '@/lib/boards';
@@ -122,11 +123,11 @@ export function ListView({
             <View style={styles.info}>
               <StretchText type="headline" fill>{item.placeName}</StretchText>
               {isVisit ? (
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                <ThemedText type="caption" numberOfLines={1}>
                   {[item.stateCountry, item.rating == null ? 'Visited' : null, item.note].filter(Boolean).join(' · ')}
                 </ThemedText>
               ) : (
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                <ThemedText type="meta" numberOfLines={1}>
                   {item.stateCountry ?? 'No review yet'}
                 </ThemedText>
               )}
@@ -143,7 +144,7 @@ export function ListView({
           // action) clips its children — and it was clipping the stamp's
           // deliberate overflow past the row's right edge. Inside the ticket's
           // stub there is nothing to clip: the stub is part of the ticket.
-          <View key={item.id}>
+          <Fold key={item.id}>
             {isOwner ? (
               <Swipeable
                 renderRightActions={() => (
@@ -159,7 +160,7 @@ export function ListView({
             ) : (
               row
             )}
-          </View>
+          </Fold>
         );
       })}
 

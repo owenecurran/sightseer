@@ -20,6 +20,8 @@ import {
   removeHomeLocation,
   type HomeLocation,
 } from '@/lib/home-locations';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -33,6 +35,9 @@ export default function HomeLocationsScreen() {
   const [locations, setLocations] = useState<HomeLocation[]>([]);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The load itself failed, as opposed to an action on the list. The empty
+  // line is not shown then: it said there was nothing here, under the error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
@@ -40,9 +45,13 @@ export default function HomeLocationsScreen() {
     useCallback(() => {
       if (!session) return;
       setError(null);
+      setLoadFailed(false);
       listHomeLocations(session.user.id)
         .then(setLocations)
-        .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your home locations.'))
+        .catch((err) => {
+          setLoadFailed(true);
+          setError(userErrorMessage(err, 'Could not load your home locations.'));
+        })
         .finally(() => setHasLoadedOnce(true));
     }, [session])
   );
@@ -55,7 +64,7 @@ export default function HomeLocationsScreen() {
       await addHomeLocation(session.user.id, place);
       setLocations(await listHomeLocations(session.user.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that home location.');
+      setError(userErrorMessage(err, 'Could not add that home location.'));
     }
   }
 
@@ -66,7 +75,7 @@ export default function HomeLocationsScreen() {
       await removeHomeLocation(id);
       setLocations((prev) => prev.filter((l) => l.id !== id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that home location.');
+      setError(userErrorMessage(err, 'Could not remove that home location.'));
     } finally {
       setBusyId(null);
     }
@@ -84,22 +93,20 @@ export default function HomeLocationsScreen() {
 
           <ThemedText type="displaySerif">Home locations</ThemedText>
 
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Reviews you post around these places count as everyday life. Anything further afield gets
-            grouped into a trip in the feed. Add up to {MAX_HOME_LOCATIONS} — change them whenever you
+            grouped into a trip in the feed. Add up to {MAX_HOME_LOCATIONS}, and change them whenever you
             like.
           </ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {locations.length === 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              No home locations yet. Until you add one, none of your reviews are grouped into trips.
-            </ThemedText>
+            loadFailed ? null : (
+              <ThemedText type="caption">
+                No home locations yet. Until you add one, none of your reviews are grouped into trips.
+              </ThemedText>
+            )
           ) : (
             <View style={styles.list}>
               {locations.map((location) => (
@@ -107,13 +114,13 @@ export default function HomeLocationsScreen() {
                   <View style={styles.rowText}>
                     <ThemedText type="headlineWrapped">{location.name}</ThemedText>
                     {location.parentName && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="meta">
                         {location.parentName}
                       </ThemedText>
                     )}
                   </View>
                   <Pressable onPress={() => handleRemove(location.id)} disabled={busyId === location.id} hitSlop={8}>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="action">
                       {busyId === location.id ? 'Removing…' : 'Remove'}
                     </ThemedText>
                   </Pressable>

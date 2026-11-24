@@ -15,6 +15,8 @@ import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
 import { listBlockedUsers, unblockUser, type BlockedUser } from '@/lib/blocks';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Its own screen rather than a block on Settings, because the list has no
 // ceiling — one person blocked reads fine inline, thirty pushes everything
@@ -27,16 +29,21 @@ export default function BlockedAccountsScreen() {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The load itself failed, as opposed to an action on the list. The empty
+  // line is not shown then: it said there was nothing here, under the error.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       if (!session) return;
+      setLoadFailed(false);
       listBlockedUsers(session.user.id)
         .then(setBlockedUsers)
-        .catch((err) =>
-          setError(err instanceof Error ? err.message : 'Could not load blocked accounts.')
-        )
+        .catch((err) => {
+          setLoadFailed(true);
+          setError(userErrorMessage(err, 'Could not load blocked accounts.'));
+        })
         .finally(() => setHasLoadedOnce(true));
     }, [session])
   );
@@ -49,7 +56,7 @@ export default function BlockedAccountsScreen() {
       await unblockUser(session.user.id, blockedId);
       setBlockedUsers((prev) => prev.filter((u) => u.id !== blockedId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unblock that account.');
+      setError(userErrorMessage(err, 'Could not unblock that account.'));
     } finally {
       setUnblockingId(null);
     }
@@ -69,20 +76,18 @@ export default function BlockedAccountsScreen() {
 
           <ThemedText type="displaySerif">Blocked</ThemedText>
 
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Blocked accounts cannot see your profile or reviews, and you will not see theirs.
           </ThemedText>
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
           {blockedUsers.length === 0 ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              You have not blocked anyone.
-            </ThemedText>
+            loadFailed ? null : (
+              <ThemedText type="caption">
+                You have not blocked anyone.
+              </ThemedText>
+            )
           ) : (
             <View style={styles.list}>
               {blockedUsers.map((user) => (
@@ -94,7 +99,7 @@ export default function BlockedAccountsScreen() {
                     {/* Only when it adds something — for an account with no
                         name the handle is already the line above. */}
                     {user.name && user.handle && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="small" themeColor="textMeta">
                         @{user.handle}
                       </ThemedText>
                     )}

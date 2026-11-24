@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
 
 type GoogleSignInButtonProps = {
   onError: (message: string) => void;
@@ -70,7 +71,7 @@ export function GoogleSignInButton({ onError }: GoogleSignInButtonProps) {
               provider: 'google',
               token: response.credential,
             });
-            if (error) onError(error.message);
+            if (error) onError(userErrorMessage(error, 'Could not sign in with Google.'));
           },
         });
         window.google.accounts.id.renderButton(containerRef.current, {
@@ -81,7 +82,7 @@ export function GoogleSignInButton({ onError }: GoogleSignInButtonProps) {
         });
       })
       .catch((err) => {
-        if (isMounted) onError(err instanceof Error ? err.message : 'Could not load Google sign-in.');
+        if (isMounted) onError(userErrorMessage(err, 'Could not load Google sign-in.'));
       });
 
     return () => {

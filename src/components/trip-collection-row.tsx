@@ -63,7 +63,7 @@ export function TripCollectionRow({ trip, averageRating }: TripCollectionRowProp
           <StretchText type="headline" fill>
             {trip.areaName}
           </StretchText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="meta">
             {dateRange} · {trip.visitIds.length} review{trip.visitIds.length === 1 ? '' : 's'}
             {trip.kind === 'outing' ? ' · Day out' : ''}
           </ThemedText>

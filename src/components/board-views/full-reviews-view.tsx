@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Fragment, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { StyleSheet, View, type FlatList, type ScrollView } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { keyboardAwareScrollRenderer } from '@/components/keyboard-aware-scroll';
+import { JourneyLine } from '@/components/ui/journey-line';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
+import { Fold } from '@/components/ui/unfold';
+import { CheckboxRow } from '@/components/ui/checkbox-row';
 import { VisitCard } from '@/components/visit-card';
 import { Spacing } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import type { BoardVisitItem } from '@/lib/boards';
 import { getVisitsByIds, likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
+import { stopOf } from '@/lib/journey';
 import { getPhotoThumbUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 
@@ -28,7 +32,18 @@ type FullReviewsViewProps = {
   // something the card already does.
   onSelectVisit?: (visitId: string) => void;
   selectedVisitId?: string | null;
+  // Draw the road from each card to the next, as the feed and Discover do:
+  // where from and to, how far, how many days. For a list in date order,
+  // where one card following another is a journey; in any other order the
+  // distance between neighbours means nothing.
+  journey?: boolean;
 };
+
+// The cards on this list carry a comment box on their back, and a FlatList
+// builds its own scroll view, so wrapping it in KeyboardAwareScroll the way
+// the ScrollView screens do was not an option -- the box stayed under the
+// keyboard here after it was fixed everywhere else.
+const renderScroll = keyboardAwareScrollRenderer();
 
 // One full review per row, as the same postcard the feed draws.
 //
@@ -51,9 +66,14 @@ export function FullReviewsView({
   ownRatings,
   onSelectVisit,
   selectedVisitId,
+  journey = false,
 }: FullReviewsViewProps) {
   const bottomInset = useBottomTabInset();
-  const scrollHandler = useHideOnScrollHandler();
+  // The list's scroll stage, which the roads read to draw themselves out as
+  // they come up the screen (see JourneyLine).
+  const listRef = useRef<FlatList<BoardVisitItem>>(null);
+  const { stage, scrollProps } = useScrollStage(listRef as unknown as RefObject<ScrollView | null>);
+  const scrollHandler = useHideOnScrollHandler(stage.scrollY);
 
   // Keyed by visit id. Rows render as soon as their visit lands rather than
   // waiting for the whole board.
@@ -121,7 +141,11 @@ export function FullReviewsView({
   const visible = items.filter((item) => !deleted.has(item.visitId));
 
   return (
+    <ScrollStageProvider stage={stage}>
     <Animated.FlatList
+      ref={listRef}
+      {...scrollProps}
+      renderScrollComponent={renderScroll}
       data={visible}
       keyExtractor={(item: BoardVisitItem) => item.id}
       style={styles.flex}
@@ -137,13 +161,24 @@ export function FullReviewsView({
       initialNumToRender={5}
       maxToRenderPerBatch={5}
       windowSize={5}
-      renderItem={({ item }: { item: BoardVisitItem }) => {
+      renderItem={({ item, index }: { item: BoardVisitItem; index: number }) => {
         const ownRating = ownRatings?.[item.placeId];
         const showOwnRating = ownRating != null && item.authorId !== viewerId;
         const visit = visits[item.visitId];
+        const previous = journey && index > 0 ? visits[visible[index - 1].visitId] : undefined;
 
         return (
-          <View style={styles.card}>
+          <Fragment>
+          {/* The road in from the card above, once both have loaded. */}
+          {previous && visit && (
+            <JourneyLine
+              from={stopOf(previous)}
+              to={stopOf(visit)}
+              seed={`${previous.id}-${visit.id}`}
+              style={styles.journey}
+            />
+          )}
+          <Fold style={styles.card}>
             {/* No author line of our own: the card draws its own byline,
                 avatar and all, and two of them read as a bug. */}
             {visit ? (
@@ -171,23 +206,24 @@ export function FullReviewsView({
                 <OwnRatingLine rating={ownRating} />
               </View>
             )}
+            {/* A box to tick under each card, ticked on the chosen one, as
+                the app's other choices are. It was a pill that relabelled
+                itself "Featured ✓". */}
             {onSelectVisit && visit && (
-              <Pressable onPress={() => onSelectVisit(visit.id)}>
-                <ThemedView
-                  type={selectedVisitId === visit.id ? 'backgroundSelected' : 'backgroundElement'}
-                  style={styles.selectButton}>
-                  <ThemedText
-                    type="small"
-                    themeColor={selectedVisitId === visit.id ? 'text' : 'textSecondary'}>
-                    {selectedVisitId === visit.id ? 'Featured ✓' : 'Feature this one'}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
+              <View style={styles.selectRow}>
+                <CheckboxRow
+                  label="Feature this one"
+                  checked={selectedVisitId === visit.id}
+                  onPress={() => onSelectVisit(visit.id)}
+                />
+              </View>
             )}
-          </View>
+          </Fold>
+          </Fragment>
         );
       }}
     />
+    </ScrollStageProvider>
   );
 }
 
@@ -199,6 +235,12 @@ const styles = StyleSheet.create({
     gap: Spacing.four,
     paddingTop: Spacing.three,
   },
+  // Into the gap above it and up to the next card's byline, as in the feed,
+  // so the road runs from one card to the next with nothing between.
+  journey: {
+    marginTop: -Spacing.four,
+    marginHorizontal: Spacing.four,
+  },
   card: {
     gap: Spacing.two,
     paddingHorizontal: Spacing.four,
@@ -206,11 +248,11 @@ const styles = StyleSheet.create({
   ownRating: {
     paddingHorizontal: Spacing.one,
   },
-  selectButton: {
-    alignSelf: 'flex-start',
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.four,
+  // Full width, not shrunk to fit: CheckboxRow's label takes the slack with
+  // flex 1, and in a shrink-to-fit box that slack is nothing, so only the
+  // box showed.
+  selectRow: {
+    paddingTop: Spacing.one,
   },
   // Two thirds of the card's width, which is about what a landscape postcard
   // stands at — near enough that a row settling into place does not shove

@@ -10,6 +10,7 @@ import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { PromptCard } from '@/components/prompt-card';
 import { ThemedText } from '@/components/themed-text';
 import { CheckboxRow } from '@/components/ui/checkbox-row';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { TextField } from '@/components/ui/text-field';
@@ -36,6 +37,10 @@ import { supabase } from '@/lib/supabase';
 import { getAvatarViewUrls, uploadAvatar } from '@/lib/avatar';
 import { goBack } from '@/lib/navigation';
 import { Avatar } from '@/components/ui/avatar';
+import { FormError } from '@/components/ui/error-notice';
+import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
+import { LAYER_OPTIONS, parseDefaultLayers, type LayerKey } from '@/lib/map-layers';
 
 const BIO_MAX_LENGTH = 160;
 const PROMPT_SLOT_COUNT = 6;
@@ -56,6 +61,9 @@ export default function EditProfileScreen() {
   const [name, setName] = useState(profile?.name ?? '');
   const [bio, setBio] = useState(profile?.bio ?? '');
   const [showMap, setShowMap] = useState(profile?.show_map ?? false);
+  // What the map shows: countries, states, cities, pins, parks. Saved with
+  // the rest of the profile, as the full map's own "Save layers" saves it.
+  const [mapLayers, setMapLayers] = useState<Set<LayerKey>>(() => parseDefaultLayers(profile?.map_default_layers));
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [prompts, setPrompts] = useState<ProfilePrompt[]>([]);
@@ -114,7 +122,7 @@ export default function EditProfileScreen() {
           ? 'None answered yet'
           : `${prompts.length} of ${PROMPT_SLOT_COUNT} answered`;
       case 'map':
-        return showMap ? 'Shown on your profile' : 'Hidden — turn it on above';
+        return showMap ? 'Shown on your profile' : 'Hidden until you turn it on above';
       case 'collections':
         return PROFILE_SECTION_HINTS.collections;
     }
@@ -149,7 +157,7 @@ export default function EditProfileScreen() {
     if (!session) return;
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -161,7 +169,7 @@ export default function EditProfileScreen() {
       const urls = await getAvatarViewUrls([session.user.id]);
       setAvatarUrl(urls[session.user.id]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update your photo.');
+      setError(userErrorMessage(err, 'Could not update your photo.'));
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -181,12 +189,13 @@ export default function EditProfileScreen() {
         name: name.trim(),
         bio: bio.trim() || null,
         show_map: showMap,
+        map_default_layers: LAYER_OPTIONS.map((option) => option.key).filter((key) => mapLayers.has(key)),
       })
       .eq('id', session.user.id);
     setIsSaving(false);
 
     if (updateError) {
-      setError(updateError.message);
+      setError(userErrorMessage(updateError, 'Could not save your profile.'));
       return;
     }
     await refreshProfile();
@@ -198,7 +207,7 @@ export default function EditProfileScreen() {
     try {
       await reorderPrompts(next.map((p) => p.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reorder your prompts.');
+      setError(userErrorMessage(err, 'Could not reorder your prompts.'));
     }
   }
 
@@ -209,7 +218,7 @@ export default function EditProfileScreen() {
       await saveProfileSectionOrder(session.user.id, next);
       await refreshProfile();
     } catch (err) {
-      setLayoutError(err instanceof Error ? err.message : 'Could not save that order.');
+      setLayoutError(userErrorMessage(err, 'Could not save that order.'));
     }
   }
 
@@ -249,7 +258,7 @@ export default function EditProfileScreen() {
               )}
               <View style={styles.sectionText}>
                 <ThemedText type="default">{PROFILE_SECTION_LABELS[item]}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+                <ThemedText type="caption" numberOfLines={1}>
                   {sectionSummary(item)}
                 </ThemedText>
               </View>
@@ -300,7 +309,7 @@ export default function EditProfileScreen() {
             onChangeText={(text) => setBio(text.slice(0, BIO_MAX_LENGTH))}
             multiline
           />
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="meta">
             {bio.length}/{BIO_MAX_LENGTH}
           </ThemedText>
 
@@ -311,16 +320,37 @@ export default function EditProfileScreen() {
             onPress={() => setShowMap((prev) => !prev)}
           />
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
+          {/* Which kinds of place it marks, each ringed while it is on.
+              At least one stays on: an empty choice reads back as the
+              default (see parseDefaultLayers), which would undo itself. */}
+          {showMap && (
+            <View style={styles.mapLayers}>
+              <ThemedText type="caption">What it shows</ThemedText>
+              <CircledTabs
+                items={LAYER_OPTIONS}
+                active={[...mapLayers]}
+                onChange={(key) =>
+                  setMapLayers((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(key)) {
+                      if (next.size === 1) return prev;
+                      next.delete(key);
+                    } else {
+                      next.add(key);
+                    }
+                    return next;
+                  })
+                }
+              />
+            </View>
           )}
+
+          {error && <FormError message={error} />}
 
           <Button label="Save" onPress={handleSave} loading={isSaving} />
 
           <ThemedText type="sectionLabel">Prompts</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Press and hold a prompt to drag it into a new order.
           </ThemedText>
           <DraggableFlatList
@@ -334,11 +364,11 @@ export default function EditProfileScreen() {
           {prompts.length < PROMPT_SLOT_COUNT && <PromptCard existing={undefined} onChanged={loadPrompts} />}
 
           <ThemedText type="sectionLabel">Layout</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             The order these appear on your profile. Drag a handle to move one.
           </ThemedText>
           {layoutError && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {layoutError}
             </ThemedText>
           )}
@@ -360,6 +390,12 @@ export default function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  // In line with the checkbox's label, under it.
+  mapLayers: {
+    gap: Spacing.one,
+    marginLeft: 22 + Spacing.two,
+    marginTop: -Spacing.one,
+  },
   container: {
     flex: 1,
   },

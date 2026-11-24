@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,33 +16,30 @@ import { SaveToBoard } from '@/components/save-to-board';
 import { TripSuggestionPrompt } from '@/components/trip-suggestion-prompt';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { getTripSuggestion, type TripSuggestion } from '@/lib/trips';
+import { createManualTrip, getTripSuggestion, type TripSuggestion } from '@/lib/trips';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DateCarousel } from '@/components/ui/date-carousel';
-import { PaperPanel } from '@/components/ui/paper-panel';
+import { Chapter, JournalPage } from '@/components/ui/journal';
+import {
+  CardChoice,
+  EmptySlot,
+  FieldLabel,
+  HandLink,
+  LineField,
+  MarginAction,
+  PaperSlip,
+  PostcardBackField,
+} from '@/components/ui/journal-fields';
+import { formatVisitedPostmark } from '@/lib/visited-date';
 import { pickStampDesign } from '@/lib/stamp-matching';
 import { BLANK_COUNT, GRAIN_COUNT } from '@/lib/postcard-stock';
-
-// Which sheet and which dust plate this review gets. At module scope because
-// the React Compiler's lint counts Math.random() inside a component as an
-// impure call during render — it cannot see that this only ever runs inside
-// the submit handler.
-// The preview's handlers. A preview has nothing to like, share or delete.
-function noop() {}
-
-function drawCard() {
-  return {
-    stock: Math.floor(Math.random() * BLANK_COUNT),
-    grain: Math.floor(Math.random() * GRAIN_COUNT),
-  };
-}
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
-import { TextField } from '@/components/ui/text-field';
-import { TagSticker } from '@/components/ui/tag-sticker';
+import { TagStickerGraphic } from '@/components/ui/tag-sticker-graphic';
 import { VisitCard, type VisitCardVisit } from '@/components/visit-card';
 import { TagPickerModal } from '@/components/tag-picker-modal';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { FormError } from '@/components/ui/error-notice';
+import { Colors, MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useTheme } from '@/hooks/use-theme';
@@ -59,6 +56,22 @@ import { supabase } from '@/lib/supabase';
 import { listTags, setVisitTags, MAX_VISIT_TAGS, type Tag } from '@/lib/visit-tags';
 import { goBack } from '@/lib/navigation';
 import { type PublicProfile } from '@/lib/public-profile';
+import { userErrorMessage } from '@/lib/user-error';
+import { CAMERA_NEEDED, PHOTOS_NEEDED } from '@/lib/permissions';
+
+// The preview's handlers. A preview has nothing to like, share or delete.
+function noop() {}
+
+// Which sheet and which dust plate this review gets. At module scope because
+// the React Compiler's lint counts Math.random() inside a component as an
+// impure call during render — it cannot see that this only ever runs inside
+// the submit handler.
+function drawCard() {
+  return {
+    stock: Math.floor(Math.random() * BLANK_COUNT),
+    grain: Math.floor(Math.random() * GRAIN_COUNT),
+  };
+}
 
 // Mirrors edit-visit/[id].tsx's own PhotoSlot pattern — needed only for
 // resuming a draft, which (unlike a fresh review) can arrive with photos
@@ -103,9 +116,18 @@ function todayIsoDate(): string {
 }
 
 export default function ReviewFormScreen() {
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const theme = useTheme();
-  const { placeId, draftId } = useLocalSearchParams<{ placeId?: string; draftId?: string }>();
+  // startTrip: arriving from New trip with nowhere reviewed there yet. The
+  // trip is started from this review once it is saved (see handleSaveVisit),
+  // its destination the place given.
+  const { placeId, draftId, startTrip } = useLocalSearchParams<{
+    placeId?: string;
+    draftId?: string;
+    startTrip?: string;
+  }>();
+  // The trip this review started, once it has: its first day, to open it by.
+  const [startedTripOn, setStartedTripOn] = useState<string | null>(null);
   const bottomInset = useBottomTabInset();
   const [error, setError] = useState<string | null>(null);
   // Arriving fresh (no placeId already picked, e.g. place/[id].tsx's "Add
@@ -189,17 +211,23 @@ export default function ReviewFormScreen() {
     // rule is pointing at.
     if (!peopleQuery.trim()) return;
 
+    // Set once the query moves on, so a slow answer to an earlier query
+    // cannot land over the answer to the one now in the field.
+    let stale = false;
     peopleDebounceRef.current = setTimeout(async () => {
       try {
         const results = await searchUsers(peopleQuery, session.user.id);
+        if (stale) return;
         setPeopleSuggestions(results);
-        setPeopleAvatarUrls(results.length > 0 ? await getAvatarViewUrls(results.map((u) => u.id)) : {});
+        const avatars = results.length > 0 ? await getAvatarViewUrls(results.map((u) => u.id)).catch(() => ({})) : {};
+        if (!stale) setPeopleAvatarUrls(avatars);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed.');
+        if (!stale) setError(userErrorMessage(err, 'Could not search people just now. Try again.'));
       }
     }, DEBOUNCE_MS);
 
     return () => {
+      stale = true;
       if (peopleDebounceRef.current) clearTimeout(peopleDebounceRef.current);
     };
   }, [peopleQuery, session]);
@@ -270,7 +298,7 @@ export default function ReviewFormScreen() {
       setTaggedUsers([]);
       setSelectedTagSlugs([]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load that place.');
+      setError(userErrorMessage(err, 'Could not load that place.'));
     }
   }
 
@@ -295,7 +323,7 @@ export default function ReviewFormScreen() {
     (async () => {
       const { data, error: fetchError } = await supabase.from('places').select('*').eq('id', placeId).single();
       if (fetchError) {
-        setError(fetchError.message);
+        setError(userErrorMessage(fetchError, 'Could not load that place.'));
         return;
       }
       await handlePlaceSelected(data);
@@ -328,7 +356,7 @@ export default function ReviewFormScreen() {
           setIsPickerOpen(true);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load that draft.');
+        setError(userErrorMessage(err, 'Could not load that draft.'));
       }
     })();
   }, [draftId, session]);
@@ -400,8 +428,8 @@ export default function ReviewFormScreen() {
     if (result === 'denied') {
       setError(
         source === 'camera'
-          ? 'Camera permission is required to take photos.'
-          : 'Photo library permission is required to add photos.'
+          ? CAMERA_NEEDED
+          : PHOTOS_NEEDED
       );
       pickImageResolveRef.current?.(null);
     } else {
@@ -502,7 +530,7 @@ export default function ReviewFormScreen() {
         });
         setUploadedPhotoUris((prev) => [...prev, result.uri]);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not upload that photo.');
+        setError(userErrorMessage(err, 'Could not upload that photo.'));
       } finally {
         setIsUploadingPhoto(false);
       }
@@ -624,10 +652,22 @@ export default function ReviewFormScreen() {
         })
         .eq('id', visitId);
 
+      // Arrived from New trip: this review is the trip's first, so the trip
+      // starts on its day. Best-effort, like the suggestion below: if it
+      // fails, the review is still saved and New trip will find it now.
+      if (session && startTrip) {
+        try {
+          await createManualTrip(session.user.id, visitedOn, visitedOn, startTrip);
+          setStartedTripOn(visitedOn);
+        } catch {
+          // Left to New trip, which will find this review there.
+        }
+      }
+
       // Does this review complete a day that reads like a trip? Best-effort
       // and deliberately after the visit itself is safely saved — a failure
       // here must never make a successful publish look like it failed.
-      if (session) {
+      if (session && !startTrip) {
         getTripSuggestion(session.user.id, visitedOn)
           .then(setTripSuggestion)
           .catch(() => setTripSuggestion(null));
@@ -645,8 +685,17 @@ export default function ReviewFormScreen() {
           .insert(taggedUsers.map((user) => ({ visit_id: visitId, user_id: user.id })));
       }
 
+      // From here on the review exists, so nothing below may throw into the
+      // catch at the end: that says "Could not save that visit." about a
+      // visit that saved, and skipped the photo uploads after it, losing
+      // them without a word. Each part that fails is named instead.
+      let tagsFailed = false;
       if (selectedTagSlugs.length > 0) {
-        await setVisitTags(visitId, selectedTagSlugs);
+        try {
+          await setVisitTags(visitId, selectedTagSlugs);
+        } catch {
+          tagsFailed = true;
+        }
       }
 
       // The draft path already uploaded its new photo slots above, before
@@ -671,17 +720,24 @@ export default function ReviewFormScreen() {
         }
         setPendingPhotos(stillPending);
         if (stillPending.length > 0) {
-          setError(`Visit saved, but ${stillPending.length} photo(s) failed to upload — try again below.`);
+          setError(
+            tagsFailed
+              ? `Visit saved, but its tags could not be added and ${stillPending.length} photo(s) failed to upload. Try the photos again below.`
+              : `Visit saved, but ${stillPending.length} photo(s) failed to upload. Try again below.`,
+          );
+          return;
         }
       }
+      if (tagsFailed) setError('Visit saved, but its tags could not be added.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : isPublishingDraft ? 'Could not publish that draft.' : 'Could not save that visit.');
+      setError(userErrorMessage(err, isPublishingDraft ? 'Could not publish that draft.' : 'Could not save that visit.'));
     } finally {
       setIsSavingVisit(false);
     }
   }
 
   const totalPhotoCount = pendingPhotos.length + uploadedPhotoUris.length;
+  const errorLine = error ? <FormError message={error} /> : null;
 
   // Whichever photo model is currently active (draft slots vs. a fresh
   // review's pending/uploaded pair) reduced to the same {url, aspectRatio}
@@ -723,6 +779,7 @@ export default function ReviewFormScreen() {
     created_at: new Date().toISOString(),
     user_id: session?.user.id ?? 'preview',
     authorName: 'You',
+    authorHandle: profile?.handle ?? null,
     placeId: selectedPlace?.id ?? 'preview',
     placeName: selectedPlace?.name ?? '',
     placeLat: selectedPlace?.lat ?? null,
@@ -760,73 +817,79 @@ export default function ReviewFormScreen() {
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
           scrollEventThrottle={16}>
-        {error && (
-          <ThemedText type="small" themeColor="textSecondary">
-            {error}
-          </ThemedText>
-        )}
+        {/* Up here only before a place is picked, when there is nothing
+            further down to press. After that it sits by the button that was
+            pressed: up here, a failed save on this long form showed up
+            off screen and Save seemed to do nothing. */}
+        {!selectedPlace && errorLine}
 
-        <PaperPanel seed="form-0" accentIndex={0}>
-          <ThemedText type="sectionLabel">Place</ThemedText>
+        <JournalPage seed="form-0" accentIndex={0}>
+          <Chapter number={1} title="Where did you go?" seed="form-0" />
 
           {selectedPlace ? (
             <Pressable onPress={() => setIsPickerOpen(true)} style={styles.placeRow}>
+              {/* Printed the way the luggage tags print a destination. */}
               <View style={styles.placeRowText}>
-                <ThemedText type="smallBold">{selectedPlace.name}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {breadcrumb}
+                <ThemedText type="meta" style={styles.destinationKicker}>
+                  Destination
                 </ThemedText>
+                <ThemedText type="headline" style={styles.destination} numberOfLines={2}>
+                  {selectedPlace.name}
+                </ThemedText>
+                {regionFromBreadcrumb(breadcrumb) !== '' && (
+                  <ThemedText type="meta" numberOfLines={1}>
+                    {regionFromBreadcrumb(breadcrumb)}
+                  </ThemedText>
+                )}
               </View>
-              <ThemedText type="small" themeColor="textSecondary">
-                Change
-              </ThemedText>
+              <MarginAction label="change" onPress={() => setIsPickerOpen(true)} />
             </Pressable>
           ) : (
-            <Button label="Search for a place" variant="secondary" onPress={() => setIsPickerOpen(true)} />
+            <HandLink label="+ choose where you went" onPress={() => setIsPickerOpen(true)} />
           )}
 
           {selectedPlace && !savedVisitId && (
             <View style={styles.section}>
-              <ThemedText type="sectionLabel">Tag specific spots (optional)</ThemedText>
+              <FieldLabel note="optional">Specific spots</FieldLabel>
               {taggedPlaces.length > 0 && (
-                <View style={styles.tagRow}>
+                <View style={styles.slipRow}>
                   {taggedPlaces.map((place) => (
-                    <Pressable key={place.id} onPress={() => handleRemoveTag(place.id)}>
-                      <ThemedView type="backgroundSelected" style={styles.tagChip}>
-                        <ThemedText type="small">{place.name} ✕</ThemedText>
-                      </ThemedView>
-                    </Pressable>
+                    <PaperSlip key={place.id} label={place.name} seed={place.id} onPress={() => handleRemoveTag(place.id)} />
                   ))}
                 </View>
               )}
-              <Button label="Search for a spot" variant="secondary" onPress={() => setIsTagPickerOpen(true)} />
+              <HandLink label="+ add a specific spot" onPress={() => setIsTagPickerOpen(true)} />
             </View>
           )}
-        </PaperPanel>
+        </JournalPage>
 
         {selectedPlace &&
           (!savedVisitId ? (
-            <PaperPanel seed="form-1" accentIndex={1}>
+            <>
+            {/* Three panels where there was one. Everything from the rating
+                to the save button used to run down a single card, so the
+                review itself, the facts around it and how the card is
+                printed all read as one undifferentiated list. Grouped by
+                what each part IS: what you thought, when and with whom, and
+                what it will look like. */}
+            <JournalPage seed="form-1" accentIndex={1}>
+              <Chapter number={2} title="What did you make of it?" seed="form-1" />
               <View style={styles.section}>
-                <View style={styles.row}>
-                  <ThemedText type="sectionLabel">Rating</ThemedText>
-                  {rating != null && (
-                    <Pressable onPress={() => setRating(null)}>
-                      <ThemedText type="small" themeColor="textSecondary">
-                        Remove rating
-                      </ThemedText>
-                    </Pressable>
-                  )}
-                </View>
+                <FieldLabel
+                  note={rating == null ? 'optional' : undefined}
+                  action={rating != null ? <MarginAction label="clear" onPress={() => setRating(null)} /> : undefined}>
+                  Rating
+                </FieldLabel>
                 <RatingSliderWithPreview value={rating} onChange={setRating} />
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Photos</ThemedText>
+                <FieldLabel note={`${currentDraftId ? photoSlots.length : totalPhotoCount} of ${MAX_VISIT_PHOTOS}`}>
+                  Photos
+                </FieldLabel>
                 {currentDraftId ? (
                   <>
-                    {photoSlots.length > 0 && (
-                      <View style={styles.photoRow}>
+                    <View style={styles.photoRow}>
                         {photoSlots.map((slot, index) => (
                           <View key={slot.kind === 'existing' ? slot.id : slot.uri} style={styles.photoTile}>
                             <Pressable onPress={() => handleRecropDraftSlot(index)}>
@@ -860,25 +923,20 @@ export default function ReviewFormScreen() {
                             </View>
                           </View>
                         ))}
+                        {/* The next photo's corners, waiting. */}
+                        {photoSlots.length < MAX_VISIT_PHOTOS && (
+                          <EmptySlot kind="photo" note="add a photo" onPress={handleAddDraftPhoto} />
+                        )}
                       </View>
-                    )}
-                    {photoSlots.length < MAX_VISIT_PHOTOS && (
-                      <Button
-                        label={`Add photo (${photoSlots.length}/${MAX_VISIT_PHOTOS})`}
-                        variant="secondary"
-                        onPress={handleAddDraftPhoto}
-                      />
-                    )}
                     {photoSlots.length > 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="caption">
                         Tap a photo to recrop it, or use the arrows to reorder.
                       </ThemedText>
                     )}
                   </>
                 ) : (
                   <>
-                    {(pendingPhotos.length > 0 || uploadedPhotoUris.length > 0) && (
-                      <View style={styles.photoRow}>
+                    <View style={styles.photoRow}>
                         {pendingPhotos.map((asset, index) => (
                           <View key={asset.uri} style={styles.photoTile}>
                             <Pressable onPress={() => handleRecropPendingPhoto(index)}>
@@ -912,17 +970,12 @@ export default function ReviewFormScreen() {
                             </View>
                           </View>
                         ))}
+                        {totalPhotoCount < MAX_VISIT_PHOTOS && (
+                          <EmptySlot kind="photo" note="add a photo" onPress={handlePickPhoto} />
+                        )}
                       </View>
-                    )}
-                    {totalPhotoCount < MAX_VISIT_PHOTOS && (
-                      <Button
-                        label={`Add photo (${totalPhotoCount}/${MAX_VISIT_PHOTOS})`}
-                        variant="secondary"
-                        onPress={handlePickPhoto}
-                      />
-                    )}
                     {pendingPhotos.length > 0 && (
-                      <ThemedText type="small" themeColor="textSecondary">
+                      <ThemedText type="caption">
                         Tap a photo to recrop it, or use the arrows to reorder.
                       </ThemedText>
                     )}
@@ -931,69 +984,77 @@ export default function ReviewFormScreen() {
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Review</ThemedText>
-                <TextField
-                  placeholder="Review (optional)"
+                <FieldLabel note="optional">Review</FieldLabel>
+                {/* Written on the back of the card it will be printed on. */}
+                <PostcardBackField
+                  placeholder="What was it like?"
                   value={note}
                   onChangeText={setNote}
-                  multiline
+                  placeName={selectedPlace.name}
+                  region={regionFromBreadcrumb(breadcrumb)}
+                  postmark={formatVisitedPostmark(visitedOn)}
+                  seed={draftId ?? selectedPlace.id}
                 />
               </View>
 
               {tagVocabulary.length > 0 && (
                 <View style={styles.section}>
-                  <ThemedText type="sectionLabel">
-                    Tags (optional, up to {MAX_VISIT_TAGS})
-                  </ThemedText>
-                  <ThemedText type="small" themeColor="textSecondary">
-                    What was this place good for? These are how other people
-                    find it.
-                  </ThemedText>
+                  <FieldLabel note={`${selectedTags.length} of ${MAX_VISIT_TAGS}`}>Stickers</FieldLabel>
                   {/* The chosen ones stay on the form as the stickers they
                       will be; the whole vocabulary lives in its own sheet
                       rather than pushing the rest of the form off screen. */}
+                  <View style={styles.tagRow}>
+                    {selectedTags.map((tag) => (
+                      <Pressable
+                        key={tag.slug}
+                        onPress={() => handleToggleTag(tag.slug)}
+                        accessibilityLabel={`Remove ${tag.label}`}>
+                        <TagStickerGraphic slug={tag.slug} label={tag.label} interactive={false} showLabel />
+                      </Pressable>
+                    ))}
+                    {/* A sticker's outline where the next one goes. */}
+                    {selectedTags.length < MAX_VISIT_TAGS && (
+                      <EmptySlot kind="sticker" note="add a sticker" onPress={() => setIsTagSheetOpen(true)} />
+                    )}
+                  </View>
+                  {/* The same outlined button as "Add photo" and "Search
+                      for a spot". This was a line of green text, the one
+                      add-something action on the form that did not look
+                      like the others. */}
                   {selectedTags.length > 0 && (
-                    <View style={styles.tagRow}>
-                      {selectedTags.map((tag) => (
-                        <Pressable key={tag.slug} onPress={() => handleToggleTag(tag.slug)}>
-                          <TagSticker slug={tag.slug} label={tag.label} />
-                        </Pressable>
-                      ))}
-                    </View>
+                    <HandLink label="swap stickers" onPress={() => setIsTagSheetOpen(true)} />
                   )}
-                  <Pressable onPress={() => setIsTagSheetOpen(true)} hitSlop={6}>
-                    <ThemedText type="small" themeColor="sage">
-                      {selectedTags.length > 0 ? 'Edit tags' : 'Add tags'}
-                    </ThemedText>
-                  </Pressable>
                 </View>
               )}
 
+            </JournalPage>
+
+            <JournalPage seed="form-details" accentIndex={2}>
+              <Chapter
+                number={3}
+                title="When, and who with?"
+                seed="form-details"
+              />
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Date visited</ThemedText>
-                <DateCarousel value={visitedOn} onChange={setVisitedOn} />
+                <FieldLabel>Date visited</FieldLabel>
+                <DateCarousel value={visitedOn} onChange={setVisitedOn} typed />
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Tag people (optional)</ThemedText>
+                <FieldLabel note="optional">Who you were with</FieldLabel>
                 {taggedUsers.length > 0 && (
-                  <View style={styles.tagRow}>
+                  <View style={styles.slipRow}>
                     {taggedUsers.map((user) => (
-                      <Pressable key={user.id} onPress={() => handleRemovePerson(user.id)}>
-                        <ThemedView type="backgroundSelected" style={styles.tagChip}>
-                          <ThemedText type="small">
-                            {user.name ?? user.handle ?? 'Someone'} ✕
-                          </ThemedText>
-                        </ThemedView>
-                      </Pressable>
+                      <PaperSlip
+                        key={user.id}
+                        label={user.name ?? user.handle ?? 'Someone'}
+                        seed={user.id}
+                        onPress={() => handleRemovePerson(user.id)}
+                      />
                     ))}
                   </View>
                 )}
-                <TextField
-                  placeholder="Search by name or username..."
-                  value={peopleQuery}
-                  onChangeText={setPeopleQuery}
-                />
+                <LineField placeholder="write a name or @handle" value={peopleQuery} onChangeText={setPeopleQuery} />
                 {visiblePeopleSuggestions.map((user) => (
                   <Pressable key={user.id} onPress={() => handleSelectPerson(user)}>
                     <ThemedView type="backgroundSelected" style={styles.peopleSuggestionRow}>
@@ -1001,7 +1062,7 @@ export default function ReviewFormScreen() {
                       <View style={styles.peopleSuggestionInfo}>
                         <ThemedText type="small">{user.name ?? user.handle ?? 'Someone'}</ThemedText>
                         {user.handle && (
-                          <ThemedText type="small" themeColor="textSecondary">
+                          <ThemedText type="small" themeColor="textMeta">
                             @{user.handle}
                           </ThemedText>
                         )}
@@ -1017,71 +1078,54 @@ export default function ReviewFormScreen() {
                   chips under one heading that described both of them at
                   once, several sections away from the only thing on the form
                   that shows what they do. */}
+            </JournalPage>
+
+            <JournalPage seed="form-card" accentIndex={3}>
+              <Chapter number={4} title="Print your postcard" seed="form-card" />
+              {/* The two choices about the card, as little postcards. */}
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Postcard</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  How your card is printed.
-                </ThemedText>
-
-                <View style={styles.subSection}>
-                  <ThemedText type="smallBold">Which way up</ThemedText>
-                  <View style={styles.cardChoiceRow}>
-                    {(
-                      [
-                        ['Fit the photos', null],
-                        ['Landscape', 'horizontal'],
-                        ['Portrait', 'vertical'],
-                      ] as const
-                    ).map(([label, value]) => (
-                      <Pressable key={label} onPress={() => setCardOrientation(value)}>
-                        <ThemedView
-                          type={
-                            cardOrientation === value ? 'backgroundSelected' : 'backgroundElement'
-                          }
-                          style={styles.cardChoice}
-                        >
-                          <ThemedText type="small">{label}</ThemedText>
-                        </ThemedView>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-
-                <View style={styles.subSection}>
-                  <ThemedText type="smallBold">Which side it opens on</ThemedText>
-                  <View style={styles.cardChoiceRow}>
-                    {(
-                      [
-                        ['Picture', 'picture'],
-                        ['Message', 'message'],
-                      ] as const
-                    ).map(([label, value]) => (
-                      <Pressable key={value} onPress={() => setCardSide(value)}>
-                        <ThemedView
-                          // Null is not "neither" — VisitCard only starts a
-                          // card flipped when the side is 'message', so an
-                          // unset card opens on the picture. Showing nothing
-                          // selected described a state the card never has.
-                          type={
-                            (cardSide ?? 'picture') === value
-                              ? 'backgroundSelected'
-                              : 'backgroundElement'
-                          }
-                          style={styles.cardChoice}
-                        >
-                          <ThemedText type="small">{label}</ThemedText>
-                        </ThemedView>
-                      </Pressable>
-                    ))}
-                  </View>
+                <FieldLabel>Which way up</FieldLabel>
+                <View style={styles.cardChoiceRow}>
+                  {(
+                    [
+                      ['fit photos', null, 'fit'],
+                      ['landscape', 'horizontal', 'landscape'],
+                      ['portrait', 'vertical', 'portrait'],
+                    ] as const
+                  ).map(([label, value, shape]) => (
+                    <CardChoice
+                      key={label}
+                      shape={shape}
+                      label={label}
+                      selected={cardOrientation === value}
+                      onPress={() => setCardOrientation(value)}
+                    />
+                  ))}
                 </View>
               </View>
 
               <View style={styles.section}>
-                <ThemedText type="sectionLabel">Preview</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  How this will look on the feed.
-                </ThemedText>
+                <FieldLabel>Opens on</FieldLabel>
+                <View style={styles.cardChoiceRow}>
+                  {(
+                    [
+                      ['picture', 'picture'],
+                      ['message', 'message'],
+                    ] as const
+                  ).map(([label, value]) => (
+                    <CardChoice
+                      key={value}
+                      shape={value}
+                      label={label}
+                      selected={(cardSide ?? 'picture') === value}
+                      onPress={() => setCardSide(value)}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.section}>
+                <FieldLabel note="as it'll arrive">Preview</FieldLabel>
                 {/* The real feed card, not a lookalike.
                     This used to be a headline block and a photo grid
                     assembled to resemble one, which stopped being true the
@@ -1092,6 +1136,9 @@ export default function ReviewFormScreen() {
                     only preview that can stay accurate is the component
                     itself. */}
                 <VisitCard
+                  // On the journal page's paper, not the screen: its fade-in
+                  // cover and byline backing take that colour.
+                  revealCover={Colors.backgroundElement}
                   visit={previewVisit}
                   photoUrls={previewPhotoUrls}
                   avatarUrl={undefined}
@@ -1103,15 +1150,20 @@ export default function ReviewFormScreen() {
                 />
               </View>
 
+              {errorLine}
+
               <Button
                 label={currentDraftId ? 'Publish' : 'Save visit'}
                 onPress={handleSaveVisit}
                 loading={isSavingVisit}
               />
-            </PaperPanel>
+            </JournalPage>
+            </>
           ) : (
-            <PaperPanel seed="form-2" accentIndex={2}>
-              <ThemedText type="small">Visit saved.</ThemedText>
+            <JournalPage seed="form-2" accentIndex={2}>
+              <Chapter number={5} title="Posted." seed="form-2" />
+
+              {errorLine}
 
               {uploadedPhotoUris.length > 0 && (
                 <View style={styles.photoRow}>
@@ -1140,6 +1192,20 @@ export default function ReviewFormScreen() {
 
               <SaveToBoard visitId={savedVisitId} isOwnerOrTagged />
 
+              {startedTripOn && session && (
+                <>
+                  <ThemedText type="small" themeColor="sage">
+                    Your trip has started. Reviews you post there from here on join it.
+                  </ThemedText>
+                  <Button
+                    label="Open your trip"
+                    onPress={() =>
+                      router.replace({ pathname: '/trip', params: { user: session.user.id, start: startedTripOn } })
+                    }
+                  />
+                </>
+              )}
+
               {/* goBack() (not a fixed destination) is what makes "back
                   to your remaining drafts after a bulk upload" fall out for
                   free: a draft was reached by pushing this screen ON TOP of
@@ -1150,7 +1216,7 @@ export default function ReviewFormScreen() {
                   started from instead, same as this screen's own header
                   back button already does. */}
               <Button label="Done" onPress={() => goBack()} />
-            </PaperPanel>
+            </JournalPage>
           ))}
 
         </KeyboardAwareScroll>
@@ -1198,6 +1264,21 @@ export default function ReviewFormScreen() {
   );
 }
 
+
+// "Minnesota, United States" out of the stored breadcrumb, which runs from the
+// continent down to the place itself: "North America > United States >
+// Minnesota > Minneapolis". That wrapped to two lines and opened by repeating
+// the bold name directly above it. The two nearest parents, nearest first, are
+// what the postcard prints under a place name, so the form now says the same
+// thing the card will.
+function regionFromBreadcrumb(crumb: string): string {
+  const parts = crumb
+    .split('>')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.slice(0, -1).reverse().slice(0, 2).join(', ');
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1220,7 +1301,7 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three,
-    gap: Spacing.three,
+    gap: Spacing.four,
   },
   suggestionRow: {
     paddingVertical: Spacing.three,
@@ -1256,14 +1337,16 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.half,
   },
+  destinationKicker: {
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  destination: {
+    fontSize: 26,
+    lineHeight: 28,
+  },
   section: {
     gap: Spacing.two,
-  },
-  // A labelled choice inside a section. Tighter than the gap between
-  // sections, so the two postcard choices read as two parts of one decision
-  // rather than as two more items in the form's flat run.
-  subSection: {
-    gap: Spacing.one,
   },
   row: {
     flexDirection: 'row',
@@ -1275,14 +1358,24 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     flexWrap: 'wrap',
   },
+  // Prints with a white border, like the photos stuck into an album, sized
+  // to sit beside the empty slot that waits for the next one.
   photoThumbnail: {
-    width: 64,
-    height: 64,
-    borderRadius: Spacing.two,
+    width: 72,
+    height: 72,
+    borderRadius: 1,
+    borderWidth: 3,
+    borderColor: '#f3eedb',
   },
   photoTile: {
-    width: 64,
-    height: 64,
+    width: 72,
+    height: 72,
+  },
+  slipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    paddingVertical: Spacing.half,
   },
   reorderRow: {
     position: 'absolute',
@@ -1314,8 +1407,12 @@ const styles = StyleSheet.create({
   },
   tagRow: {
     flexDirection: 'row',
-    gap: Spacing.two,
+    gap: Spacing.two + 2,
     flexWrap: 'wrap',
+    // The large stickers are tilted, and a tilted sticker's corner pokes past
+    // its own box -- the padding keeps a corner from touching the line above
+    // or the button below.
+    paddingVertical: Spacing.half,
   },
   // Tag-people suggestions specifically — an avatar-led row (name over
   // @handle), unlike the plain-text suggestionRow place suggestions use.
@@ -1331,19 +1428,10 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.half,
   },
-  tagChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
-  },
   cardChoiceRow: {
     flexDirection: "row",
     flexWrap: "wrap",
+    alignItems: "flex-end",
     gap: Spacing.two,
-  },
-  cardChoice: {
-    paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
   },
 });

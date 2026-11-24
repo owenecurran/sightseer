@@ -131,7 +131,7 @@ export default function TutorialScreen() {
           {/* Always reachable, from the first frame. A tutorial you cannot
               leave is worse than no tutorial. */}
           <Pressable onPress={markSeen} hitSlop={12} style={styles.skip}>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="action">
               Skip
             </ThemedText>
           </Pressable>
@@ -143,9 +143,9 @@ export default function TutorialScreen() {
               <ThemedText type="displaySerif" style={styles.title}>
                 Every review is a postcard
               </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.blurb}>
+              <ThemedText type="caption" style={styles.blurb}>
                 The picture is the front. The review, the rating and the tags are all on the
-                back — drag across the card, or press TURN OVER, to read it.
+                back. Drag across the card, or press TURN OVER, to read it.
               </ThemedText>
 
               <View style={styles.cardWrap}>
@@ -234,7 +234,7 @@ export default function TutorialScreen() {
                 <View style={styles.doneRow}>
                   <Ionicons name="checkmark-circle" size={18} color={BrandColors.sage} />
                   <ThemedText type="small" themeColor="sage">
-                    That&apos;s it &mdash; you&apos;ve got it.
+                    That&apos;s it. You&apos;ve got it.
                   </ThemedText>
                 </View>
               ) : showFlipHelp ? (
@@ -246,7 +246,7 @@ export default function TutorialScreen() {
                   </ThemedText>
                 </Pressable>
               ) : (
-                <ThemedText type="small" themeColor="textSecondary">
+                <ThemedText type="caption">
                   Give it a try.
                 </ThemedText>
               )}
@@ -258,8 +258,8 @@ export default function TutorialScreen() {
               <ThemedText type="displaySerif" style={styles.title}>
                 Write one yourself
               </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.blurb}>
-                The + button in the bar at the bottom. Pick a place, rate it, add a photo — the
+              <ThemedText type="caption" style={styles.blurb}>
+                The + button in the bar at the bottom. Pick a place, rate it, add a photo, and the
                 card prints itself.
               </ThemedText>
 
@@ -282,7 +282,7 @@ export default function TutorialScreen() {
               <ThemedText type="displaySerif" style={styles.title}>
                 Keep them together
               </ThemedText>
-              <ThemedText type="small" themeColor="textSecondary" style={styles.blurb}>
+              <ThemedText type="caption" style={styles.blurb}>
                 A board is a list worth sharing. A travel book is one trip, in order. Both live
                 under the bookmark tab.
               </ThemedText>
@@ -295,7 +295,7 @@ export default function TutorialScreen() {
                   contentStyle={styles.ticketBody}>
                   <View style={styles.ticketText}>
                     <ThemedText type="smallBold">Best coffee in Seattle</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="meta">
                       A board · 6 places
                     </ThemedText>
                   </View>
@@ -307,7 +307,7 @@ export default function TutorialScreen() {
                   contentStyle={styles.ticketBody}>
                   <View style={styles.ticketText}>
                     <ThemedText type="smallBold">Seattle, August</ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
+                    <ThemedText type="meta">
                       A travel book · 2 days
                     </ThemedText>
                   </View>

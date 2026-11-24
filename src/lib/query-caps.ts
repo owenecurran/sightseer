@@ -61,5 +61,5 @@ export function reportIfCapped(label: string, rows: unknown[] | null | undefined
   // message, so a screen somebody opens repeatedly does not fill the table.
   // reportError logs to the console on the way past, so development sees it
   // immediately too.
-  reportError('query-cap', `${label} hit its row cap of ${cap} — rows beyond it were not loaded`);
+  reportError('query-cap', `${label} hit its row cap of ${cap}. Rows beyond it were not loaded`);
 }

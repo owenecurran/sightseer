@@ -2,14 +2,14 @@ import { useFocusEffect } from "expo-router";
 import { BackLink } from '@/components/ui/back-link';
 import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated from "react-native-reanimated";
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { PageLoader } from "@/components/ui/page-loader";
 import { VisitCard } from "@/components/visit-card";
-import { MaxContentWidth, Spacing, TopTabInset } from "@/constants/theme";
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from "@/constants/theme";
 import { useBottomTabInset } from "@/hooks/use-bottom-tab-inset";
 import { useHideOnScrollHandler } from "@/hooks/use-hide-on-scroll";
 import { useAuth } from "@/lib/auth-context";
@@ -22,6 +22,7 @@ import {
   untagSelf,
   type TaggedVisit,
 } from "@/lib/tagged-visits";
+import { userErrorMessage } from '@/lib/user-error';
 
 // An absolute ceiling (px) on how far a rating stamp may rise above its
 // own block's bottom edge, applied to this screen only — per direct
@@ -73,9 +74,7 @@ export default function TaggedInScreen() {
           setAvatarUrls(avatars);
         } catch (err) {
           setError(
-            err instanceof Error
-              ? err.message
-              : "Could not load posts you’re tagged in.",
+            userErrorMessage(err, "Could not load posts you’re tagged in."),
           );
         } finally {
           setHasLoadedOnce(true);
@@ -108,7 +107,7 @@ export default function TaggedInScreen() {
       );
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Could not update that like.",
+        userErrorMessage(err, "Could not update that like."),
       );
     }
   }
@@ -129,7 +128,7 @@ export default function TaggedInScreen() {
       return;
     }
     if (result === "error") {
-      setError("Could not copy that visit — please try again.");
+      setError("Could not copy that visit. Please try again.");
       return;
     }
     if (result === "copied") {
@@ -158,23 +157,23 @@ export default function TaggedInScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <View style={styles.header}>
           <BackLink seed="tagged-in" />
           <ThemedText type="displaySerif">Tagged in</ThemedText>
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
           {visits.length === 0 && !error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               Not tagged in anything yet.
             </ThemedText>
           )}
         </View>
 
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -206,7 +205,7 @@ export default function TaggedInScreen() {
             />
             </View>
           ))}
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );

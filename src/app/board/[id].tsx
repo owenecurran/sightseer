@@ -13,10 +13,11 @@ import { RankedListView } from '@/components/board-views/ranked-list-view';
 import { SaveCollectionButton } from '@/components/save-collection-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { CircledTabs } from '@/components/ui/circled-tabs';
 import { LoadableImage } from '@/components/ui/loadable-image';
 import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
@@ -43,6 +44,9 @@ import {
   unsaveBoardForUpdates,
 } from '@/lib/saved-collections';
 import { supabase } from '@/lib/supabase';
+import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 type BoardRow = Database['public']['Tables']['boards']['Row'];
 
@@ -55,7 +59,9 @@ const VIEW_MODES: { key: CollectionViewMode; label: string }[] = [
 ];
 
 export default function BoardDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `missing` is set by New board when the board was made but its cover
+  // did not upload.
+  const { id, missing } = useLocalSearchParams<{ id: string; missing?: string }>();
   const { session } = useAuth();
   const bottomInset = useBottomTabInset();
   const [board, setBoard] = useState<BoardRow | null>(null);
@@ -141,7 +147,7 @@ export default function BoardDetailScreen() {
           setOwnRatings(await getOwnRatingsForPlaces(session.user.id, placeIds));
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Could not load this board.');
+        setError(userErrorMessage(err, 'Could not load this board.'));
       } finally {
         setHasLoadedOnce(true);
       }
@@ -153,7 +159,7 @@ export default function BoardDetailScreen() {
     setError(null);
     const { error: deleteError } = await supabase.from('board_items').delete().eq('id', itemId);
     if (deleteError) {
-      setError(deleteError.message);
+      setError(userErrorMessage(deleteError, 'Could not remove that from the board.'));
       return;
     }
     setItems((prev) => prev.filter((item) => item.id !== itemId));
@@ -168,7 +174,7 @@ export default function BoardDetailScreen() {
     try {
       await reorderBoardItems(orderedItems.map((item) => item.id));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that order.');
+      setError(userErrorMessage(err, 'Could not save that order.'));
     }
   }
 
@@ -180,7 +186,7 @@ export default function BoardDetailScreen() {
       await saveBoardForUpdates(session.user.id, board.id, false);
       setSavedState({ notifyOnNewItems: false });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that board.');
+      setError(userErrorMessage(err, 'Could not save that board.'));
     } finally {
       setIsSaving(false);
     }
@@ -194,7 +200,7 @@ export default function BoardDetailScreen() {
       await unsaveBoardForUpdates(session.user.id, board.id);
       setSavedState(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not unsave that board.');
+      setError(userErrorMessage(err, 'Could not unsave that board.'));
     } finally {
       setIsSaving(false);
     }
@@ -207,7 +213,7 @@ export default function BoardDetailScreen() {
     try {
       await setSavedBoardNotify(session.user.id, board.id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update notifications.');
+      setError(userErrorMessage(err, 'Could not update notifications.'));
     }
   }
 
@@ -224,7 +230,7 @@ export default function BoardDetailScreen() {
       if (isChecked) await uncheckBoardItem(session.user.id, item.id);
       else await checkBoardItem(session.user.id, board.id, item.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that checklist item.');
+      setError(userErrorMessage(err, 'Could not update that checklist item.'));
       setCheckedItemIds((prev) => {
         const next = new Set(prev);
         if (isChecked) next.add(item.id);
@@ -241,7 +247,7 @@ export default function BoardDetailScreen() {
       await setBoardCoverPhoto(board.id, photoId);
       setBoard({ ...board, cover_photo_id: photoId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not set that cover photo.');
+      setError(userErrorMessage(err, 'Could not set that cover photo.'));
     }
   }
 
@@ -249,7 +255,7 @@ export default function BoardDetailScreen() {
     if (!board) return;
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -261,7 +267,7 @@ export default function BoardDetailScreen() {
       const urls = await getCoverViewUrls('boards', [board.id]);
       setCustomCoverUrl(urls[board.id]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not upload that cover photo.');
+      setError(userErrorMessage(err, 'Could not upload that cover photo.'));
     } finally {
       setIsUploadingCover(false);
     }
@@ -277,7 +283,7 @@ export default function BoardDetailScreen() {
 
   return (
     <ThemedView type="screen" style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <View style={styles.header}>
           <BackLink seed="[id]" />
 
@@ -289,7 +295,7 @@ export default function BoardDetailScreen() {
 
           <StretchText type="headline">{board?.name ?? 'Board'}</StretchText>
           {board?.description && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               {board.description}
             </ThemedText>
           )}
@@ -302,6 +308,12 @@ export default function BoardDetailScreen() {
             </Pressable>
           )}
 
+          {missing === 'cover' && isOwner && !customCoverUrl && (
+            <ThemedText type="small" themeColor="danger">
+              The board was made, but its cover photo did not upload. Add it again above.
+            </ThemedText>
+          )}
+
           {isOwner && board && (
             <Pressable onPress={() => router.push({ pathname: '/board/[id]/settings', params: { id: board.id } })}>
               <ThemedText type="small" themeColor="sage">
@@ -310,7 +322,8 @@ export default function BoardDetailScreen() {
             </Pressable>
           )}
 
-          {!isOwner && session && (
+          {/* Not for a board that failed to load: there is nothing to save. */}
+          {!isOwner && session && board && (
             <SaveCollectionButton
               isSaved={savedState != null}
               notifyOnNewItems={savedState?.notifyOnNewItems ?? false}
@@ -321,28 +334,25 @@ export default function BoardDetailScreen() {
             />
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <ErrorNotice message={error} />}
 
-          <View style={styles.modeRow}>
-            {VIEW_MODES.filter((mode) => mode.key !== 'ranked' || board?.list_style === 'ranked').map((mode) => (
-              <Pressable key={mode.key} onPress={() => setViewMode(mode.key)}>
-                <ThemedView type={viewMode === mode.key ? 'backgroundSelected' : 'backgroundElement'} style={styles.modeChip}>
-                  <ThemedText type="small" themeColor={viewMode === mode.key ? 'text' : 'textSecondary'}>
-                    {mode.label}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
-            ))}
-          </View>
+          {/* Typed and ringed in pen, as Search's filters and the feed's
+              switcher are, where these were the last pill chips of their
+              kind. Not for a board that failed to load. */}
+          {board && (
+            <CircledTabs
+              items={VIEW_MODES.filter((mode) => available.includes(mode.key))}
+              active={viewMode}
+              onChange={setViewMode}
+            />
+          )}
         </View>
 
+        {/* A failed load has no items either; the empty line is only for a
+            board that loaded and is empty. */}
         {items.length === 0 ? (
-          <View style={styles.emptyState}>
-            <ThemedText type="small" themeColor="textSecondary">
+          board && <View style={styles.emptyState}>
+            <ThemedText type="caption">
               No reviews saved to this board yet.
             </ThemedText>
           </View>
@@ -421,17 +431,6 @@ const styles = StyleSheet.create({
   cover: {
     width: '100%',
     height: '100%',
-  },
-  modeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-    marginTop: Spacing.one,
-  },
-  modeChip: {
-    paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
   },
   emptyState: {
     flex: 1,

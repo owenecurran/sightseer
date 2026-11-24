@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated from 'react-native-reanimated';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
@@ -11,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Button } from '@/components/ui/button';
 import { PageLoader } from '@/components/ui/page-loader';
 import { TextField } from '@/components/ui/text-field';
+import { FormError } from '@/components/ui/error-notice';
 import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
@@ -24,6 +25,8 @@ import { useAuth } from '@/lib/auth-context';
 import { uploadCoverPhoto } from '@/lib/covers';
 import { pickImageFromLibrary } from '@/lib/image-picker';
 import { goBack } from '@/lib/navigation';
+import { userErrorMessage } from '@/lib/user-error';
+import { PHOTOS_NEEDED } from '@/lib/permissions';
 
 // One screen for both create and edit (?id=), same pattern review-form.tsx
 // already uses for a fresh review vs. resuming a draft — the form/fields are
@@ -57,14 +60,14 @@ export default function ArticleComposeScreen() {
         setBody(article.body);
         setPublished(article.published);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load that article.'))
+      .catch((err) => setError(userErrorMessage(err, 'Could not load that article.')))
       .finally(() => setHasLoadedOnce(true));
   }, [id]);
 
   async function handlePickCover() {
     const result = await pickImageFromLibrary();
     if (result === 'denied') {
-      setError('Photo library permission is required.');
+      setError(PHOTOS_NEEDED);
       return;
     }
     if (!result) return;
@@ -94,7 +97,7 @@ export default function ArticleComposeScreen() {
       }
       goBack();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save that article.');
+      setError(userErrorMessage(err, 'Could not save that article.'));
     } finally {
       setIsSaving(false);
     }
@@ -107,7 +110,7 @@ export default function ArticleComposeScreen() {
     try {
       await setArticlePublished(id, next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update publish state.');
+      setError(userErrorMessage(err, 'Could not update publish state.'));
       setPublished(!next);
     }
   }
@@ -117,7 +120,7 @@ export default function ArticleComposeScreen() {
   return (
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Animated.ScrollView
+        <KeyboardAwareScroll
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
           onScroll={scrollHandler}
@@ -129,7 +132,7 @@ export default function ArticleComposeScreen() {
           <TextField placeholder="Title" value={title} onChangeText={setTitle} />
           <TextField placeholder="Subtitle (optional)" value={subtitle} onChangeText={setSubtitle} />
           <TextField
-            placeholder="Write the article — separate paragraphs with a blank line"
+            placeholder="Write the article. Separate paragraphs with a blank line."
             value={body}
             onChangeText={setBody}
             multiline
@@ -146,16 +149,12 @@ export default function ArticleComposeScreen() {
             <CheckboxRow
               accentIndex={2}
               checked={published}
-              label="Published — visible to everyone"
+              label="Published: visible to everyone"
               onPress={handleTogglePublished}
             />
           )}
 
-          {error && (
-            <ThemedText type="small" themeColor="textSecondary">
-              {error}
-            </ThemedText>
-          )}
+          {error && <FormError message={error} />}
 
           <Button
             label={id ? 'Save changes' : 'Save draft'}
@@ -164,11 +163,11 @@ export default function ArticleComposeScreen() {
             disabled={!title.trim() || !body.trim()}
           />
           {!id && (
-            <ThemedText type="small" themeColor="textSecondary">
-              New articles start unpublished — publish it from the edit screen once it's ready.
+            <ThemedText type="caption">
+              New articles start unpublished. Publish it from the edit screen once it's ready.
             </ThemedText>
           )}
-        </Animated.ScrollView>
+        </KeyboardAwareScroll>
       </SafeAreaView>
     </ThemedView>
   );

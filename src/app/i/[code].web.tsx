@@ -132,7 +132,7 @@ export default function InviteLandingRoute() {
             {outcome === 'rejected' && 'That link cannot be used.'}
           </ThemedText>
 
-          <ThemedText type="body" themeColor="textSecondary" style={styles.centered}>
+          <ThemedText type="lead" style={styles.centered}>
             {outcome === 'working' &&
               'One moment while we check whether this invite can be applied to your account.'}
             {outcome === 'redeemed' &&

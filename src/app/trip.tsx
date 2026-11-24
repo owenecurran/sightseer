@@ -10,7 +10,7 @@ import { TripDayReviews } from '@/components/trip-day-reviews';
 import { TripMapSquare } from '@/components/trip-map-square';
 import { PageLoader } from '@/components/ui/page-loader';
 import { StretchText } from '@/components/ui/stretch-text';
-import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
+import { MaxContentWidth, ScrollScreenEdges, Spacing, TopTabInset } from '@/constants/theme';
 import { useBottomTabInset } from '@/hooks/use-bottom-tab-inset';
 import { useHideOnScrollHandler } from '@/hooks/use-hide-on-scroll';
 import { useAuth } from '@/lib/auth-context';
@@ -20,6 +20,8 @@ import { likeVisit, unlikeVisit, type FeedVisit } from '@/lib/feed';
 import { getPhotoViewUrls } from '@/lib/photo-view';
 import { shareText } from '@/lib/share';
 import { excludeVisitFromTrip, getTripsForUsers, type Trip } from '@/lib/trips';
+import { userErrorMessage } from '@/lib/user-error';
+import { ErrorNotice } from '@/components/ui/error-notice';
 
 // Every day of one trip, scrollable — the feed only ever previews a single
 // day of a long trip (see TripGroupCard), and this is where "see all N
@@ -62,7 +64,7 @@ export default function TripScreen() {
           setPhotoUrls(photos);
           setAvatarUrls(avatars);
         } catch (err) {
-          setError(err instanceof Error ? err.message : 'Could not load this trip.');
+          setError(userErrorMessage(err, 'Could not load this trip.'));
         } finally {
           setHasLoadedOnce(true);
         }
@@ -86,7 +88,7 @@ export default function TripScreen() {
         }))
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not update that like.');
+      setError(userErrorMessage(err, 'Could not update that like.'));
     }
   }
 
@@ -112,7 +114,7 @@ export default function TripScreen() {
     try {
       await excludeVisitFromTrip(session.user.id, visitId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove that review from the trip.');
+      setError(userErrorMessage(err, 'Could not remove that review from the trip.'));
     }
   }
 
@@ -128,7 +130,7 @@ export default function TripScreen() {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView edges={ScrollScreenEdges} style={styles.safeArea}>
         <Animated.ScrollView
           contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
           showsVerticalScrollIndicator={false}
@@ -137,7 +139,7 @@ export default function TripScreen() {
           <BackLink seed="trip" />
 
           {!trip ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption">
               {error ?? 'This trip is no longer available.'}
             </ThemedText>
           ) : (
@@ -152,18 +154,14 @@ export default function TripScreen() {
                   <StretchText type="headline" fill>
                     {trip.areaName}
                   </StretchText>
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <ThemedText type="meta">
                     {allVisits.length} review{allVisits.length === 1 ? '' : 's'} · {days.length} day
                     {days.length === 1 ? '' : 's'}
                   </ThemedText>
                 </View>
               </View>
 
-              {error && (
-                <ThemedText type="small" themeColor="textSecondary">
-                  {error}
-                </ThemedText>
-              )}
+              {error && <ErrorNotice message={error} />}
 
               {/* Newest first, same order as the feed's own preview — the
                   day number stays chronological. */}

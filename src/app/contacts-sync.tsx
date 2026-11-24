@@ -28,10 +28,11 @@ export default function ContactsSyncScreen() {
     <ThemedView type="screen" style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <BackLink seed="contacts-sync" />
-        {/* The step centres in the room left over rather than sitting under
-            the back link. A short form pinned to the top of a tall screen
-            reads as the top of something longer that failed to load. */}
-        <View style={styles.center}>
+        {/* Only the room to fill. The step centres itself inside it — and on
+            the phone step it has to, because that centring belongs to the
+            same scroll view that lifts the field above the keyboard, and a
+            second justifyContent out here would just fight it. */}
+        <View style={styles.fill}>
           <FindFriendsStep step={step} />
         </View>
       </SafeAreaView>
@@ -43,13 +44,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  center: {
+  fill: {
     flex: 1,
-    justifyContent: 'center',
-    gap: Spacing.four,
-    // Lifted off dead centre: the keyboard takes the lower half the moment
-    // the field is touched, and true centring puts the field under it.
-    paddingBottom: Spacing.six,
   },
   safeArea: {
     flex: 1,

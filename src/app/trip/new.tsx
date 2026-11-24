@@ -14,6 +14,7 @@ import { MaxContentWidth, Spacing, TopTabInset } from '@/constants/theme';
 import { useAuth } from '@/lib/auth-context';
 import type { Database } from '@/lib/database.types';
 import { createManualTrip, getVisitRangeForPlace } from '@/lib/trips';
+import { userErrorMessage } from '@/lib/user-error';
 
 type PlaceRow = Database['public']['Tables']['places']['Row'];
 
@@ -30,6 +31,9 @@ export default function NewTripScreen() {
   // Derived from the chosen destination, never entered by hand — the dates
   // are a fact about the reviews already posted there.
   const [range, setRange] = useState<{ startDate: string; endDate: string; visitCount: number } | null>(null);
+  // Picked somewhere with no reviews of yours yet: the trip has nothing to
+  // be made of, so the screen offers to start it with a first review instead.
+  const [isEmpty, setIsEmpty] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,14 +44,15 @@ export default function NewTripScreen() {
     setIsPickerOpen(false);
     setError(null);
     setRange(null);
+    setIsEmpty(false);
     if (!session) return;
     setIsResolving(true);
     try {
       const found = await getVisitRangeForPlace(session.user.id, selected.id);
       setRange(found);
-      if (!found) setError(`No reviews in ${selected.name} yet — post one there first.`);
+      setIsEmpty(!found);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not work out those dates.');
+      setError(userErrorMessage(err, 'Could not work out those dates.'));
     } finally {
       setIsResolving(false);
     }
@@ -63,7 +68,7 @@ export default function NewTripScreen() {
       // it's viewable the moment it exists.
       router.replace({ pathname: '/trip', params: { user: session.user.id, start: range.startDate } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create that trip.');
+      setError(userErrorMessage(err, 'Could not create that trip.'));
       setIsCreating(false);
     }
   }
@@ -75,7 +80,7 @@ export default function NewTripScreen() {
           <BackLink seed="new" />
 
           <ThemedText type="displaySerif">New trip</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="caption">
             Pick where you went and we'll work out the dates from your reviews there. You can drop
             any that don't belong once the trip exists.
           </ThemedText>
@@ -91,7 +96,7 @@ export default function NewTripScreen() {
               </ThemedView>
             </Pressable>
             {isResolving && (
-              <ThemedText type="small" themeColor="textSecondary">
+              <ThemedText type="caption">
                 Finding your reviews there…
               </ThemedText>
             )}
@@ -103,18 +108,39 @@ export default function NewTripScreen() {
             )}
           </PaperPanel>
 
+          {/* A trip is made of the reviews you posted there, so with none
+              there was only an error. This starts one instead: write the
+              first review, and the trip begins with it. */}
+          {isEmpty && place && (
+            <PaperPanel seed="trip-first-review" accentIndex={4}>
+              <ThemedText type="sectionLabel">Start it with a review</ThemedText>
+              <ThemedText type="caption">
+                You haven&apos;t reviewed anywhere in {place.name} yet. Write your first review there and
+                your trip starts with it.
+              </ThemedText>
+              <Button
+                label={`Review somewhere in ${place.name}`}
+                onPress={() =>
+                  router.push({ pathname: '/review-form', params: { placeId: place.id, startTrip: place.id } })
+                }
+              />
+            </PaperPanel>
+          )}
+
           {error && (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="small" themeColor="danger">
               {error}
             </ThemedText>
           )}
 
-          <Button
-            label="Create trip"
-            onPress={handleCreate}
-            loading={isCreating}
-            disabled={!range}
-          />
+          {!isEmpty && (
+            <Button
+              label="Create trip"
+              onPress={handleCreate}
+              loading={isCreating}
+              disabled={!range}
+            />
+          )}
         </KeyboardAwareScroll>
 
         <LocationSearchModal

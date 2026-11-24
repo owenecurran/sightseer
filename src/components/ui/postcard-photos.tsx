@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { PhotoLightbox } from '@/components/photo-lightbox';
@@ -14,6 +14,8 @@ type PostcardPhotosProps = {
   // fraction of the frame and the full image is far more resolution than it
   // can show.
   thumbUrls?: string[];
+  // Home feed tiles use preview-size images. The lightbox still uses urls.
+  preferThumbnails?: boolean;
   orientation: PostcardOrientation;
   // Overrides the frame the photos are fitted into. A picture tipped onto a
   // written card is a print on one half of the sheet, not the sheet's own
@@ -51,31 +53,54 @@ type PostcardPhotosProps = {
 export function PostcardPhotos({
   urls,
   thumbUrls,
+  preferThumbnails,
   orientation,
   frameRatio,
   onDoubleTap,
   onReady,
 }: PostcardPhotosProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [failedPreviews, setFailedPreviews] = useState<ReadonlySet<string>>(() => new Set());
   const openAt = useCallback((index: number) => setSelectedIndex(index), []);
   const handleTilePress = usePhotoTaps(openAt, onDoubleTap);
 
   // Which tiles have their picture. A ref rather than state because nothing
   // here re-renders on it — the card above is the only thing that cares, and
   // it is told once, when the last one lands.
-  const loaded = useRef<Set<number>>(new Set());
-  const announced = useRef(false);
+  // Identifies the current set of pictures, so a card reused for a different
+  // review can be told apart from the one it was showing before.
   const key = urls.join(',');
-  useEffect(() => {
-    // A different review reusing this component starts over.
-    loaded.current = new Set();
-    announced.current = false;
-  }, [key]);
+
+  // Which tiles have their picture, and which set of pictures that is for.
+  //
+  // One ref holding both, and the key is checked when a tile REPORTS rather
+  // than reset in an effect. That ordering is the whole point: an effect runs
+  // after the commit, and a picture already in expo-image's memory cache can
+  // report itself loaded within that same commit -- which is exactly what
+  // happens when somebody leaves a tab and comes back. The tile called
+  // reportLoaded, then the effect wiped the set it had just written to. Those
+  // images never fire onLoad again, so the count could never reach tileCount,
+  // onReady was never called, and the card sat invisible until the
+  // four-second timeout in VisitCard rescued it.
+  //
+  // Checking at report time cannot lose a report, whatever order the commit
+  // and the cache hit happen in. A ref rather than state because nothing here
+  // re-renders on it: the card above is told once, when the last one lands.
+  const progress = useRef<{ key: string; loaded: Set<number>; announced: boolean }>({
+    key: '',
+    loaded: new Set(),
+    announced: false,
+  });
 
   if (urls.length === 0) return null;
 
-  // Falls back per index, so a photo without a derivative still renders.
-  const displayUrls = urls.length > 1 && thumbUrls ? urls.map((url, i) => thumbUrls[i] ?? url) : urls;
+  // Fall back to the original if its derivative is missing or fails to load.
+  const displayUrls = thumbUrls && (preferThumbnails || urls.length > 1)
+    ? urls.map((url, index) => {
+        const thumb = thumbUrls[index];
+        return thumb && !failedPreviews.has(thumb) ? thumb : url;
+      })
+    : urls;
 
   const fit = urls.length === 1 ? 'contain' : 'cover';
 
@@ -85,9 +110,17 @@ export function PostcardPhotos({
   const tileCount = Math.min(urls.length, 4);
 
   const reportLoaded = (index: number) => {
-    loaded.current.add(index);
-    if (announced.current || loaded.current.size < tileCount) return;
-    announced.current = true;
+    const p = progress.current;
+    // A different review reusing this component starts over, decided here so
+    // the first report of a new set cannot land in the previous one's tally.
+    if (p.key !== key) {
+      p.key = key;
+      p.loaded = new Set();
+      p.announced = false;
+    }
+    p.loaded.add(index);
+    if (p.announced || p.loaded.size < tileCount) return;
+    p.announced = true;
     onReady?.();
   };
 
@@ -103,8 +136,9 @@ export function PostcardPhotos({
     // shape — loaded the full 2048px original with nothing on screen behind
     // it, while its 800px derivative sat unused in the bucket.
     const placeholderUrl = thumbUrls?.[index];
-    const placeholder =
-      placeholderUrl && placeholderUrl !== displayUrls[index] ? { uri: placeholderUrl } : undefined;
+    const placeholder = placeholderUrl && placeholderUrl !== displayUrls[index] && !failedPreviews.has(placeholderUrl)
+      ? { uri: placeholderUrl }
+      : undefined;
 
     return (
       <Pressable style={styles.tile} onPress={guardCardPress(() => handleTilePress(index))}>
@@ -114,7 +148,11 @@ export function PostcardPhotos({
           style={styles.fill}
           contentFit={fit}
           onLoad={() => reportLoaded(index)}
-          onError={() => reportLoaded(index)}
+          onError={() => {
+            const displayed = displayUrls[index];
+            if (displayed === urls[index]) reportLoaded(index);
+            else setFailedPreviews((failed) => new Set([...failed, displayed]));
+          }}
         />
       </Pressable>
     );

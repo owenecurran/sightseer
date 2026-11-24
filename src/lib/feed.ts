@@ -1,5 +1,5 @@
 import { getFeedRecaps, type FeedRecap } from '@/lib/travel-book-recaps';
-import { getTripsForUsers, type Trip } from '@/lib/trips';
+import { getTripsForFeed, type Trip } from '@/lib/trips';
 import { resolveStateCountries } from '@/lib/places-cache';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/database.types';
@@ -19,6 +19,9 @@ export type FeedVisit = {
   created_at: string;
   user_id: string;
   authorName: string;
+  // The author's @handle, shown under their name. Null only when the row
+  // came back without its user.
+  authorHandle: string | null;
   placeId: string;
   placeName: string;
   // Where the place actually is — carried on the visit itself so anything
@@ -134,6 +137,7 @@ export function mapRawFeedVisit(
       side: visit.card_side === 'message' || visit.card_side === 'picture' ? visit.card_side : null,
     },
     authorName: visit.users?.name ?? visit.users?.handle ?? 'Someone',
+    authorHandle: visit.users?.handle ?? null,
     placeId: visit.place_id,
     placeName: visit.places?.name ?? 'Unknown place',
     placeLat: visit.places?.lat ?? null,
@@ -192,7 +196,7 @@ export async function getFollowedUserIds(myUserId: string): Promise<string[]> {
   return accepted.map((f) => f.followee_id);
 }
 
-async function getFeedVisitsForFollowed(followedIds: string[], myUserId: string): Promise<FeedVisit[]> {
+async function getRawFeedVisits(followedIds: string[]): Promise<RawFeedVisit[]> {
   if (followedIds.length === 0) return [];
 
   const { data, error } = await supabase
@@ -200,6 +204,7 @@ async function getFeedVisitsForFollowed(followedIds: string[], myUserId: string)
     .select(FEED_VISIT_SELECT)
     .in('user_id', followedIds)
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     // Bounded: this previously fetched every visit any followed user ever
     // posted (plus joins for photos/likes/comments on each) — fine at ten
     // rows, quadratically painful at a thousand. The feed is a recency
@@ -208,7 +213,11 @@ async function getFeedVisitsForFollowed(followedIds: string[], myUserId: string)
     .limit(50);
   if (error) throw error;
 
-  const rawVisits = data as unknown as RawFeedVisit[];
+  return data as unknown as RawFeedVisit[];
+}
+
+async function enrichFeedVisits(rawVisits: RawFeedVisit[], myUserId: string): Promise<FeedVisit[]> {
+  if (rawVisits.length === 0) return [];
   const [visitNumbers, stateCountryMap, likedIds] = await Promise.all([
     computeVisitNumbers(rawVisits),
     resolveStateCountries(rawVisits.map((v) => v.place_id)),
@@ -223,7 +232,7 @@ async function getFeedVisitsForFollowed(followedIds: string[], myUserId: string)
 
 export async function getFeedVisits(myUserId: string): Promise<FeedVisit[]> {
   const followedIds = await getFollowedUserIds(myUserId);
-  return getFeedVisitsForFollowed(followedIds, myUserId);
+  return enrichFeedVisits(await getRawFeedVisits(followedIds), myUserId);
 }
 
 // Every review of one specific place, across all authors — used by the
@@ -397,15 +406,13 @@ export async function getFeedItems(myUserId: string): Promise<FeedItem[]> {
   const followedIds = await getFollowedUserIds(myUserId);
   if (followedIds.length === 0) return [];
 
-  // The trips RPC is the slowest query here (~300ms even on small data —
-  // recursive place-hierarchy CTEs) and only needs author ids, which are
-  // known before the visits arrive: every feed author is a followed user.
-  // Running it alongside the other two takes it off the critical path
-  // instead of adding its full cost after them.
-  const [visits, recaps, tripsSettled] = await Promise.all([
-    getFeedVisitsForFollowed(followedIds, myUserId),
-    getFeedRecaps(followedIds),
-    getTripsForUsers(followedIds).catch(() => [] as Trip[]),
+  const visitsAndTrips = getRawFeedVisits(followedIds).then((rawVisits) => Promise.all([
+    enrichFeedVisits(rawVisits, myUserId),
+    getTripsForFeed(rawVisits.map((visit) => visit.id)).catch(() => []),
+  ] as const));
+  const [[visits, trips], recaps] = await Promise.all([
+    visitsAndTrips,
+    getFeedRecaps(followedIds).catch(() => []),
   ]);
 
   const items: FeedItem[] = [
@@ -413,7 +420,7 @@ export async function getFeedItems(myUserId: string): Promise<FeedItem[]> {
     ...recaps.map((recap): FeedItem => ({ type: 'recap', sortKey: recap.publishedAt, recap })),
   ];
 
-  return groupVisitsIntoTrips(items, tripsSettled).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+  return groupVisitsIntoTrips(items, trips).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 }
 
 // "This is my 2nd visit here" — the visit's ordinal position among the same
@@ -442,7 +449,9 @@ async function computeVisitNumbers(feedVisits: RawFeedVisit[]): Promise<Map<stri
   const grouped = new Map<string, typeof data>();
   for (const v of data) {
     const key = `${v.user_id}|${v.place_id}`;
-    grouped.set(key, [...(grouped.get(key) ?? []), v]);
+    const group = grouped.get(key);
+    if (group) group.push(v);
+    else grouped.set(key, [v]);
   }
 
   const result = new Map<string, number>();
