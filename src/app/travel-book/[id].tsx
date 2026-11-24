@@ -25,7 +25,7 @@ import { RatingGlassBadgeGated } from '@/components/ui/rating-glass-badge-gated'
 import { RatingSliderWithPreview } from '@/components/ui/rating-slider-with-preview';
 import { StretchText } from '@/components/ui/stretch-text';
 import { JourneyLine } from '@/components/ui/journey-line';
-import { ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
+import { ClearZoneView, ScrollStageProvider, useScrollStage } from '@/components/ui/scroll-stage';
 import { stopOf } from '@/lib/journey';
 import { OwnRatingLine } from '@/components/ui/own-rating-line';
 import { MaxContentWidth, ScrollScreenEdges, Spacing, StickerAccents, TopTabInset } from '@/constants/theme';
@@ -514,9 +514,6 @@ export default function TravelBookDetailScreen() {
                     to={stopOf(item)}
                     seed={`${previous.itemId}-${item.itemId}`}
                     style={styles.journey}
-                    // Clear of the entry's date row as well as the byline
-                    // under it: 36 for the row, 4 between, 40 for the byline.
-                    clearBelow={80}
                   />
                 ) : null;
               const isChecked = checkedItemIds.has(item.itemId);
@@ -624,17 +621,25 @@ export default function TravelBookDetailScreen() {
                             is what belongs to the BOOK rather than to the
                             review: when it was visited, and the way to take
                             it back out again. */}
+                        {/* The date and the menu are clear zones, like
+                            the card's byline under them: the road in from
+                            the entry above passes under each, and draws on
+                            in the gap between. */}
                         <View style={styles.headerRow}>
-                          <ThemedText type="meta">
-                            {item.visited_on}
-                          </ThemedText>
+                          <ClearZoneView>
+                            <ThemedText type="meta">
+                              {item.visited_on}
+                            </ThemedText>
+                          </ClearZoneView>
                           {canManage && (
-                            <Pressable
-                              onPress={() => setConfirmingItem(item)}
-                              hitSlop={12}
-                              style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
-                              <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
-                            </Pressable>
+                            <ClearZoneView>
+                              <Pressable
+                                onPress={() => setConfirmingItem(item)}
+                                hitSlop={12}
+                                style={({ pressed }) => [styles.menuButton, pressed && styles.pressed]}>
+                                <Ionicons name="ellipsis-horizontal" size={20} color={theme.textSecondary} />
+                              </Pressable>
+                            </ClearZoneView>
                           )}
                         </View>
                         <VisitCard

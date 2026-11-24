@@ -16,6 +16,7 @@ import { FeedAuthorLine } from "@/components/feed-author-line";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Avatar } from "@/components/ui/avatar";
+import { ClearZoneView } from "@/components/ui/scroll-stage";
 import { StampLanding } from "@/components/ui/deal-in";
 import { FeedRatingStamp, STAMP_SIZE } from "@/components/ui/feed-rating-stamp";
 import { RatingGlassBadgeGated } from "@/components/ui/rating-glass-badge-gated";
@@ -534,34 +535,45 @@ export function VisitCard({
   // carry the sender's name on the picture, and keeping the byline outside
   // the flip means it stays put while the card turns — the card changes
   // sides, not owners.
+  //
+  // The avatar, the name and the handle are each a clear zone: the dashed
+  // road from the post above passes under them, and only them. One box
+  // round all three also took the road out beside a short name, above a
+  // longer handle, where nothing was in the way.
   const byline = (
     <View style={styles.byline}>
-      <Pressable
-        onPress={guardCardPress(() =>
-          router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
-        )}
-      >
-        <Avatar uri={authorAvatarUrl} name={visit.authorName} size={36} />
-      </Pressable>
+      <ClearZoneView>
+        <Pressable
+          onPress={guardCardPress(() =>
+            router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
+          )}
+        >
+          <Avatar uri={authorAvatarUrl} name={visit.authorName} size={36} />
+        </Pressable>
+      </ClearZoneView>
       <View style={styles.bylineText}>
-        <FeedAuthorLine
-          authorId={visit.user_id}
-          authorName={visit.authorName}
-          taggedUsers={visit.taggedUsers}
-        />
+        <ClearZoneView>
+          <FeedAuthorLine
+            authorId={visit.user_id}
+            authorName={visit.authorName}
+            taggedUsers={visit.taggedUsers}
+          />
+        </ClearZoneView>
         {/* Not when there is no display name: the line above is already
             the handle then. */}
         {visit.authorHandle && visit.authorHandle !== visit.authorName && (
-          <ThemedText
-            type="small"
-            themeColor="textMeta"
-            numberOfLines={1}
-            onPress={guardCardPress(() =>
-              router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
-            )}
-          >
-            @{visit.authorHandle}
-          </ThemedText>
+          <ClearZoneView>
+            <ThemedText
+              type="small"
+              themeColor="textMeta"
+              numberOfLines={1}
+              onPress={guardCardPress(() =>
+                router.push({ pathname: "/user/[id]", params: { id: visit.user_id } })
+              )}
+            >
+              @{visit.authorHandle}
+            </ThemedText>
+          </ClearZoneView>
         )}
       </View>
     </View>
@@ -1344,8 +1356,11 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.one,
   },
+  // Lines hug their own words rather than stretching across the row, so
+  // each one's clear zone is only as wide as what it says.
   bylineText: {
     flex: 1,
+    alignItems: "flex-start",
   },
 
   // --- picture side ---

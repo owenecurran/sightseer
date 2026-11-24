@@ -13,6 +13,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { FeedDivider } from '@/components/ui/feed-divider';
 import { JourneyLabel } from '@/components/ui/journey-label';
 import { Spacing } from '@/constants/theme';
+import { useRouteHoles, type RouteHole } from '@/components/ui/journey-line-holes';
 import { useStagedFrame } from '@/components/ui/scroll-stage';
 import { hapticTick } from '@/lib/haptics';
 import { legBetween, type JourneyLeg, type JourneyStop } from '@/lib/journey';
@@ -29,11 +30,6 @@ export const ROUTE_INSET = 6;
 // and so covers its end. The road goes in under the card rather than
 // stopping short of it in mid-air.
 const ROUTE_REACH = 64;
-// How far below its frame the road is left undrawn by default: the next
-// post's byline (avatar and two lines, 40 points), which the road passes
-// under rather than through. A screen with more above the next postcard
-// (a travel book's date row) passes a larger clearBelow.
-export const BYLINE_CLEARANCE = 40;
 // The route draws itself while its top travels from here (a share of the
 // screen's height down from the top, at the tab bar)...
 const DRAW_FROM = 0.95;
@@ -60,8 +56,6 @@ type JourneyLineProps = {
   // For the caller to pull it flush against the posts either side, past
   // the list's own gaps.
   style?: StyleProp<ViewStyle>;
-  // How far below its frame to leave the road out (see BYLINE_CLEARANCE).
-  clearBelow?: number;
 };
 
 // What goes between two postcards in a feed: a road drawn by hand from the
@@ -80,20 +74,29 @@ type JourneyLineProps = {
 // With nothing to say (neither place has coordinates, neither post a date),
 // it is the plain tear line instead. Placed by the list's scroll stage (see
 // scroll-stage); outside a list that has one, it is simply drawn.
-export function JourneyLine({ from, to, seed, style, clearBelow = BYLINE_CLEARANCE }: JourneyLineProps) {
+export function JourneyLine({ from, to, seed, style }: JourneyLineProps) {
   const leg = useMemo(() => legBetween(from, to), [from, to]);
   const [width, setWidth] = useState(0);
+  // Where the road is left out: the next post's avatar and name (and a
+  // travel book's date and menu), registered on the stage by whoever draws
+  // them. See journey-line-holes.ts.
+  const { ref: frameRef, onLayout: measureFrame, holes } = useRouteHoles(width, ROUTE_HEIGHT + ROUTE_REACH);
   if (!leg) return <FeedDivider />;
   return (
     <View
+      ref={frameRef}
+      collapsable={false}
       style={[styles.frame, style]}
-      onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))}>
-      {width > 0 && <Route leg={leg} width={width} seed={seed} clearBelow={clearBelow} />}
+      onLayout={(event) => {
+        setWidth(Math.round(event.nativeEvent.layout.width));
+        measureFrame();
+      }}>
+      {width > 0 && <Route leg={leg} width={width} seed={seed} holes={holes} />}
     </View>
   );
 }
 
-function Route({ leg, width, seed, clearBelow }: { leg: JourneyLeg; width: number; seed: string; clearBelow: number }) {
+function Route({ leg, width, seed, holes }: { leg: JourneyLeg; width: number; seed: string; holes: RouteHole[] }) {
   const reduceMotion = useReducedMotion();
   const { height: screenHeight } = useWindowDimensions();
   const { stage, ref, onLayout, contentY } = useStagedFrame();
@@ -112,18 +115,16 @@ function Route({ leg, width, seed, clearBelow }: { leg: JourneyLeg; width: numbe
   const { points, lengths, length, side } = route;
   const start = points[0];
 
-  // Everywhere but the band where the next post's byline sits. The road
-  // passes under the name the way it passes under the card, rather than
-  // through it. Clipped rather than cut so the drawing-out and its pen stay
-  // measured along one road; the pen just goes out of sight in the band.
-  const clip = useMemo(() => {
-    const total = ROUTE_HEIGHT + ROUTE_REACH;
-    const resume = Math.min(total, ROUTE_HEIGHT + clearBelow);
+  // The holes as one path to clip OUT (invertClip below): the road passes
+  // under a name the way it passes under the card. Clipped rather than cut
+  // so the drawing-out and its pen stay measured along one road; the pen
+  // just goes out of sight under the name.
+  const holePath = useMemo(() => {
+    if (holes.length === 0) return null;
     const path = Skia.Path.Make();
-    path.addRect(Skia.XYWHRect(0, 0, width, ROUTE_HEIGHT));
-    if (resume < total) path.addRect(Skia.XYWHRect(0, resume, width, total - resume));
+    for (const hole of holes) path.addRect(Skia.XYWHRect(hole.x, hole.y, hole.width, hole.height));
     return path;
-  }, [width, clearBelow]);
+  }, [holes]);
 
   // Where its top is on screen, or null until that is known.
   const top = useDerivedValue(() => {
@@ -180,7 +181,7 @@ function Route({ leg, width, seed, clearBelow }: { leg: JourneyLeg; width: numbe
     <View ref={ref} collapsable={false} style={StyleSheet.absoluteFill} pointerEvents="none" onLayout={onLayout}>
       {isNear && (
         <Canvas style={{ width, height: ROUTE_HEIGHT + ROUTE_REACH }}>
-          <Group clip={clip}>
+          <Group clip={holePath ?? undefined} invertClip={holePath != null}>
           <Path
             path={route.path}
             style="stroke"

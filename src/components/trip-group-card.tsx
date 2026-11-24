@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { StickerLink } from '@/components/ui/sticker-link';
 import { ThemedText } from '@/components/themed-text';
 import { Avatar } from '@/components/ui/avatar';
+import { ClearZoneView } from '@/components/ui/scroll-stage';
 import { ThemedView } from '@/components/themed-view';
 import { TripDayReviews } from '@/components/trip-day-reviews';
 import { TripMapSquare } from '@/components/trip-map-square';
@@ -130,7 +131,9 @@ export function TripGroupCard({
             opened straight onto a place name, and it wasn't clear the
             reviews below were somebody's — per direct feedback, that the
             location didn't obviously relate to the posts under it. */}
-        <View style={styles.authorRow}>
+        {/* The author line and the heading are clear zones: the dashed road
+            from the post above runs on into the frame and under them. */}
+        <ClearZoneView style={styles.authorRow}>
           <Pressable
             onPress={() => router.push({ pathname: '/user/[id]', params: { id: trip.userId } })}
             hitSlop={6}>
@@ -145,9 +148,9 @@ export function TripGroupCard({
           <ThemedText type="caption">
             {isOuting ? 'had a night out' : 'took a trip'}
           </ThemedText>
-        </View>
+        </ClearZoneView>
 
-        <View style={styles.headerRow}>
+        <ClearZoneView style={styles.headerRow}>
           <TripMapSquare
             visits={allVisits}
             center={trip.areaLat != null && trip.areaLng != null ? { lat: trip.areaLat, lng: trip.areaLng } : null}
@@ -174,7 +177,7 @@ export function TripGroupCard({
               {isOuting ? '' : ` · ${days.length} day${days.length === 1 ? '' : 's'}`}
             </ThemedText>
           </View>
-        </View>
+        </ClearZoneView>
 
         {isPickingArea && areaOptions != null && (
           <View style={styles.areaOptions}>
@@ -306,10 +309,14 @@ const styles = StyleSheet.create({
   },
   // The map square sits beside the trip's own text rather than above it —
   // the square is fixed-size, so the text column takes whatever's left.
+  // Hugging its contents rather than spanning the frame, so the road is
+  // left out only where the avatar and words are.
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   // Sits between the avatar and the trailing descriptor, so a long name
   // truncates rather than pushing "took a trip" off the card.

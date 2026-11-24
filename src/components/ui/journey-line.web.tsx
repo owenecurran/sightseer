@@ -5,6 +5,7 @@ import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { FeedDivider } from '@/components/ui/feed-divider';
 import { JourneyLabel } from '@/components/ui/journey-label';
 import { Spacing } from '@/constants/theme';
+import { useRouteHoles } from '@/components/ui/journey-line-holes';
 import { svgDataUri } from '@/lib/base64';
 import { legBetween, type JourneyStop } from '@/lib/journey';
 import { journeyRoute } from '@/lib/journey-route';
@@ -17,9 +18,6 @@ const ROUTE_INSET = 6;
 // and so covers its end. The road goes in under the card rather than
 // stopping short of it in mid-air.
 const ROUTE_REACH = 64;
-// See journey-line.tsx: the band below the frame the road is left out of,
-// where the next post's byline sits.
-const BYLINE_CLEARANCE = 40;
 const INK = 'rgba(234, 231, 207, 0.85)';
 
 type JourneyLineProps = {
@@ -27,42 +25,56 @@ type JourneyLineProps = {
   to: JourneyStop | null;
   seed: string;
   style?: StyleProp<ViewStyle>;
-  clearBelow?: number;
 };
 
 // The web's route between two postcards: the same road as the app draws
 // (see journey-line.tsx), already drawn rather than drawing itself out. Skia
 // on the web has to download its engine before it can draw anything, which
 // is no way to put a line between two posts.
-export function JourneyLine({ from, to, seed, style, clearBelow = BYLINE_CLEARANCE }: JourneyLineProps) {
+export function JourneyLine({ from, to, seed, style }: JourneyLineProps) {
   const leg = useMemo(() => legBetween(from, to), [from, to]);
   const [width, setWidth] = useState(0);
+  // Where the road is left out: a byline's avatar and name, as on the phone
+  // (see journey-line-holes.ts).
+  const { ref: frameRef, onLayout: measureFrame, holes } = useRouteHoles(width, ROUTE_HEIGHT + ROUTE_REACH);
   const drawing = useMemo(() => {
     if (width === 0) return null;
     const route = journeyRoute(seed, width, ROUTE_HEIGHT + ROUTE_REACH - ROUTE_INSET);
     const points = route.points.map((point) => `${point.x.toFixed(1)},${(point.y + ROUTE_INSET).toFixed(1)}`);
     const [startX, startY] = points[0].split(',');
     const total = ROUTE_HEIGHT + ROUTE_REACH;
-    const resume = Math.min(total, ROUTE_HEIGHT + clearBelow);
-    // The road passes under the next post's byline, as on the phone: left
-    // out of the band where it sits.
+    // A mask rather than a clip path, since the holes are what is taken out:
+    // white keeps, black removes.
+    const mask =
+      holes.length === 0
+        ? ''
+        : `<defs><mask id="road" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="${total}">` +
+          `<rect x="0" y="0" width="${width}" height="${total}" fill="white"/>` +
+          holes
+            .map((hole) => `<rect x="${hole.x.toFixed(1)}" y="${hole.y.toFixed(1)}" width="${hole.width.toFixed(1)}" height="${hole.height.toFixed(1)}" fill="black"/>`)
+            .join('') +
+          `</mask></defs>`;
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${total}" viewBox="0 0 ${width} ${total}">` +
-      `<defs><clipPath id="road"><rect x="0" y="0" width="${width}" height="${ROUTE_HEIGHT}"/>` +
-      (resume < total ? `<rect x="0" y="${resume}" width="${width}" height="${total - resume}"/>` : '') +
-      `</clipPath></defs><g clip-path="url(#road)">` +
+      mask +
+      `<g${holes.length === 0 ? '' : ' mask="url(#road)"'}>` +
       `<polyline points="${points.join(' ')}" fill="none" stroke="${INK}" stroke-width="3" ` +
       `stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10 8"/>` +
       `<circle cx="${startX}" cy="${startY}" r="4.5" fill="none" stroke="${INK}" stroke-width="2"/>` +
       `</g></svg>`;
     return { uri: svgDataUri(svg), side: route.side };
-  }, [seed, width, clearBelow]);
+  }, [seed, width, holes]);
 
   if (!leg) return <FeedDivider />;
   return (
     <View
+      ref={frameRef}
+      collapsable={false}
       style={[styles.frame, style]}
-      onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))}>
+      onLayout={(event) => {
+        setWidth(Math.round(event.nativeEvent.layout.width));
+        measureFrame();
+      }}>
       {drawing && (
         <>
           <Image source={{ uri: drawing.uri }} style={{ width, height: ROUTE_HEIGHT + ROUTE_REACH }} contentFit="fill" />
